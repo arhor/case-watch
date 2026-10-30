@@ -8,11 +8,15 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-
-function die(msg) {
-    process.stderr.write(`${msg}\n`);
-    process.exit(1);
-}
+const {
+    die,
+    slugify,
+    toPosix,
+    todayISO,
+    normalizeNames,
+    loadTemplate,
+    resolveAdrPaths,
+} = require('./shared');
 
 function parseArgs(argv) {
     const out = {
@@ -28,90 +32,86 @@ function parseArgs(argv) {
     };
 
     for (let i = 2; i < argv.length; i++) {
-        const a = argv[i];
+        const arg = argv[i];
         const next = () => {
-            if (i + 1 >= argv.length) die(`Missing value for ${a}`);
+            if (i + 1 >= argv.length) {
+                die(`Missing value for ${arg}`);
+            }
             return argv[++i];
         };
 
-        if (a === '--repo-root') out.repoRoot = next();
-        else if (a === '--dir') out.dir = next();
-        else if (a === '--force-index') out.forceIndex = true;
-        else if (a === '--first-title') out.firstTitle = next();
-        else if (a === '--first-status') out.firstStatus = next();
-        else if (a === '--deciders') out.deciders = next();
-        else if (a === '--technical-story') out.technicalStory = next();
-        else if (a === '--strategy') out.strategy = next();
-        else if (a === '--json') out.json = true;
-        else if (a === '--help' || a === '-h') {
-            process.stdout.write(
-                [
-                    'Usage: node bootstrap-adr.js [options]',
-                    '',
-                    'Options:',
-                    '  --repo-root <path>     Repo root (default: .)',
-                    '  --dir <path>           ADR directory (fixed: docs/adr/)',
-                    '  --force-index          Overwrite index file if it exists',
-                    '  --first-title <text>   Title for initial ADR',
-                    '  --first-status <text>  Status for initial ADR (default: accepted)',
-                    '  --strategy numbered|auto  Filename strategy (default: numbered)',
-                    '  --json                 Output machine-readable JSON (default: off)',
-                    '',
-                ].join('\n'),
-            );
-            process.exit(0);
-        } else {
-            die(`Unknown arg: ${a}`);
+        switch (arg) {
+            case '--repo-root':
+                out.repoRoot = next();
+                break;
+            case '--dir':
+                out.dir = next();
+                break;
+            case '--force-index':
+                out.forceIndex = true;
+                break;
+            case '--first-title':
+                out.firstTitle = next();
+                break;
+            case '--first-status':
+                out.firstStatus = next();
+                break;
+            case '--deciders':
+                out.deciders = next();
+                break;
+            case '--technical-story':
+                out.technicalStory = next();
+                break;
+            case '--strategy':
+                out.strategy = next();
+                break;
+            case '--json':
+                out.json = true;
+                break;
+            case '--help':
+            case '-h':
+                process.stdout.write(
+                    [
+                        'Usage: node bootstrap-adr.js [options]',
+                        '',
+                        'Options:',
+                        '  --repo-root <path>     Repo root (default: .)',
+                        '  --dir <path>           ADR directory (fixed: docs/adr/)',
+                        '  --force-index          Overwrite index file if it exists',
+                        '  --first-title <text>   Title for initial ADR',
+                        '  --first-status <text>  Status for initial ADR (default: accepted)',
+                        '  --strategy numbered|auto  Filename strategy (default: numbered)',
+                        '  --json                 Output machine-readable JSON (default: off)',
+                        '',
+                    ].join('\n'),
+                );
+                process.exit(0);
+                break;
+            default:
+                die(`Unknown arg: ${arg}`);
+                break;
         }
     }
 
-    if (!['auto', 'numbered'].includes(out.strategy))
+    if (!['auto', 'numbered'].includes(out.strategy)) {
         die(`Invalid --strategy: ${out.strategy}`);
+    }
     return out;
 }
 
-function loadReadmeTemplate() {
-    const skillRoot = path.resolve(__dirname, '..');
-    const templatePath = path.join(
-        skillRoot,
-        'assets',
-        'templates',
-        'adr-readme.md',
-    );
-    if (!fs.existsSync(templatePath))
-        die(`README template not found: ${templatePath}`);
-    return fs.readFileSync(templatePath, 'utf8');
-}
-
 function writeIndex(indexFile, adrDirName, { force }) {
-    if (fs.existsSync(indexFile) && !force) return;
-    const content = loadReadmeTemplate().replaceAll('{ADR_DIR}', adrDirName);
-    fs.mkdirSync(path.dirname(indexFile), { recursive: true });
-    fs.writeFileSync(indexFile, `${content.trimEnd()}\n`, 'utf8');
-}
+    if (fs.existsSync(indexFile) && !force) {
+        return;
+    }
+    const templateText = loadTemplate('readme').replaceAll('{ADR_DIR}', adrDirName).trimEnd();
+    const indexFileDir = path.dirname(indexFile);
 
-function slugify(text) {
-    const t = String(text || '')
-        .trim()
-        .toLowerCase();
-    const noQuotes = t.replace(/['"`]/g, '');
-    const dashed = noQuotes.replace(/[^a-z0-9]+/g, '-').replace(/-{2,}/g, '-');
-    const trimmed = dashed.replace(/^-+/, '').replace(/-+$/, '');
-    return trimmed || 'decision';
-}
-
-function toPosix(p) {
-    return p.split(path.sep).join('/');
+    fs.mkdirSync(indexFileDir, { recursive: true });
+    fs.writeFileSync(indexFile, `${templateText}\n`, 'utf8');
 }
 
 function generateFirstAdr({ title, status, date, deciders, adrDir }) {
-    const deciderLine = deciders
-        ? String(deciders)
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-            .join(', ')
-        : '';
+    const deciderLine = normalizeNames(deciders);
 
     return `---
 status: ${status}
@@ -162,9 +162,13 @@ Conventions:
 }
 
 function updateIndexFile(indexFile, { relLink, title, status, date }) {
-    if (!fs.existsSync(indexFile)) return;
+    if (!fs.existsSync(indexFile)) {
+        return;
+    }
     let content = fs.readFileSync(indexFile, 'utf8');
-    if (content.includes(relLink)) return;
+    if (content.includes(relLink)) {
+        return;
+    }
 
     const entryLine = `- [${title}](${relLink}) (${status}, ${date})`;
 
@@ -176,7 +180,9 @@ function updateIndexFile(indexFile, { relLink, title, status, date }) {
     if (headingIdx !== -1) {
         // Insert after the heading (and any blank line after it)
         let insertAt = headingIdx + 1;
-        while (insertAt < lines.length && lines[insertAt].trim() === '') insertAt++;
+        while (insertAt < lines.length && lines[insertAt].trim() === '') {
+            insertAt++;
+        }
         lines.splice(insertAt, 0, entryLine);
     } else {
         lines.push(entryLine);
@@ -187,27 +193,22 @@ function updateIndexFile(indexFile, { relLink, title, status, date }) {
 
 function main() {
     const args = parseArgs(process.argv);
+    const { repoRoot, adrDir } = resolveAdrPaths(args.repoRoot, args.dir);
 
-    const repoRoot = path.resolve(process.cwd(), args.repoRoot);
-    if (!fs.existsSync(repoRoot)) die(`Repo root does not exist: ${repoRoot}`);
-
-    const adrDir = path.join(repoRoot, 'docs', 'adr');
-    if (path.resolve(repoRoot, args.dir) !== adrDir)
-        die('ADR directory is fixed at docs/adr/');
     fs.mkdirSync(adrDir, { recursive: true });
 
     const indexFile = path.join(adrDir, 'README.md');
-
     const indexExistedBefore = fs.existsSync(indexFile);
+
     writeIndex(indexFile, args.dir, { force: args.forceIndex });
-    const indexWritten =
-        fs.existsSync(indexFile) && (!indexExistedBefore || args.forceIndex);
+
+    const indexWritten = fs.existsSync(indexFile) && (!indexExistedBefore || args.forceIndex);
 
     // Create the first ADR as a filled-out decision (not a blank template).
     const relIndex = path.isAbsolute(indexFile)
         ? path.relative(repoRoot, indexFile)
         : indexFile;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
 
     const firstAdrContent = generateFirstAdr({
         title: args.firstTitle,
