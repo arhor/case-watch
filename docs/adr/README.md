@@ -21,3 +21,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 
 - [Adopt architecture decision records](0001_adopt-architecture-decision-records.md) (accepted, 2026-10-30)
 - [Choose Go for the Case Watch service](0002_choose-go.md) (accepted, 2026-10-31)
+- [Choose go-telegram/bot with long polling](0003_choose-telegram-bot-integration.md) (accepted, 2026-10-31)
