@@ -91,3 +91,11 @@ The following tasks remain pending; recording this ADR does not implement the ap
 ## More Information
 
 The maintainer confirmed the Go decision on 2026-10-31. Portal integration, resource suitability, and application implementation remain unverified. Local HTML and HAR recordings informed the discussion; this record intentionally contains no captured credentials or case data.
+
+### 2026-10-31: Direct RPC experiment succeeded
+
+The Go probe authenticated against the live Gdańsk portal from a fresh session and extracted the case stage in five HTTP requests, within the agreed six-request limit, with no retries. This validates the initial feasibility of the direct Vaadin Flow RPC approach selected above. Continue with direct RPC for this portal; the existing browser fallback criterion remains unchanged. See [the probe report](../portal-probe.md) for implementation and validation details.
+
+Offline tests exercise the sanitized recorded exchange, fresh session cookies, synchronization counters, changed UI node identifiers, and failure handling. Linux ARM64 cross-compilation succeeded. These results support retaining Go and direct RPC; they do not establish production reliability or resource suitability on the target device.
+
+Repeated live checks, session renewal, execution on the Pi, resource measurements, and an agreed resource budget remain outstanding. The earlier unverified statement records the state at acceptance; this dated entry records the subsequent findings without rewriting that history.
