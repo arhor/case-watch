@@ -1,16 +1,30 @@
 # Case Watch
 
-A private Telegram bot tracking one Gdańsk administrative case per user. Credentials are encrypted with a separate keyring. Manual checks share persisted cooldowns with Warsaw weekday polling; observed changes enter a durable, ordered notification queue.
+Case Watch is a Telegram bot for monitoring administrative case statuses. It checks tracked cases periodically, lets users request a status update, and sends notifications when a status changes.
 
-Start with the [documentation index](docs/README.md) for the product contract, architecture decisions, implementation notes, operator guides and verification evidence.
+## Build
 
-Use Go 1.27.3. Before repository tooling, run `nvm use` from this directory; if needed, first run `source "$NVM_DIR/nvm.sh"`.
+Requires Go 1.27.3.
 
 ```sh
-go test ./...
-go test -race ./...
-go vet ./...
-go build -o /private/tmp/case-watch ./cmd/case-watch
+go build -o case-watch ./cmd/case-watch
 ```
 
-Tests use synthetic credentials and fake endpoints. The production command contacts real Telegram/portal services: provision the key and configure authorization before starting it. No additional live checks, Pi deployment or resource measurements have been performed. Docker runtime acceptance remains outstanding because the development daemon was unavailable. Backups are intentionally excluded.
+## Run
+
+Configure the Telegram bot token, database path, encryption key path, and access policy using environment variables. See [the example configuration](.env.example) and [configuration guide](docs/configuration.md).
+
+Provision a key before starting the service:
+
+```sh
+./case-watch provision-key /path/to/keyring.json initial
+./case-watch run
+```
+
+The key directory must already exist and be protected. Keep the key outside both the repository and the database directory. The application reads environment variables directly; it does not load `.env` files. See [credential setup](docs/credentials.md) and [operator commands](docs/operations.md) for details.
+
+## Deployment
+
+A [Dockerfile](Dockerfile) and [Compose configuration](compose.yaml) are provided for Linux ARM64. Follow the [deployment guide](docs/deployment.md) to build and configure the image, provision secrets, and manage persistent data and updates.
+
+For architecture, behavior, and additional documentation, see the [documentation index](docs/README.md).

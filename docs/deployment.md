@@ -2,7 +2,7 @@
 
 This is an operator runbook, not evidence of a deployment. Use one Linux ARM64 container on a 64-bit host. No live portal/Telegram checks or Pi provisioning have been performed. Read [operations](operations.md), [configuration](configuration.md), and [credentials](credentials.md) first. There is no backup/restore automation. Loss of storage or required keys can lose enrollment, history and pending notifications; the portal supplies only current stages.
 
-Build from the repository root after `nvm use` (source `$NVM_DIR/nvm.sh` first if necessary):
+Build from the repository root:
 
 ```sh
 docker buildx build --platform linux/arm64 --load -t case-watch:2026-11-01 .
