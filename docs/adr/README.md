@@ -24,3 +24,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Choose go-telegram/bot with long polling](0003_choose-telegram-bot-integration.md) (accepted, 2026-10-31)
 - [Choose SQLite with modernc for case state and pending notifications](0004_choose-sqlite-persistence.md) (accepted, 2026-10-31)
 - [Choose startup allowlist authorization and private case enrollment](0005_choose-user-authorization-and-enrollment.md) (accepted, 2026-11-01)
+- [Encrypt portal credentials with a separately stored key](0006_encrypt-portal-credentials.md) (accepted, 2026-11-01)
