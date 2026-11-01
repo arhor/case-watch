@@ -88,23 +88,23 @@ This decision defines scheduling and command freshness behavior, not a cron libr
 
 These tasks remain pending:
 
-- [ ] Implement Warsaw-local slot calculation and sequential scheduling under `internal/scheduler/`, with explicit missed-slot and overlap handling and available time-zone data.
-- [ ] Add check coordination under `internal/tracking/` shared by scheduler and Telegram callers: per-user cooldown, per-case attempt guard, and in-flight result sharing. Inject clock and portal interfaces for offline testing.
-- [ ] Extend `internal/storage/` with atomic attempt reservation and persisted user/case attempt timestamps, plus the last successful observation timestamp distinct from transition history. Follow ADR 0004 migrations and transaction boundaries.
-- [ ] Connect `/status` under `internal/telegram/` to the shared coordinator after authorization, formatting fresh/cached provenance, timestamps, next eligibility, and failures without exposing credentials.
-- [ ] Route successful manual and scheduled observations through the same transition/pending-notification transaction; never hold database transactions across portal access.
-- [ ] Document the schedule and command behavior. Retain live validation limits; use fake clocks and synthetic portal outcomes for implementation tests.
+- [x] Implement Warsaw-local slot calculation and sequential scheduling under `internal/scheduler/`, with explicit missed-slot and overlap handling and available time-zone data.
+- [x] Add check coordination under `internal/tracking/` shared by scheduler and Telegram callers: per-user cooldown, per-case attempt guard, and in-flight result sharing. Inject clock and portal interfaces for offline testing.
+- [x] Extend `internal/storage/` with atomic attempt reservation and persisted user/case attempt timestamps, plus the last successful observation timestamp distinct from transition history. Follow ADR 0004 migrations and transaction boundaries.
+- [x] Connect `/status` under `internal/telegram/` to the shared coordinator after authorization, formatting fresh/cached provenance, timestamps, next eligibility, and failures without exposing credentials.
+- [x] Route successful manual and scheduled observations through the same transition/pending-notification transaction; never hold database transactions across portal access.
+- [x] Document the schedule and command behavior. Retain live validation limits; use fake clocks and synthetic portal outcomes for implementation tests.
 
 ### Verification
 
-- [ ] All six slots occur Monday–Friday in Warsaw time, including public holidays; none occur automatically on weekends. Winter and summer cases follow local time independently of the host time zone.
-- [ ] Restart does not replay missed slots or reset persisted cooldowns; a slow scheduled run does not overlap or accumulate another run.
-- [ ] A manual attempt at t=0 blocks a new attempt at t=59 seconds and permits one at t=60 seconds, including when the first attempt failed. Another case selection does not bypass the user guard.
-- [ ] Cached replies and joins do not extend the manual cooldown. Per-case guards prevent redundant manual/scheduled attempts, including immediately after failed scheduled attempts.
-- [ ] Recent scheduled success satisfies `/status`; freshness and attempt timestamps are evaluated separately and older results are not presented as newly successful.
-- [ ] Concurrent callers for one tracked case result in one portal check. A missing cache or failed check produces the documented response without a false stage update.
-- [ ] Successful unchanged checks refresh the cache timestamp without history/notifications; transitions from either source follow ADR 0004 and the direct reply does not mark pending notifications delivered.
-- [ ] Authorization gates scheduled execution and manual access. Tests use synthetic data and make no live Telegram or government-portal requests.
+- [x] All six slots occur Monday–Friday in Warsaw time, including public holidays; none occur automatically on weekends. Winter and summer cases follow local time independently of the host time zone.
+- [x] Restart does not replay missed slots or reset persisted cooldowns; a slow scheduled run does not overlap or accumulate another run.
+- [x] A manual attempt at t=0 blocks a new attempt at t=59 seconds and permits one at t=60 seconds, including when the first attempt failed. Another case selection does not bypass the user guard.
+- [x] Cached replies and joins do not extend the manual cooldown. Per-case guards prevent redundant manual/scheduled attempts, including immediately after failed scheduled attempts.
+- [x] Recent scheduled success satisfies `/status`; freshness and attempt timestamps are evaluated separately and older results are not presented as newly successful.
+- [x] Concurrent callers for one tracked case result in one portal check. A missing cache or failed check produces the documented response without a false stage update.
+- [x] Successful unchanged checks refresh the cache timestamp without history/notifications; transitions from either source follow ADR 0004 and the direct reply does not mark pending notifications delivered.
+- [x] Authorization gates scheduled execution and manual access. Tests use synthetic data and make no live Telegram or government-portal requests.
 
 ## Pros and Cons of the Options
 
@@ -127,3 +127,9 @@ Easy to explain as always fetching live data. Rejected because repeated commands
 ## More Information
 
 The maintainer confirmed the weekday/public-holiday interpretation and reuse of recent scheduled results on 2026-11-01. This policy complements [the probe's request bounds](../portal-probe.md); the probe's five-request success is not evidence of long-running scheduler reliability. Implementation, repeated live checks, and target-device validation remain pending.
+
+### 2026-11-01: Independent implementation evidence
+
+`scheduler.Next/Run` and embedded `time/tzdata` implement the six Warsaw weekday slots, holidays, DST, missed-slot skipping and sequential execution. `tracking.Coordinator` and storage reservations share in-flight checks and persistent start guards, distinguish completion-based cache freshness, preserve failed-cache provenance, and atomically enqueue both manual and scheduled changes. Tests cover exact boundaries, cross-restart guards, cancellation/joins, failed attempts, late wakes and slow-run overlap. The current product has one selected case per owner; the persisted owner guard is independent of enrollment identity and survives removal/re-enrollment. No live or target-device schedule validation is claimed.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -38,7 +40,7 @@ func object(b []byte, marker string) (map[string]any, error) {
 func (s *state) apply(v map[string]any) error {
 	sync, sok := v["syncId"].(float64)
 	client, cok := v["clientId"].(float64)
-	if !sok || !cok || sync < 0 || client < 0 {
+	if !sok || !cok || !integer(sync) || !integer(client) {
 		return errors.New("invalid RPC synchronization state")
 	}
 	s.sync, s.client = sync, client
@@ -59,7 +61,7 @@ func (s *state) apply(v map[string]any) error {
 			return errors.New("invalid RPC change")
 		}
 		n, ok := c["node"].(float64)
-		if !ok || n < 0 {
+		if !ok || !integer(n) {
 			return errors.New("invalid RPC node")
 		}
 		if s.props[n] == nil {
@@ -95,11 +97,11 @@ func (s *state) apply(v map[string]any) error {
 			}
 			old := s.children[n]
 			i, ok := c["index"].(float64)
-			if !ok {
+			if !ok || !integer(i) {
 				return errors.New("invalid child index")
 			}
 			r, _ := c["remove"].(float64)
-			if i < 0 || r < 0 || int(i) > len(old) || int(i+r) > len(old) {
+			if !integer(r) || i > float64(len(old)) || i+r > float64(len(old)) {
 				return errors.New("invalid child splice")
 			}
 			next := append([]float64{}, old[:int(i)]...)
@@ -110,7 +112,7 @@ func (s *state) apply(v map[string]any) error {
 				}
 				for _, x := range added {
 					f, ok := x.(float64)
-					if !ok {
+					if !ok || !integer(f) {
 						return errors.New("invalid child node")
 					}
 					next = append(next, f)
@@ -151,22 +153,36 @@ func Probe(ctx context.Context, base, number, password string) (Result, error) {
 }
 
 func probe(ctx context.Context, base, number, password string, interval time.Duration, budget int) (Result, error) {
-	result := Result{}
+	c := NewClient(Options{BaseURL: base})
+	c.interval, c.budget = interval, budget
+	return c.run(ctx, number, password)
+}
+
+func (c *Client) run(ctx context.Context, number, password string) (result Result, err error) {
+	ctx, cancel := context.WithTimeout(ctx, c.overall)
+	defer cancel()
+	defer func() { err = classify(err) }()
 	jar, _ := cookiejar.New(nil)
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DisableKeepAlives = true
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	transport := c.transport
+	var owned *http.Transport
+	if transport == nil {
+		owned = http.DefaultTransport.(*http.Transport).Clone()
+		owned.DisableKeepAlives = true
+		transport = owned
+		defer owned.CloseIdleConnections()
+	}
+	client := &http.Client{Transport: transport, Jar: jar, Timeout: c.perRequest, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	var last time.Time
 	request := func(method, path string, body any) ([]byte, error) {
-		if result.Requests >= budget {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if result.Requests >= c.budget {
 			return nil, errors.New("request budget exhausted")
 		}
 		if !last.IsZero() {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(time.Until(last.Add(interval))):
+			if err := c.wait(ctx, last.Add(c.interval).Sub(c.now())); err != nil {
+				return nil, err
 			}
 		}
 		var buf bytes.Buffer
@@ -175,30 +191,43 @@ func probe(ctx context.Context, base, number, password string, interval time.Dur
 				return nil, err
 			}
 		}
-		req, err := http.NewRequestWithContext(ctx, method, base+path, &buf)
+		requestCtx, requestCancel := context.WithTimeout(ctx, c.perRequest)
+		defer requestCancel()
+		// A non-replayable body and fresh production connections prevent net/http
+		// from replaying even the initial GET on a previously used connection.
+		req, err := http.NewRequestWithContext(requestCtx, method, c.base+path, io.NopCloser(&buf))
 		if err != nil {
-			return nil, err
+			return nil, &Error{Kind: Protocol}
 		}
 		req.GetBody = nil
 		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 		result.Requests++
-		last = time.Now()
+		last = c.now()
 		resp, err := client.Do(req)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
+			if requestCtx.Err() != nil {
+				return nil, requestCtx.Err()
 			}
-			return nil, errors.New("portal transport failed")
+			return nil, &Error{Kind: Transport}
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return nil, &Error{Kind: Authentication}
+		}
 		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("portal HTTP %d", resp.StatusCode)
+			return nil, &Error{Kind: Transport}
 		}
 		b, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+		if err != nil {
+			if requestCtx.Err() != nil {
+				return nil, requestCtx.Err()
+			}
+			return nil, &Error{Kind: Transport}
+		}
 		if len(b) > 4<<20 {
 			return nil, errors.New("portal response exceeds limit")
 		}
-		return b, err
+		return b, nil
 	}
 	b, err := request("GET", "/", nil)
 	if err != nil {
@@ -212,7 +241,7 @@ func probe(ctx context.Context, base, number, password string, interval time.Dur
 	if err != nil {
 		return result, err
 	}
-	if _, ok := config["v-uiId"].(float64); !ok {
+	if id, ok := config["v-uiId"].(float64); !ok || !integer(id) {
 		return result, errors.New("missing UI identifier")
 	}
 	s := state{props: map[float64]map[string]any{}, children: map[float64][]float64{}}
@@ -249,14 +278,28 @@ func probe(ctx context.Context, base, number, password string, interval time.Dur
 	change := func(n float64, value, name string) []any {
 		return []any{map[string]any{"type": "mSync", "node": n, "feature": 1, "property": "value", "value": value}, event(n, name)}
 	}
-	for _, rpc := range [][]any{{event(pass, "value-changed")}, change(num, number, "change"), change(pass, password, "value-changed"), {event(button, "click")}} {
+	for step := 0; step < 4; step++ {
+		// Each reply may replace login components.
+		num, err = s.find("vaadin-text-field", "Number of application")
+		if err != nil {
+			return result, err
+		}
+		pass, err = s.find("vaadin-password-field", "Password")
+		if err != nil {
+			return result, err
+		}
+		button, err = s.find("vaadin-button", "")
+		if err != nil {
+			return result, err
+		}
+		rpc := [][]any{{event(pass, "value-changed")}, change(num, number, "change"), change(pass, password, "value-changed"), {event(button, "click")}}[step]
 		path := "/?v-r=uidl&v-uiId=" + url.QueryEscape(fmt.Sprint(config["v-uiId"]))
 		b, err = request("POST", path, map[string]any{"csrfToken": s.token, "syncId": s.sync, "clientId": s.client, "rpc": rpc})
 		if err != nil {
 			return result, err
 		}
 		var messages []map[string]any
-		if err = json.Unmarshal(bytes.TrimPrefix(b, []byte("for(;;);")), &messages); err != nil {
+		if err = json.Unmarshal(bytes.TrimPrefix(b, []byte("for(;;);")), &messages); err != nil || len(messages) == 0 {
 			return result, errors.New("invalid RPC response")
 		}
 		for _, m := range messages {
@@ -307,8 +350,16 @@ func probe(ctx context.Context, base, number, password string, interval time.Dur
 		walk(n, map[float64]bool{})
 		if len(values) == 1 {
 			result.Stage = values[0]
+			if err := ctx.Err(); err != nil {
+				return Result{}, err
+			}
 			return result, nil
 		}
 	}
-	return result, errors.New("authentication rejected or unsupported status layout")
+	if _, err := s.find("vaadin-password-field", "Password"); err == nil {
+		return result, &Error{Kind: Authentication}
+	}
+	return result, &Error{Kind: Protocol}
 }
+
+func integer(v float64) bool { return v >= 0 && v <= 1<<53-1 && math.Trunc(v) == v }

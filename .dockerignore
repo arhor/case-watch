@@ -1,0 +1,12 @@
+# Default deny: no captures, .git, dotenv files, keys, DBs or local assets.
+**
+!go.mod
+!go.sum
+!cmd/
+!cmd/case-watch/
+!cmd/case-watch/*.go
+!internal/
+!internal/**/
+!internal/**/*.go
+# Tests are verified outside the image; keep fixtures and test-only text out.
+**/*_test.go

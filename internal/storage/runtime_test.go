@@ -1,0 +1,285 @@
+package storage
+
+import (
+	"database/sql"
+	"errors"
+	"github.com/arhor/case-watch/internal/application"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestReserveCheckShouldPersistSixtySecondGuardsWhenAttemptsFail(t *testing.T) {
+	// Given
+	s, path, _, c := fixture(t)
+	enroll(t, s, c)
+	// When
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r, e := s.ReserveCheck(ctx, 101, c.ID, true, epoch)
+			if e != nil {
+				t.Error(e)
+			}
+			if r.Reserved {
+				wins.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	s.Close()
+	reopened, e := Open(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Close()
+	before, e1 := reopened.ReserveCheck(ctx, 101, c.ID, true, epoch.Add(59*time.Second))
+	at, e2 := reopened.ReserveCheck(ctx, 101, c.ID, true, epoch.Add(time.Minute))
+	// Then
+	if wins.Load() != 1 || e1 != nil || e2 != nil || before.Reserved || !at.Reserved {
+		t.Fatalf("guards: wins=%d before=%+v at=%+v errors=%v/%v", wins.Load(), before, at, e1, e2)
+	}
+}
+
+func TestDeliveryShouldRetainOrderAndBudgetWhenRecoveredAfterCrash(t *testing.T) {
+	// Given
+	s, path, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	s.Observe(ctx, 101, c.ID, observation("A", 2))
+	// When
+	first, e := s.ReserveDelivery(ctx, 101, epoch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, busy := s.ReserveDelivery(ctx, 101, epoch)
+	s.Close()
+	s, e = Open(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	recovery := s.RecoverDeliveries(ctx, epoch)
+	_, early := s.ReserveDelivery(ctx, 101, epoch.Add(29*time.Second))
+	retry, e := s.ReserveDelivery(ctx, 101, epoch.Add(30*time.Second))
+	if e != nil {
+		t.Fatal(e)
+	}
+	stale := s.CompleteDelivery(ctx, first, application.SendOutcome{Category: application.SendAccepted, MessageID: 1}, epoch)
+	accepted := s.CompleteDelivery(ctx, retry, application.SendOutcome{Category: application.SendAccepted, MessageID: 2}, epoch.Add(31*time.Second))
+	next, e := s.ReserveDelivery(ctx, 101, epoch.Add(31*time.Second))
+	// Then
+	if !errors.Is(busy, ErrNotEligible) || recovery != nil || !errors.Is(early, ErrNotEligible) || retry.Sequence != first.Sequence || retry.CycleAttempts != 2 || retry.LifetimeAttempts != 2 || !errors.Is(stale, ErrNotFound) || accepted != nil || e != nil || next.Sequence <= first.Sequence {
+		t.Fatalf("ordered recovery: first=%+v retry=%+v next=%+v busy=%v recovery=%v early=%v stale=%v accepted=%v nextError=%v", first, retry, next, busy, recovery, early, stale, accepted, e)
+	}
+}
+
+func TestDeliveryShouldRequireExplicitResumeWhenCycleExhausts(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	now := epoch
+	// When
+	for i := 0; i < 6; i++ {
+		d, e := s.ReserveDelivery(ctx, 101, now)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = s.CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendTransient}, now); e != nil {
+			t.Fatal(e)
+		}
+		now = now.Add(30 * time.Second * time.Duration(1<<uint(i)))
+	}
+	r, _, e := s.DeliveryGates(ctx, 101)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.SetBlocked(ctx, 101, false)
+	_, paused := s.ReserveDelivery(ctx, 101, now)
+	resume := s.ResumeRecipient(ctx, 101)
+	d, e := s.ReserveDelivery(ctx, 101, now)
+	// Then
+	if r.Pause != "exhausted" || !errors.Is(paused, ErrNotEligible) || resume != nil || e != nil || d.CycleAttempts != 1 || d.LifetimeAttempts != 7 {
+		t.Fatalf("resume: state=%+v paused=%v resume=%v delivery=%+v error=%v", r, paused, resume, d, e)
+	}
+}
+
+func TestRemoveShouldRetainGuardsAndFenceLateResultsWhenReenrolled(t *testing.T) {
+	// Given
+	s, _, k, c := fixture(t)
+	enroll(t, s, c)
+	s.ReserveCheck(ctx, 101, c.ID, true, epoch)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	d, e := s.ReserveDelivery(ctx, 101, epoch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendInvalidToken}, epoch)
+	s.SetBlocked(ctx, 101, true)
+	// When
+	removed := s.Remove(ctx, 101, c.ID)
+	reuse := s.Enroll(ctx, 101, c, observation("A", 0))
+	id, _ := NewEnrollmentID()
+	fresh, e := k.Seal(id, application.Credentials{Number: "synthetic", Password: "synthetic"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Enroll(ctx, 101, fresh, observation("C", 0)); e != nil {
+		t.Fatal(e)
+	}
+	late := s.Observe(ctx, 101, c.ID, observation("D", 2))
+	ack := s.CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendAccepted, MessageID: 3}, epoch)
+	guard, e := s.ReserveCheck(ctx, 101, id, true, epoch.Add(59*time.Second))
+	r, g, gateErr := s.DeliveryGates(ctx, 101)
+	// Then
+	if removed != nil || !errors.Is(reuse, ErrExists) || !errors.Is(late, ErrNotFound) || !errors.Is(ack, ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.TokenPaused || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollment_ids") != 2 {
+		t.Fatalf("removal guards/fence removed=%v reuse=%v late=%v ack=%v guard=%+v error=%v recipient=%+v global=%+v", removed, reuse, late, ack, guard, e, r, g)
+	}
+}
+
+func TestDeliveryShouldHonorGlobalRateDeadlineWhenRecipientResumes(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	d, e := s.ReserveDelivery(ctx, 101, epoch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// When
+	completed := s.CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: 2 * time.Minute}, epoch)
+	s.SetBlocked(ctx, 101, true)
+	s.SetBlocked(ctx, 101, false)
+	_, early := s.ReserveDelivery(ctx, 101, epoch.Add(119*time.Second))
+	at, e := s.ReserveDelivery(ctx, 101, epoch.Add(2*time.Minute))
+	// Then
+	if completed != nil || !errors.Is(early, ErrNotEligible) || e != nil || at.CycleAttempts != 1 || at.LifetimeAttempts != 2 {
+		t.Fatalf("rate gate completed=%v early=%v at=%+v error=%v", completed, early, at, e)
+	}
+}
+
+func TestRemoveShouldRollbackAllRowsWhenDeletionFails(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	if _, e := s.db.Exec(`CREATE TRIGGER fail_remove BEFORE DELETE ON pending BEGIN SELECT RAISE(ABORT,'synthetic'); END;`); e != nil {
+		t.Fatal(e)
+	}
+	// When
+	err := s.Remove(ctx, 101, c.ID)
+	current, readErr := s.Enrollment(ctx, 101)
+	// Then
+	if !errors.Is(err, ErrStorage) || readErr != nil || current.Credentials.ID != c.ID || count(t, s, "history") != 1 || count(t, s, "pending") != 1 {
+		t.Fatalf("partial removal err=%v read=%v", err, readErr)
+	}
+}
+
+func TestMigrationShouldPreserveVersionOneRowsWhenRuntimeSchemaAdded(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	s.Close()
+	path := t.TempDir() + "/v1.db"
+	db, e := sql.Open("sqlite", path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// When
+	if _, e = db.Exec(schema + `PRAGMA user_version=1;`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("INSERT INTO enrollment_ids VALUES(?)", string(c.ID)); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("INSERT INTO enrollments VALUES(?,?,?,?,?,?,?)", string(c.ID), 101, c.FormatVersion, c.KeyID, c.Payload, "A", stamp(epoch)); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", string(c.ID), "A", "B", stamp(epoch)); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec("INSERT INTO pending(history_sequence,recipient_id) VALUES(1,101)"); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	s, e = Open(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	d, e := s.ReserveDelivery(ctx, 101, epoch)
+	// Then
+	if e != nil || d.CycleAttempts != 1 || d.Stage != "B" || count(t, s, "history") != 1 {
+		t.Fatalf("migration delivery=%+v error=%v", d, e)
+	}
+}
+
+func TestReserveDeliveryShouldAllowOneAttemptWhenCallersRace(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	// When
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := s.ReserveDelivery(ctx, 101, epoch)
+			if err == nil {
+				wins.Add(1)
+			} else if !errors.Is(err, ErrNotEligible) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	queue, err := s.Queue(ctx, 101)
+	// Then
+	if err != nil || wins.Load() != 1 || len(queue) != 1 || queue[0].LifetimeAttempts != 1 {
+		t.Fatalf("reservations=%d queue=%+v error=%v", wins.Load(), queue, err)
+	}
+}
+
+func TestReserveCheckShouldRollbackCaseGuardWhenManualWriteFails(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	if _, err := s.db.Exec(`CREATE TRIGGER fail_guard BEFORE INSERT ON manual_guards BEGIN SELECT RAISE(ABORT,'synthetic'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	_, failed := s.ReserveCheck(ctx, 101, c.ID, true, epoch)
+	scheduled, err := s.ReserveCheck(ctx, 101, c.ID, false, epoch)
+	// Then
+	if !errors.Is(failed, ErrStorage) || err != nil || !scheduled.Reserved {
+		t.Fatalf("partial reservation failed=%v scheduled=%+v error=%v", failed, scheduled, err)
+	}
+}
+
+func TestCompleteDeliveryShouldRollbackGateWhenOutcomeWriteFails(t *testing.T) {
+	// Given
+	s, _, _, c := fixture(t)
+	enroll(t, s, c)
+	s.Observe(ctx, 101, c.ID, observation("B", 1))
+	d, err := s.ReserveDelivery(ctx, 101, epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`CREATE TRIGGER fail_outcome BEFORE UPDATE ON pending BEGIN SELECT RAISE(ABORT,'synthetic'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	failed := s.CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, epoch)
+	_, g, err := s.DeliveryGates(ctx, 101)
+	q, queueErr := s.Queue(ctx, 101)
+	// Then
+	if !errors.Is(failed, ErrStorage) || err != nil || queueErr != nil || !g.RateUntil.IsZero() || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
+		t.Fatalf("partial outcome failed=%v gates=%+v queue=%+v", failed, g, q)
+	}
+}

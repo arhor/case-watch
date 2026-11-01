@@ -73,23 +73,23 @@ This decision covers portal credential encryption at rest and its local encrypti
 
 These tasks are pending; this record creates no real keys and adds no runtime code or dependencies.
 
-- [ ] Implement a standard-library encryption/keyring boundary under `internal/credentials/`, referencing this ADR and keeping SQL and Telegram types outside it.
-- [ ] Add `CASE_WATCH_KEY_FILE` parsing and startup validation under `internal/config/`; provide explicit key provisioning and maintenance rotation tooling without logging secrets.
-- [ ] Add encrypted credential records and their versioned migrations under `internal/storage/`. Use immutable opaque record IDs and bind AAD to the destination identity. Do not introduce plaintext credential columns or persistent drafts.
-- [ ] Integrate authorized enrollment and portal access with encryption/decryption, and prevent raw payloads from reaching diagnostics or pending-notification storage.
+- [x] Implement a standard-library encryption/keyring boundary under `internal/credentials/`, referencing this ADR and keeping SQL and Telegram types outside it.
+- [x] Add `CASE_WATCH_KEY_FILE` parsing and startup validation under `internal/config/`; provide explicit key provisioning and maintenance rotation tooling without logging secrets.
+- [x] Add encrypted credential records and their versioned migrations under `internal/storage/`. Use immutable opaque record IDs and bind AAD to the destination identity. Do not introduce plaintext credential columns or persistent drafts.
+- [x] Integrate authorized enrollment and portal access with encryption/decryption, and prevent raw payloads from reaching diagnostics or pending-notification storage.
 - [ ] Document key-file permissions, unattended startup, separate backups, restore, transactional rotation, retention of old keys, and recovery by re-enrollment after key loss.
-- [ ] Test with synthetic credentials, temporary key files, and temporary databases; no live Telegram or government-portal requests are required.
+- [x] Test with synthetic credentials, temporary key files, and temporary databases; no live Telegram or government-portal requests are required.
 
 ### Verification
 
-- [ ] Round-trip encryption recovers synthetic credentials; repeated encryption of the same payload produces different sealed values.
-- [ ] Tampering, wrong keys, changed record IDs, altered authenticated metadata, truncated payloads, and unsupported versions fail without returning credentials or making portal requests.
-- [ ] Missing/invalid key files, unknown key IDs, and existing-record authentication failures stop startup before network work; startup never creates replacement keys.
+- [x] Round-trip encryption recovers synthetic credentials; repeated encryption of the same payload produces different sealed values.
+- [x] Tampering, wrong keys, changed record IDs, altered authenticated metadata, truncated payloads, and unsupported versions fail without returning credentials or making portal requests.
+- [x] Missing/invalid key files, unknown key IDs, and existing-record authentication failures stop startup before network work; startup never creates replacement keys.
 - [ ] Database files, journals, backups, draft records, notification records, and diagnostics contain no synthetic plaintext credentials after enrollment and updates.
-- [ ] Restart loads the existing keyring unattended and decrypts stored records without user input.
+- [x] Restart loads the existing keyring unattended and decrypts stored records without user input.
 - [ ] Restore succeeds with the matching separately backed-up keyring and fails clearly without required keys.
 - [ ] Rotation preserves record identity, replaces ciphertext with fresh nonces transactionally, supports rollback/recovery, and leaves old backups decryptable with retained keys.
-- [ ] Crypto/configuration tests and Linux ARM64 builds succeed with CGO disabled and no additional encryption dependency.
+- [x] Crypto/configuration tests and Linux ARM64 builds succeed with CGO disabled and no additional encryption dependency.
 
 ## Pros and Cons of the Options
 
@@ -127,3 +127,13 @@ The maintainer confirmed the proposed model after selecting unattended recovery 
 ### 2026-11-01: Backup requirements deferred
 
 [ADR 0008](0008_choose-container-deployment-without-backups.md) explicitly defers key/database backups and backup/restore verification for the initial deployment. The maintainer accepts credential loss and re-enrollment if keys or storage are lost. Encryption, a separate persistent key file, permissions, startup validation, and safe rotation ordering remain required. Retain keys needed by current records and through rotation verification; backup-retention duties apply only if backups are introduced later. The original backup instructions above record the earlier policy and do not require initial backup tooling or copies.
+
+### 2026-11-01: Credential collection and explicit deletion scope
+
+The confirmed [product contract](../product-contract.md) requires separate number/password messages without echo or credential command arguments, memory-only drafts expiring after 10 minutes of inactivity, clearing on cancel/restart, and best-effort deletion of credential-bearing messages even on validation failure. One bounded, non-retried portal check precedes an atomic encrypted-credential/baseline commit; failure leaves enrollment uncommitted and clears the password. Confirm tracking only after commit. Explicit confirmed removal deletes the encrypted credential row and related case data, without claiming forensic erasure or deletion of platform copies. Encryption/keyring requirements remain unchanged. Offline tests in later milestones must cover validation/deletion failure, commit rollback and plaintext exclusion.
+
+### 2026-11-01: Independent implementation evidence
+
+`internal/credentials` implements standard-library random-nonce AES-256-GCM, versioned keyrings, destination-bound AAD and explicit provisioning. `service.Paths/Verify` reject invalid paths/keys or any undecryptable stored record before transport construction. Credential/storage tests cover tampering, malformed key files, permissions/special files, plaintext exclusion from DB/active journal and key reload. Rotation fault tests cover retained keys, atomic rewrite, stable identities and interrupted retry. Composite criteria mentioning backups/restore remain unchecked: those clauses are deferred by ADR 0008; no backup copies or restore tests were introduced. Current-record rotation and restart are evidenced independently. CGO-disabled ARM64 build evidence is recorded in progress.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

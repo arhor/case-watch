@@ -75,24 +75,24 @@ This decision selects authorization configuration, identity, ownership, and the 
 
 These tasks remain pending:
 
-- [ ] Add startup parsing and validation under `internal/config/` with the defaults and error rules above; document the two variables in an example environment file containing synthetic IDs only.
-- [ ] Implement a shared eligibility policy under `internal/auth/`, accepting ordinary `int64` IDs rather than Telegram library types. Reference this ADR from its entry point.
-- [ ] Apply private-chat, sender, and eligibility checks in `internal/telegram/` before dispatching enrollment or case operations. Bind enrollment ownership to the authenticated sender.
-- [ ] Carry owner identity into case-association operations under `internal/storage/` and enforce ownership when reading or mutating associations. Do not infer ownership from a caller-supplied case identifier alone.
-- [ ] Gate background scheduling and pending-notification delivery on the same policy. Retain suppressed data without treating it as delivered.
-- [ ] Define credential protection and detailed enrollment behavior before implementing collection or persistence of real portal passwords.
-- [ ] Add offline tests with synthetic Telegram updates, IDs, and case associations; no real Telegram or portal access is needed.
+- [x] Add startup parsing and validation under `internal/config/` with the defaults and error rules above; document the two variables in an example environment file containing synthetic IDs only.
+- [x] Implement a shared eligibility policy under `internal/auth/`, accepting ordinary `int64` IDs rather than Telegram library types. Reference this ADR from its entry point.
+- [x] Apply private-chat, sender, and eligibility checks in `internal/telegram/` before dispatching enrollment or case operations. Bind enrollment ownership to the authenticated sender.
+- [x] Carry owner identity into case-association operations under `internal/storage/` and enforce ownership when reading or mutating associations. Do not infer ownership from a caller-supplied case identifier alone.
+- [x] Gate background scheduling and pending-notification delivery on the same policy. Retain suppressed data without treating it as delivered.
+- [x] Define credential protection and detailed enrollment behavior before implementing collection or persistence of real portal passwords.
+- [x] Add offline tests with synthetic Telegram updates, IDs, and case associations; no real Telegram or portal access is needed.
 
 ### Verification
 
-- [ ] Missing allow-all defaults to restricted mode; empty restricted lists and malformed values fail startup before network work.
-- [ ] Whitespace and duplicate valid IDs parse consistently; nonpositive, overflowing, empty interior, and nonnumeric entries are rejected.
-- [ ] Restricted mode allows listed IDs and rejects others; allow-all permits otherwise eligible private users without bypassing ownership.
-- [ ] Group/channel updates and missing sender identities cannot reach enrollment or case operations.
-- [ ] Enrollment binds the sender as owner; knowing another user's case identifier does not grant access to their association.
-- [ ] Removing a user and restarting suppresses new and pending deliveries and checks solely for that user while preserving data.
+- [x] Missing allow-all defaults to restricted mode; empty restricted lists and malformed values fail startup before network work.
+- [x] Whitespace and duplicate valid IDs parse consistently; nonpositive, overflowing, empty interior, and nonnumeric entries are rejected.
+- [x] Restricted mode allows listed IDs and rejects others; allow-all permits otherwise eligible private users without bypassing ownership.
+- [x] Group/channel updates and missing sender identities cannot reach enrollment or case operations.
+- [x] Enrollment binds the sender as owner; knowing another user's case identifier does not grant access to their association.
+- [x] Removing a user and restarting suppresses new and pending deliveries and checks solely for that user while preserving data.
 - [ ] Restoring access makes retained pending work eligible again; checks needed by another authorized association continue without delivering to a removed user.
-- [ ] Policy/configuration code uses no Telegram types; offline tests exercise both interactive and background authorization paths.
+- [x] Policy/configuration code uses no Telegram types; offline tests exercise both interactive and background authorization paths.
 
 ## Pros and Cons of the Options
 
@@ -114,3 +114,13 @@ Enables changes without restarting and richer administration. Not chosen because
 - [Telegram Chat types](https://core.telegram.org/bots/api#chat).
 
 The maintainer confirmed this authorization and enrollment model on 2026-11-01. Revisit startup-only configuration if frequent access changes become necessary, and revisit chat restrictions explicitly before supporting groups or channels. Implementation and live validation remain pending.
+
+### 2026-11-01: Confirmed single-case command and removal scope
+
+The maintainer's implementation plan defines [the product contract](../product-contract.md): one tracked case per user, replacement refused, separate-message `/enroll`, ephemeral 10-minute inactivity drafts and explicit 10-minute `/remove` confirmation. `/start`, `/help`, `/cancel` and `/status` complete the command surface. Confirmed removal deletes that owner's credentials, history and pending work with cancellation/draining and late-result fencing; it retains user cooldowns and recipient/global gates. This is explicit data deletion, distinct from authorization withdrawal, which continues to suppress and retain data as specified above. See `internal/application/contracts.go`; later implementation must test ownership, expiry, cancellation and removal races offline.
+
+### 2026-11-01: Independent implementation evidence
+
+`internal/config`, `internal/auth`, Telegram authentication, owner-scoped storage and shared tracking/scheduler/worker policy implement the current one-case-per-owner contract. Tests cover malformed defaults/IDs, identity and ownership isolation, authorization before access, and suppression without attempt consumption or deletion. Restart loads the new immutable startup policy; restored eligibility permits retained work subject to persisted gates. The composite shared-association verification item stays unchecked: this implementation has no multiple-owner shared-case association model, so it cannot demonstrate that future behavior. See the single-case product-contract amendment and audit matrix.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

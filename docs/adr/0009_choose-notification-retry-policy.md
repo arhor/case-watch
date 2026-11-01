@@ -97,22 +97,22 @@ This policy governs durable case-change notifications. It does not retry governm
 
 These tasks remain pending:
 
-- [ ] Extend `internal/storage/` with versioned delivery-state migrations, ordered recipient queues, atomic attempt reservation, pause/resume operations, and persisted retry/gate deadlines.
-- [ ] Implement delivery coordination under `internal/notifications/` with an injected clock and sender interface using ordinary Go types. Reference this ADR at its entry point.
-- [ ] Map Telegram send results into the policy's failure categories within `internal/telegram/`; include private block/unblock update handling and sanitized operational diagnostics.
-- [ ] Enforce current authorization and persisted recipient/global gates before each actual send. Add explicit maintenance recovery for exhausted/permanent-failure queues without silently marking messages delivered.
-- [ ] Add offline fault-injection tests with temporary databases, fake time, and synthetic responses; document diagnosis and recovery without live Telegram or portal tests.
+- [x] Extend `internal/storage/` with versioned delivery-state migrations, ordered recipient queues, atomic attempt reservation, pause/resume operations, and persisted retry/gate deadlines.
+- [x] Implement delivery coordination under `internal/notifications/` with an injected clock and sender interface using ordinary Go types. Reference this ADR at its entry point.
+- [x] Map Telegram send results into the policy's failure categories within `internal/telegram/`; include private block/unblock update handling and sanitized operational diagnostics.
+- [x] Enforce current authorization and persisted recipient/global gates before each actual send. Add explicit maintenance recovery for exhausted/permanent-failure queues without silently marking messages delivered.
+- [x] Add offline fault-injection tests with temporary databases, fake time, and synthetic responses; document diagnosis and recovery without live Telegram or portal tests.
 
 ### Verification
 
-- [ ] One initial attempt plus five retries uses delays 30, 60, 120, 240, and 480 seconds; failed final attempts retain work and pause the recipient.
-- [ ] `retry_after` never shortens backoff; persisted global rate-limit gates delay sends to all recipients until eligible.
-- [ ] Transient errors, uncertain outcomes, blocking, bad tokens, permanent errors, and authorization suppression produce distinct states and no secret-bearing diagnostics.
-- [ ] Each recipient receives every transition in enqueue order; a failed head prevents overtaking while unrelated recipient queues can progress.
-- [ ] Unblock events automatically resume retained work with a fresh cycle, preserving lifetime counts and honoring authorization and global gates.
-- [ ] Restart preserves attempts, order, pauses, and deadlines. Crash boundaries before send and after acceptance/before persistence retain the correct uncertainty and possible-duplicate behavior.
-- [ ] Exhaustion does not reset on new observations or restart; explicit recovery is required outside block/unblock recovery.
-- [ ] Tests use fake time and synthetic data without live Telegram or government-portal requests.
+- [x] One initial attempt plus five retries uses delays 30, 60, 120, 240, and 480 seconds; failed final attempts retain work and pause the recipient.
+- [x] `retry_after` never shortens backoff; persisted global rate-limit gates delay sends to all recipients until eligible.
+- [x] Transient errors, uncertain outcomes, blocking, bad tokens, permanent errors, and authorization suppression produce distinct states and no secret-bearing diagnostics.
+- [x] Each recipient receives every transition in enqueue order; a failed head prevents overtaking while unrelated recipient queues can progress.
+- [x] Unblock events automatically resume retained work with a fresh cycle, preserving lifetime counts and honoring authorization and global gates.
+- [x] Restart preserves attempts, order, pauses, and deadlines. Crash boundaries before send and after acceptance/before persistence retain the correct uncertainty and possible-duplicate behavior.
+- [x] Exhaustion does not reset on new observations or restart; explicit recovery is required outside block/unblock recovery.
+- [x] Tests use fake time and synthetic data without live Telegram or government-portal requests.
 
 ## Pros and Cons of the Options
 
@@ -140,3 +140,13 @@ Sources reviewed on 2026-11-01:
 - [Telegram update types, block/unblock events, and update retention](https://core.telegram.org/bots/api#getting-updates).
 
 The maintainer confirmed the retry schedule, automatic unblock recovery, ordered delivery, and retained queue pause after exhaustion. Revisit if operator intervention during extended outages becomes undesirable. Implementation and live delivery validation remain pending.
+
+### 2026-11-01: Explicit owner-requested removal exception
+
+The confirmed [product contract](../product-contract.md) permits deletion of an owner's case credentials, baseline/history and pending notifications only after an explicit, unexpired `/remove` confirmation. Cancel/drain that enrollment's checks and sends and fence late results so deletion cannot resurrect data or affect re-enrollment. Preserve user cooldowns and recipient/global delivery gates. This scoped exception is deliberate user-requested deletion, not silent notification loss: authorization suppression, unsuccessful sends, retry exhaustion and restart must still retain undelivered transitions under the policy above. Later storage/coordinator tests must verify atomic removal, late-result rejection and gate retention with synthetic data.
+
+### 2026-11-01: Independent implementation evidence
+
+Storage/worker/Telegram/service implement durable oldest-first reservation, six-attempt backoff, persistent recipient/global gates, uncertain recovery, explicit maintenance and confirmed owner removal. The independent audit found and corrected three interleavings/evidence gaps: direct sends now share serialized gate/send/outcome admission with durable sends; known direct rate/token outcomes persist through bounded cancellation-independent cleanup; explicit unblock evidence resumes even when the preceding block update was missed, while unrelated interaction cannot clear permanent/exhausted pauses. Fresh independent race tests of notifications/Telegram/storage/service passed after reviewing the fixes. See `docs/implementation-audit.md` for requirement mapping and regression evidence. These checks are offline synthetic policy evidence, not live Telegram delivery or Docker validation.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

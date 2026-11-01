@@ -54,10 +54,10 @@ This decision selects the service language and the first integration approach. I
 
 The following tasks remain pending; recording this ADR does not implement the application.
 
-- [ ] Initialize `go.mod` and `go.sum` (if dependencies are required), selecting and documenting a supported Go version at implementation time. Add no dependencies for this documentation change.
-- [ ] Build an isolated Go integration experiment under `cmd/portal-probe/`, with portal protocol handling under `internal/portal/`. No existing application patterns or runtime require migration.
-- [ ] Demonstrate fresh-session authentication and status extraction, discovering current UI identifiers rather than hard-coding identifiers or cookies from a recording.
-- [ ] Add behavior-focused protocol tests alongside the portal implementation using sanitized fixtures in `internal/portal/testdata/`. Keep actual credentials, session secrets, and personal case details out of fixtures and logs; use runtime configuration for probe credentials.
+- [x] Initialize `go.mod` and `go.sum` (if dependencies are required), selecting and documenting a supported Go version at implementation time. Add no dependencies for this documentation change.
+- [x] Build an isolated Go integration experiment under `cmd/portal-probe/`, with portal protocol handling under `internal/portal/`. No existing application patterns or runtime require migration.
+- [x] Demonstrate fresh-session authentication and status extraction, discovering current UI identifiers rather than hard-coding identifiers or cookies from a recording.
+- [x] Add behavior-focused protocol tests alongside the portal implementation using sanitized fixtures in `internal/portal/testdata/`. Keep actual credentials, session secrets, and personal case details out of fixtures and logs; use runtime configuration for probe credentials.
 - [ ] Run repeated checks and exercise expired sessions, invalid credentials, and malformed or unexpected responses. Record results and resource measurements in `docs/portal-probe.md`.
 - [ ] Measure idle and peak memory and check duration on the target Pi, including any child processes. Record available host memory and other workloads, then agree a resource budget before claiming deployment suitability.
 - [ ] If RPC is unreliable or impractical to maintain, evaluate browser fallback and measure its full resource use before selecting its mechanism or packaging.
@@ -66,11 +66,11 @@ The following tasks remain pending; recording this ADR does not implement the ap
 ### Verification
 
 - [ ] The Go experiment builds for Linux ARM64 and executes on the target Pi.
-- [ ] A fresh session authenticates and extracts status matching the portal display without captured session cookies or hard-coded UI node identifiers.
+- [x] A fresh session authenticates and extracts status matching the portal display without captured session cookies or hard-coded UI node identifiers.
 - [ ] Repeated checks and session renewal succeed; invalid credentials and protocol failures are reported as errors rather than status changes.
-- [ ] Protocol tests pass with sanitized fixtures and no live credentials embedded in code or test data.
+- [x] Protocol tests pass with sanitized fixtures and no live credentials embedded in code or test data.
 - [ ] Target-device resource measurements and an explicitly agreed resource budget are recorded in `docs/portal-probe.md`.
-- [ ] The integration findings are reviewed for any concrete reason to revisit Go before proceeding with the full service.
+- [x] The integration findings are reviewed for any concrete reason to revisit Go before proceeding with the full service.
 
 ## Pros and Cons of the Options
 
@@ -99,3 +99,9 @@ The Go probe authenticated against the live Gdańsk portal from a fresh session 
 Offline tests exercise the sanitized recorded exchange, fresh session cookies, synchronization counters, changed UI node identifiers, and failure handling. Linux ARM64 cross-compilation succeeded. These results support retaining Go and direct RPC; they do not establish production reliability or resource suitability on the target device.
 
 Repeated live checks, session renewal, execution on the Pi, resource measurements, and an agreed resource budget remain outstanding. The earlier unverified statement records the state at acceptance; this dated entry records the subsequent findings without rewriting that history.
+
+### 2026-11-01: Independent implementation evidence
+
+`go.mod`/`go.sum`, `cmd/portal-probe` and `internal/portal` implement the Go/direct-RPC experiment; sanitized protocol tests and the previously authorized fresh-session experiment are documented in `docs/portal-probe.md`. The recorded feasibility findings support retaining Go. The service is implemented in Go, but repeated live renewal/display checks and execution/resource measurement on the Pi remain pending. Linux ARM64 cross-compilation alone does not satisfy the composite Pi criterion. Browser fallback has not been triggered, so its conditional item remains unchecked.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

@@ -68,9 +68,9 @@ This record selects the deployment shape, restart policy, persistence placement,
 These tasks remain pending:
 
 - [ ] Add a multi-stage `Dockerfile` producing a Linux ARM64 image from the modernc-based service, running as a non-root user with CA certificates and Warsaw time-zone data available.
-- [ ] Add `compose.yaml` defining one service, `restart: unless-stopped`, `stop_grace_period: 90s`, the named data volume, and the separately provisioned read-only key-file mount. Exclude real secrets, raw captures, and local data from the build context and committed examples.
-- [ ] Add signal-driven shutdown to the eventual service entry point and ensure SQLite is closed. Do not add backup dependencies, timers, jobs, or restore tooling for this phase.
-- [ ] Document first provisioning, host Docker boot setup, start/stop, log inspection, versioned updates, volume/key reuse, explicit reset/re-enrollment, and accepted data-loss consequences in `docs/deployment.md`.
+- [x] Add `compose.yaml` defining one service, `restart: unless-stopped`, `stop_grace_period: 90s`, the named data volume, and the separately provisioned read-only key-file mount. Exclude real secrets, raw captures, and local data from the build context and committed examples.
+- [x] Add signal-driven shutdown to the eventual service entry point and ensure SQLite is closed. Do not add backup dependencies, timers, jobs, or restore tooling for this phase.
+- [x] Document first provisioning, host Docker boot setup, start/stop, log inspection, versioned updates, volume/key reuse, explicit reset/re-enrollment, and accepted data-loss consequences in `docs/deployment.md`.
 - [ ] Validate container lifecycle behavior using synthetic cases and keys and a fake portal/Telegram endpoint, before deploying real credentials or allowing live checks.
 
 ### Verification
@@ -104,3 +104,9 @@ Avoids Docker infrastructure while offering boot startup and restart supervision
 - [systemd service supervision](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html).
 
 Confirmed on 2026-11-01. Revisit backup policy if reconstruction becomes burdensome, historical data gains importance, or the service serves more people. Implementation and target-device validation remain pending.
+
+### 2026-11-01: Independent implementation evidence
+
+Dockerfile/Compose artifacts and the deployment runbook exist; Compose configuration parses with synthetic values. Signal-driven Go shutdown and SQLite draining/reopen are exercised offline. The Docker daemon is unreachable, so producing/executing the image, runtime UID/file/CA/timezone checks, volume copy-up, recreation, signal/forced-kill lifecycle, restart policy and host boot remain unverified. No composite image/container verification checkbox is passed by source inspection, parsing or ARM64 cross-compilation. Build-context source rules exclude captures, fixtures, secrets and local state; no backup tooling or deployment was introduced. Pi resources remain unmeasured.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

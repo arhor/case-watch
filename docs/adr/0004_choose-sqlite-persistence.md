@@ -74,23 +74,23 @@ This record selects storage and defines the comparison/recovery contract. It doe
 These are follow-up tasks, not completed application functionality.
 
 - [ ] Add `modernc.org/sqlite` v1.61.1 to `go.mod` and commit the resulting `go.sum`; no dependency is added by this documentation change.
-- [ ] Implement the storage boundary and embedded versioned migrations under `internal/storage/`, including atomic observation recording and pending-notification acknowledgement.
+- [x] Implement the storage boundary and embedded versioned migrations under `internal/storage/`, including atomic observation recording and pending-notification acknowledgement.
 - [ ] Add runtime database-path configuration and ignore local database artifacts; document initialization, backup, restore, and upgrade procedures.
-- [ ] Integrate callers so successful observations use the same comparison transaction and notification sends happen only after commit.
-- [ ] Implement offline tests using temporary databases and synthetic case/recipient data, including reopen and crash-boundary scenarios.
+- [x] Integrate callers so successful observations use the same comparison transaction and notification sends happen only after commit.
+- [x] Implement offline tests using temporary databases and synthetic case/recipient data, including reopen and crash-boundary scenarios.
 - [ ] Verify Linux ARM64 builds with CGO disabled. Measure executable size, process memory, and workload cost on the target Pi before claiming resource suitability.
 
 ### Verification
 
-- [ ] First observation creates a baseline without a change notification; unchanged checks create neither transitions nor notifications.
-- [ ] A transition commits latest stage, history, and pending recipient records together; rollback leaves none of those partially updated.
-- [ ] A → B → A preserves both transitions and pending notifications.
-- [ ] Concurrent identical observations yield one recorded transition; failed portal checks preserve state.
-- [ ] Reopening before/after transaction commit demonstrates rollback or complete recovery, respectively.
-- [ ] A crash after commit leaves pending work; a crash after send but before acknowledgement leaves retryable work with a documented possible duplicate.
-- [ ] Storage failure prevents an unrecorded notification, and confirmed delivery survives restart.
+- [x] First observation creates a baseline without a change notification; unchanged checks create neither transitions nor notifications.
+- [x] A transition commits latest stage, history, and pending recipient records together; rollback leaves none of those partially updated.
+- [x] A → B → A preserves both transitions and pending notifications.
+- [x] Concurrent identical observations yield one recorded transition; failed portal checks preserve state.
+- [x] Reopening before/after transaction commit demonstrates rollback or complete recovery, respectively.
+- [x] A crash after commit leaves pending work; a crash after send but before acknowledgement leaves retryable work with a documented possible duplicate.
+- [x] Storage failure prevents an unrecorded notification, and confirmed delivery survives restart.
 - [ ] Migration and backup/restore tests preserve history and pending records and reject unsupported schema versions.
-- [ ] Offline tests require no Telegram or government-portal access; Linux ARM64 compilation succeeds with `CGO_ENABLED=0`.
+- [x] Offline tests require no Telegram or government-portal access; Linux ARM64 compilation succeeds with `CGO_ENABLED=0`.
 
 ## Pros and Cons of the Options
 
@@ -131,3 +131,13 @@ Revisit the driver if maintenance, platform compatibility, or measured resource 
 ### 2026-11-01: Backup requirements deferred
 
 [ADR 0008](0008_choose-container-deployment-without-backups.md) explicitly defers backup creation, pre-upgrade backups, and backup/restore verification for the initial personal deployment. The maintainer accepts local data loss and re-enrollment. The backup procedure above remains historical guidance for future adoption, not an initial implementation requirement. Transactions, versioned migrations, schema checks, and the other storage requirements remain active.
+
+### 2026-11-01: Explicit owner-requested removal exception
+
+The confirmed [product contract](../product-contract.md) permits deletion of an owner's case credentials, baseline/history and pending notifications only after an explicit, unexpired `/remove` confirmation. Cancel/drain that enrollment's checks and sends and fence late results so deletion cannot resurrect data or affect re-enrollment. Preserve user cooldowns and recipient/global delivery gates. This scoped exception is deliberate user-requested deletion, not silent notification loss: authorization suppression, unsuccessful sends, retry exhaustion and restart must still retain undelivered transitions under the policy above. Later storage/coordinator tests must verify atomic removal, late-result rejection and gate retention with synthetic data.
+
+### 2026-11-01: Independent implementation evidence
+
+`internal/storage` implements transactional v1/v2 migrations, serialized durable SQLite settings, owner/identity predicates, atomic baseline/observations, history and ordered pending state. Fault/reopen/concurrency tests cover atomic rollback, occurrences, delivery uncertainty, confirmed outcomes and future-schema refusal. Runtime configuration and upgrade/loss guidance exist in `docs/storage.md` and `docs/operations.md`; composite historical backup items remain unchecked because backup/restore is deferred by ADR 0008, rather than claimed tested. Linux ARM64 builds disable CGO; target-Pi measurements remain pending. Dependency/checksum files exist without an authorized commit.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

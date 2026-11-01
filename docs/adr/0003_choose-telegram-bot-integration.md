@@ -56,19 +56,19 @@ This decision selects Telegram API communication and update transport. It does n
 These tasks describe later implementation; this documentation change adds no dependency or runtime configuration.
 
 - [ ] Add `github.com/go-telegram/bot` at v1.27.0 to `go.mod` and commit the resulting `go.sum` when Telegram code is introduced.
-- [ ] Implement the Telegram adapter under `internal/telegram/`, keeping library types inside that boundary and referencing this ADR from the adapter entry point.
-- [ ] Configure the token through runtime configuration, graceful context cancellation, long polling, and sanitized diagnostics. Decide the runnable bot entry point and command behavior in the implementation plan for that feature.
-- [ ] Add offline tests with a configurable HTTP client or local Bot API test server. Keep live tokens and real message bodies out of fixtures.
-- [ ] Resolve delivery guarantees and persistence before relying on command processing across crashes; decide send/retry behavior before implementing reliable notifications.
+- [x] Implement the Telegram adapter under `internal/telegram/`, keeping library types inside that boundary and referencing this ADR from the adapter entry point.
+- [x] Configure the token through runtime configuration, graceful context cancellation, long polling, and sanitized diagnostics. Decide the runnable bot entry point and command behavior in the implementation plan for that feature.
+- [x] Add offline tests with a configurable HTTP client or local Bot API test server. Keep live tokens and real message bodies out of fixtures.
+- [x] Resolve delivery guarantees and persistence before relying on command processing across crashes; decide send/retry behavior before implementing reliable notifications.
 - [ ] Build for Linux ARM64 and measure the running bot on the target Pi before claiming resource suitability.
 
 ### Verification
 
-- [ ] The implementation pins v1.27.0 and uses long polling without a public webhook endpoint.
-- [ ] Case-tracking and portal packages do not import Telegram library types.
-- [ ] Offline tests cover receiving an update, sending a reply, cancellation, polling failures, and rate-limit handling without contacting Telegram or the government portal.
-- [ ] Diagnostic tests confirm that tokens, credentials, and message bodies are excluded from logs on error paths.
-- [ ] Delivery assumptions explicitly account for offsets advancing before command completion.
+- [x] The implementation pins v1.27.0 and uses long polling without a public webhook endpoint.
+- [x] Case-tracking and portal packages do not import Telegram library types.
+- [x] Offline tests cover receiving an update, sending a reply, cancellation, polling failures, and rate-limit handling without contacting Telegram or the government portal.
+- [x] Diagnostic tests confirm that tokens, credentials, and message bodies are excluded from logs on error paths.
+- [x] Delivery assumptions explicitly account for offsets advancing before command completion.
 - [ ] Linux ARM64 compilation succeeds; target-device measurements are recorded before deployment suitability is asserted.
 
 ## Pros and Cons of the Options
@@ -104,3 +104,9 @@ Primary sources reviewed on 2026-10-31:
 - [gotgbot documentation](https://github.com/PaulSonOfLars/gotgbot/tree/v2) and [request implementation](https://github.com/PaulSonOfLars/gotgbot/blob/v2/request.go).
 
 Revisit if library maintenance stalls, a required API capability is unavailable, or its polling semantics prevent the delivery guarantees selected for the application. This ADR records a source-based decision; no live Telegram validation or resource measurements were performed.
+
+### 2026-11-01: Independent implementation evidence
+
+`internal/telegram` uses pinned v1.27.0, ordered long polling and sanitized diagnostics, with library types confined to the adapter. Real-library in-memory HTTP tests cover intake, replies, cancellation, polling failures and send classification. ADR 0009 and the operations runbook explicitly document durable outgoing recovery versus non-durable incoming commands. Linux ARM64 compilation succeeds; the composite target-device measurement items remain unchecked. The dependency/checksum files exist, but no commit was authorized or made, so the literal add-and-commit plan item remains unchecked.
+
+Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.

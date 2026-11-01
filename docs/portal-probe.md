@@ -25,3 +25,10 @@ Offline checks cover the sanitized HAR sequence, fresh cookies and synchronizati
 Offline tests and Linux ARM64 cross-compilation have passed. On 2026-10-31, one user-authorized live invocation authenticated from a fresh session and extracted a nonempty case stage in five HTTP requests. Credentials were supplied in memory from the local HAR with explicit authorization; they were not saved in application files. No retries or additional live runs were performed.
 
 Repeated checks, session renewal, and Pi measurements remain pending. Do not run repeated live attempts during implementation; the agreed allowance is one invocation, up to six requests total.
+
+
+## Reusable adapter (2026-11-01)
+
+`internal/portal.NewClient(Options{})` implements `application.Portal` with the same bounded exchange as `Probe`. Each check creates an independent cookie jar and owns its 60-second deadline even if the caller supplies none. Requests have 10-second deadlines, a six-request ceiling, two-second start spacing, no redirect following and no retries. Production connections are not reused, and request bodies cannot be replayed by net/http. Stage text is retained verbatim and CheckedAt records successful completion.
+
+Options inject a base URL, a single-exchange RoundTripper, clock and cancellation-aware wait for offline fixtures; production callers should retain nil transport/time dependencies. Injection does not expose request/deadline budget overrides. Errors contain only stable classifications; remote errors and response bodies are never retained in them. A login form remaining after the final exchange is authentication failure; an unsupported resulting layout is protocol failure. This remains an intentionally limited English-label Vaadin reducer, not a supported portal API. Offline race tests and vet passed; this adds no further live or target-device validation.
