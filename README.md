@@ -2,7 +2,7 @@
 
 A private Telegram bot tracking one Gdańsk administrative case per user. Credentials are encrypted with a separate keyring. Manual checks share persisted cooldowns with Warsaw weekday polling; observed changes enter a durable, ordered notification queue.
 
-Read [the product contract](docs/product-contract.md), [configuration](docs/configuration.md), and [operator commands](docs/operations.md). Container setup and the outstanding Docker acceptance checks are in [deployment](docs/deployment.md). [ADRs](docs/adr/README.md) explain the accepted decisions; [implementation progress](docs/implementation-progress.md) records verification evidence.
+Start with the [documentation index](docs/README.md) for the product contract, architecture decisions, implementation notes, operator guides and verification evidence.
 
 Use Go 1.27.3. Before repository tooling, run `nvm use` from this directory; if needed, first run `source "$NVM_DIR/nvm.sh"`.
 
