@@ -1,6 +1,6 @@
 # Service and operator commands
 
-Use Go 1.27.3. From the repository root, run `nvm use` before repository tooling, then build `go build -o /private/tmp/case-watch ./cmd/case-watch`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Provision a key explicitly as described in [credentials](credentials.md), then run `case-watch run`.
+Use Go 1.27.3. From the repository root, build with `go build -o case-watch ./cmd/case-watch`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Provision a key explicitly as described in [credentials](credentials.md), then run `case-watch run`.
 
 Startup validates environment syntax, canonical path separation, restricted file permissions, the database schema and every encrypted credential before constructing network adapters. Keys must be outside the database directory subtree and the repository. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. All service and maintenance processes must use the same database path. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 

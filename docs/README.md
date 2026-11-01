@@ -1,6 +1,6 @@
 # Documentation index
 
-Use the [root README](../README.md) for repository setup, toolchain requirements and verification commands.
+Use the [root README](../README.md) for the project overview, build and deployment entry points. Agent tooling and verification instructions are in [AGENTS.md](../AGENTS.md).
 
 ## Product and architecture
 
@@ -15,7 +15,7 @@ Use the [root README](../README.md) for repository setup, toolchain requirements
 | --- | --- |
 | [Storage](storage.md) | Schema, transactions, ownership, attempt reservations and delivery state. |
 | [Telegram](telegram.md) | Adapter lifecycle, command intake and delivery integration. |
-| [Portal probe and client](portal-probe.md) | RPC integration, request bounds and validation history. |
+| [Portal client](portal-client.md) | RPC integration, request limits and error handling. |
 
 ## Configuration and operations
 

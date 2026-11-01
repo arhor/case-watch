@@ -58,7 +58,7 @@ The following tasks remain pending; recording this ADR does not implement the ap
 - [x] Build an isolated Go integration experiment under `cmd/portal-probe/`, with portal protocol handling under `internal/portal/`. No existing application patterns or runtime require migration.
 - [x] Demonstrate fresh-session authentication and status extraction, discovering current UI identifiers rather than hard-coding identifiers or cookies from a recording.
 - [x] Add behavior-focused protocol tests alongside the portal implementation using sanitized fixtures in `internal/portal/testdata/`. Keep actual credentials, session secrets, and personal case details out of fixtures and logs; use runtime configuration for probe credentials.
-- [ ] Run repeated checks and exercise expired sessions, invalid credentials, and malformed or unexpected responses. Record results and resource measurements in `docs/portal-probe.md`.
+- [ ] Run repeated checks and exercise expired sessions, invalid credentials, and malformed or unexpected responses. Record results and resource measurements in `docs/implementation-progress.md`.
 - [ ] Measure idle and peak memory and check duration on the target Pi, including any child processes. Record available host memory and other workloads, then agree a resource budget before claiming deployment suitability.
 - [ ] If RPC is unreliable or impractical to maintain, evaluate browser fallback and measure its full resource use before selecting its mechanism or packaging.
 - [ ] After validation, implement the Telegram service in Go and reference this ADR from its entry point. Resolve persistence, credential protection, and scheduling separately.
@@ -69,7 +69,7 @@ The following tasks remain pending; recording this ADR does not implement the ap
 - [x] A fresh session authenticates and extracts status matching the portal display without captured session cookies or hard-coded UI node identifiers.
 - [ ] Repeated checks and session renewal succeed; invalid credentials and protocol failures are reported as errors rather than status changes.
 - [x] Protocol tests pass with sanitized fixtures and no live credentials embedded in code or test data.
-- [ ] Target-device resource measurements and an explicitly agreed resource budget are recorded in `docs/portal-probe.md`.
+- [ ] Target-device resource measurements and an explicitly agreed resource budget are recorded in `docs/implementation-progress.md`.
 - [x] The integration findings are reviewed for any concrete reason to revisit Go before proceeding with the full service.
 
 ## Pros and Cons of the Options
@@ -94,7 +94,7 @@ The maintainer confirmed the Go decision on 2026-10-31. Portal integration, reso
 
 ### 2026-10-31: Direct RPC experiment succeeded
 
-The Go probe authenticated against the live Gdańsk portal from a fresh session and extracted the case stage in five HTTP requests, within the agreed six-request limit, with no retries. This validates the initial feasibility of the direct Vaadin Flow RPC approach selected above. Continue with direct RPC for this portal; the existing browser fallback criterion remains unchanged. See [the probe report](../portal-probe.md) for implementation and validation details.
+The Go probe authenticated against the live Gdańsk portal from a fresh session and extracted the case stage in five HTTP requests, within the agreed six-request limit, with no retries. This validates the initial feasibility of the direct Vaadin Flow RPC approach selected above. Continue with direct RPC for this portal; the existing browser fallback criterion remains unchanged. See [implementation progress](../implementation-progress.md) for recorded validation details and [the portal client](../portal-client.md) for current integration behavior.
 
 Offline tests exercise the sanitized recorded exchange, fresh session cookies, synchronization counters, changed UI node identifiers, and failure handling. Linux ARM64 cross-compilation succeeded. These results support retaining Go and direct RPC; they do not establish production reliability or resource suitability on the target device.
 
@@ -102,6 +102,10 @@ Repeated live checks, session renewal, execution on the Pi, resource measurement
 
 ### 2026-11-01: Independent implementation evidence
 
-`go.mod`/`go.sum`, `cmd/portal-probe` and `internal/portal` implement the Go/direct-RPC experiment; sanitized protocol tests and the previously authorized fresh-session experiment are documented in `docs/portal-probe.md`. The recorded feasibility findings support retaining Go. The service is implemented in Go, but repeated live renewal/display checks and execution/resource measurement on the Pi remain pending. Linux ARM64 cross-compilation alone does not satisfy the composite Pi criterion. Browser fallback has not been triggered, so its conditional item remains unchecked.
+`go.mod`/`go.sum`, `cmd/portal-probe` and `internal/portal` implement the Go/direct-RPC experiment; sanitized protocol tests and the previously authorized fresh-session experiment are documented in `docs/implementation-progress.md`. The recorded feasibility findings support retaining Go. The service is implemented in Go, but repeated live renewal/display checks and execution/resource measurement on the Pi remain pending. Linux ARM64 cross-compilation alone does not satisfy the composite Pi criterion. Browser fallback has not been triggered, so its conditional item remains unchecked.
 
 Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.
+
+### 2026-11-01: Removal of the one-off probe command
+
+The experimental `cmd/portal-probe` executable was removed after the production portal client became available. This does not change the original decision or erase its historical validation. Current integration behavior is documented in [portal client](../portal-client.md); the original verification record remains in [implementation progress](../implementation-progress.md).

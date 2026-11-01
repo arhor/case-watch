@@ -126,7 +126,7 @@ Easy to explain as always fetching live data. Rejected because repeated commands
 
 ## More Information
 
-The maintainer confirmed the weekday/public-holiday interpretation and reuse of recent scheduled results on 2026-11-01. This policy complements [the probe's request bounds](../portal-probe.md); the probe's five-request success is not evidence of long-running scheduler reliability. Implementation, repeated live checks, and target-device validation remain pending.
+The maintainer confirmed the weekday/public-holiday interpretation and reuse of recent scheduled results on 2026-11-01. This policy complements [the portal client's request bounds](../portal-client.md); the probe's five-request success is not evidence of long-running scheduler reliability. Implementation, repeated live checks, and target-device validation remain pending.
 
 ### 2026-11-01: Independent implementation evidence
 
