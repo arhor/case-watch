@@ -127,3 +127,7 @@ Primary sources reviewed on 2026-10-31:
 - [Zombiezen documentation](https://github.com/zombiezen/go-sqlite).
 
 Revisit the driver if maintenance, platform compatibility, or measured resource use becomes a problem. Revisit local SQLite if deployment requires independent writers on multiple hosts. No application benchmark or live-service test was performed for this documentation decision.
+
+### 2026-11-01: Backup requirements deferred
+
+[ADR 0008](0008_choose-container-deployment-without-backups.md) explicitly defers backup creation, pre-upgrade backups, and backup/restore verification for the initial personal deployment. The maintainer accepts local data loss and re-enrollment. The backup procedure above remains historical guidance for future adoption, not an initial implementation requirement. Transactions, versioned migrations, schema checks, and the other storage requirements remain active.

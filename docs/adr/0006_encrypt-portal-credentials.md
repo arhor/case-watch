@@ -123,3 +123,7 @@ Sources reviewed on 2026-11-01:
 - [OWASP secrets-management guidance](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html).
 
 The maintainer confirmed the proposed model after selecting unattended recovery and database/backup-leak protection. Revisit key provisioning if the threat model expands to whole-device theft, shared hosts, or remote administration. Implementation and validation remain pending.
+
+### 2026-11-01: Backup requirements deferred
+
+[ADR 0008](0008_choose-container-deployment-without-backups.md) explicitly defers key/database backups and backup/restore verification for the initial deployment. The maintainer accepts credential loss and re-enrollment if keys or storage are lost. Encryption, a separate persistent key file, permissions, startup validation, and safe rotation ordering remain required. Retain keys needed by current records and through rotation verification; backup-retention duties apply only if backups are introduced later. The original backup instructions above record the earlier policy and do not require initial backup tooling or copies.
