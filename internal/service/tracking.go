@@ -44,7 +44,7 @@ func (m monitoredTracking) Remove(c context.Context, o int64) error {
 	m.checkError(c, e)
 	return e
 }
-func (m monitoredTracking) RunOwnerWork(c context.Context, o int64, id application.EnrollmentID, fn func(context.Context) error) error {
+func (m monitoredTracking) RunOwnerWork(c context.Context, o int64, id string, fn func(context.Context) error) error {
 	e := m.Coordinator.RunOwnerWork(c, o, id, fn)
 	m.checkError(c, e)
 	return e
@@ -56,7 +56,7 @@ type monitoredReader struct {
 }
 
 func (m monitoredReader) Enrollment(c context.Context, o int64) (data.Enrollment, error) {
-	v, e := m.s.Enrollments.Enrollment(c, o)
+	v, e := m.s.Enrollments.FindByOwner(c, o)
 	if e != nil && c.Err() == nil && !errors.Is(e, data.ErrNotFound) {
 		m.fail()
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 // History returns transitions belonging to the supplied owner and identity.
-func (s *HistoryRepository) History(ctx context.Context, owner int64, id application.EnrollmentID) ([]Transition, error) {
+func (s *HistoryRepository) History(ctx context.Context, owner int64, id string) ([]Transition, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL ORDER BY h.sequence`, owner, string(id))
 	if err != nil {
 		return nil, ErrStorage
@@ -21,7 +21,7 @@ func (s *HistoryRepository) History(ctx context.Context, owner int64, id applica
 		if rows.Scan(&t.Sequence, &identity, &t.PreviousStage, &t.Stage, &checked) != nil {
 			return nil, ErrStorage
 		}
-		t.EnrollmentID = application.EnrollmentID(identity)
+		t.EnrollmentID = identity
 		t.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 		if err != nil {
 			return nil, ErrStorage
@@ -34,11 +34,11 @@ func (s *HistoryRepository) History(ctx context.Context, owner int64, id applica
 	return result, nil
 }
 
-func (s *HistoryRepository) Append(ctx context.Context, id application.EnrollmentID, previous string, o application.Observation) (int64, error) {
+func (s *HistoryRepository) Append(ctx context.Context, id string, previous string, o application.Observation) (int64, error) {
 	if !validID(id) || !validObservation(o) {
 		return 0, ErrInvalid
 	}
-	result, err := s.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", string(id), previous, o.Stage, stamp(o.CheckedAt))
+	result, err := s.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", id, previous, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return 0, ErrStorage
 	}
@@ -49,11 +49,11 @@ func (s *HistoryRepository) Append(ctx context.Context, id application.Enrollmen
 	return sequence, nil
 }
 
-func (s *HistoryRepository) DeleteEnrollment(ctx context.Context, id application.EnrollmentID) error {
+func (s *HistoryRepository) DeleteEnrollment(ctx context.Context, id string) error {
 	if !validID(id) {
 		return ErrInvalid
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", string(id)); err != nil {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", id); err != nil {
 		return ErrStorage
 	}
 	return nil

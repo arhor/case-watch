@@ -28,14 +28,14 @@ var (
 // Store contains the atomic tracking workflows implemented by Persistence.
 type Store interface {
 	Enroll(context.Context, int64, application.SealedCredentials, application.Observation) error
-	Observe(context.Context, int64, application.EnrollmentID, application.Observation) error
+	Observe(context.Context, int64, string, application.Observation) error
 	Enrollment(context.Context, int64) (data.Enrollment, error)
-	ReserveCheck(context.Context, int64, application.EnrollmentID, bool, time.Time) (data.CheckReservation, error)
-	Remove(context.Context, int64, application.EnrollmentID) error
-	CheckEligibility(context.Context, int64, application.EnrollmentID, bool) (time.Time, error)
+	ReserveCheck(context.Context, int64, string, bool, time.Time) (data.CheckReservation, error)
+	Remove(context.Context, int64, string) error
+	CheckEligibility(context.Context, int64, string, bool) (time.Time, error)
 }
 type Vault interface {
-	Seal(application.EnrollmentID, application.Credentials) (application.SealedCredentials, error)
+	Seal(string, application.Credentials) (application.SealedCredentials, error)
 	Open(application.SealedCredentials) (application.Credentials, error)
 }
 
@@ -355,7 +355,7 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 // enrollment identity, return sanitized errors, and return only after all its work
 // has drained. It must
 // not call back into RunOwnerWork or Remove. Never put SQL/Telegram types here.
-func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id application.EnrollmentID, fn func(context.Context) error) error {
+func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, fn func(context.Context) error) error {
 	if !c.allowed(owner) {
 		return ErrDenied
 	}

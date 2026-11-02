@@ -44,13 +44,13 @@ type fixture struct {
 	c      *tracking.Coordinator
 	clock  *clock
 	policy application.Policy
-	ids    map[int64]application.EnrollmentID
+	ids    map[int64]string
 	path   string
 }
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), policy: auth.New(false, []int64{101, 202}), ids: map[int64]application.EnrollmentID{}}
+	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), policy: auth.New(false, []int64{101, 202}), ids: map[int64]string{}}
 	var e error
 	f.s, e = data.Open(ctx, f.path)
 	if e != nil {

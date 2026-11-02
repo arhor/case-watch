@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-
-	"github.com/arhor/case-watch/internal/application"
 )
 
 func scanDelivery(row interface{ Scan(...any) error }) (Delivery, error) {
@@ -20,7 +18,7 @@ func scanDelivery(row interface{ Scan(...any) error }) (Delivery, error) {
 	if err != nil {
 		return d, ErrStorage
 	}
-	d.EnrollmentID = application.EnrollmentID(id)
+	d.EnrollmentID = id
 	d.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
 		return Delivery{}, ErrStorage
@@ -106,7 +104,7 @@ func (s *PendingDeliveryRepository) Reserve(ctx context.Context, d Delivery, now
 	if d.Sequence <= 0 || !validID(d.EnrollmentID) || now.IsZero() {
 		return ErrInvalid
 	}
-	return affected(s.db.ExecContext(ctx, `UPDATE pending SET status='reserved',cycle_attempts=cycle_attempts+1,lifetime_attempts=lifetime_attempts+1,reserved_at=? WHERE sequence=? AND status='pending' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, now.UnixNano(), d.Sequence, d.LifetimeAttempts, string(d.EnrollmentID)))
+	return rowAffected(s.db.ExecContext(ctx, `UPDATE pending SET status='reserved',cycle_attempts=cycle_attempts+1,lifetime_attempts=lifetime_attempts+1,reserved_at=? WHERE sequence=? AND status='pending' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, now.UnixNano(), d.Sequence, d.LifetimeAttempts, string(d.EnrollmentID)))
 }
 func (s *PendingDeliveryRepository) Reserved(ctx context.Context) ([]Delivery, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT "+deliveryColumns+" FROM pending p JOIN history h ON h.sequence=p.history_sequence WHERE p.status='reserved'")
@@ -137,13 +135,13 @@ func (s *PendingDeliveryRepository) Finish(ctx context.Context, d Delivery, stat
 	if !next.IsZero() {
 		at = next.UnixNano()
 	}
-	return affected(s.db.ExecContext(ctx, `UPDATE pending SET status=?,failure=?,next_attempt=?,message_id=? WHERE sequence=? AND status='reserved' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, status, failure, at, messageID, d.Sequence, d.LifetimeAttempts, string(d.EnrollmentID)))
+	return rowAffected(s.db.ExecContext(ctx, `UPDATE pending SET status=?,failure=?,next_attempt=?,message_id=? WHERE sequence=? AND status='reserved' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, status, failure, at, messageID, d.Sequence, d.LifetimeAttempts, d.EnrollmentID))
 }
 func (s *PendingDeliveryRepository) Release(ctx context.Context, d Delivery) error {
 	if d.Sequence <= 0 || d.LifetimeAttempts <= 0 || !validID(d.EnrollmentID) {
 		return ErrInvalid
 	}
-	return affected(s.db.ExecContext(ctx, `UPDATE pending SET status='pending',cycle_attempts=cycle_attempts-1,lifetime_attempts=lifetime_attempts-1,reserved_at=0 WHERE sequence=? AND status='reserved' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, d.Sequence, d.LifetimeAttempts, string(d.EnrollmentID)))
+	return rowAffected(s.db.ExecContext(ctx, `UPDATE pending SET status='pending',cycle_attempts=cycle_attempts-1,lifetime_attempts=lifetime_attempts-1,reserved_at=0 WHERE sequence=? AND status='reserved' AND lifetime_attempts=? AND history_sequence IN (SELECT sequence FROM history WHERE enrollment_id=?)`, d.Sequence, d.LifetimeAttempts, d.EnrollmentID))
 }
 func (s *PendingDeliveryRepository) HasReservation(ctx context.Context, recipient int64) (bool, error) {
 	if recipient <= 0 {

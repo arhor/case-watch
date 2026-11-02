@@ -15,14 +15,14 @@ type Persistence struct{ DB *data.Store }
 var _ Store = Persistence{}
 
 func (p Persistence) Enrollment(ctx context.Context, owner int64) (data.Enrollment, error) {
-	return p.DB.Enrollments.Enrollment(ctx, owner)
+	return p.DB.Enrollments.FindByOwner(ctx, owner)
 }
 func (p Persistence) Enroll(ctx context.Context, owner int64, c application.SealedCredentials, o application.Observation) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error { return tx.Enrollments.Create(ctx, owner, c, o) })
 }
-func (p Persistence) Observe(ctx context.Context, owner int64, id application.EnrollmentID, o application.Observation) error {
+func (p Persistence) Observe(ctx context.Context, owner int64, id string, o application.Observation) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		e, err := tx.Enrollments.ByIdentity(ctx, owner, id)
+		e, err := tx.Enrollments.FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
 		}
@@ -39,7 +39,7 @@ func (p Persistence) Observe(ctx context.Context, owner int64, id application.En
 		return tx.Pending.Create(ctx, sequence, owner)
 	})
 }
-func (p Persistence) Remove(ctx context.Context, owner int64, id application.EnrollmentID) error {
+func (p Persistence) Remove(ctx context.Context, owner int64, id string) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
 		if err := tx.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
@@ -50,7 +50,7 @@ func (p Persistence) Remove(ctx context.Context, owner int64, id application.Enr
 		return tx.Guards.DeleteEnrollment(ctx, id)
 	})
 }
-func eligibility(ctx context.Context, tx *data.Store, owner int64, id application.EnrollmentID, manual bool) (time.Time, error) {
+func eligibility(ctx context.Context, tx *data.Store, owner int64, id string, manual bool) (time.Time, error) {
 	caseStart, userStart, err := tx.Guards.Starts(ctx, owner, id)
 	if err != nil {
 		return time.Time{}, err
@@ -63,10 +63,10 @@ func eligibility(ctx context.Context, tx *data.Store, owner int64, id applicatio
 	}
 	return caseStart.Add(time.Minute), nil
 }
-func (p Persistence) CheckEligibility(ctx context.Context, owner int64, id application.EnrollmentID, manual bool) (time.Time, error) {
+func (p Persistence) CheckEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
 	return eligibility(ctx, p.DB, owner, id, manual)
 }
-func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id application.EnrollmentID, manual bool, now time.Time) (data.CheckReservation, error) {
+func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (data.CheckReservation, error) {
 	if now.IsZero() {
 		return data.CheckReservation{}, data.ErrInvalid
 	}

@@ -69,12 +69,12 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	f.c = tracking.New(tracking.Persistence{DB: f.s}, f.k, wrapped, auth.New(false, []int64{101, 202}), f.clock)
 	return f
 }
-func (f *fixture) enroll(t *testing.T, owner int64) application.EnrollmentID {
+func (f *fixture) enroll(t *testing.T, owner int64) string {
 	t.Helper()
 	if _, err := f.c.Enroll(context.Background(), owner, plain); err != nil {
 		t.Fatal(err)
 	}
-	e, err := f.s.Enrollments.Enrollment(context.Background(), owner)
+	e, err := f.s.Enrollments.FindByOwner(context.Background(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	recent, e1 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(time.Minute))
 	at, e2 := f.c.Status(context.Background(), 101)
-	e, _ := f.s.Enrollments.Enrollment(context.Background(), 101)
+	e, _ := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	deadline, e3 := (tracking.Persistence{DB: f.s}).CheckEligibility(context.Background(), 101, e.Credentials.ID, true)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
@@ -283,7 +283,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	id := f.enroll(t, 101)
 	// When
 	_, err := f.c.Enroll(context.Background(), 101, plain)
-	e, read := f.s.Enrollments.Enrollment(context.Background(), 101)
+	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	queue, qerr := f.s.Pending.Queue(context.Background(), 101)
 	// Then
 	if !errors.Is(err, data.ErrExists) || read != nil || qerr != nil || e.Credentials.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
@@ -297,7 +297,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 
 type brokenVault struct{ tracking.Vault }
 
-func (v brokenVault) Seal(application.EnrollmentID, application.Credentials) (application.SealedCredentials, error) {
+func (v brokenVault) Seal(string, application.Credentials) (application.SealedCredentials, error) {
 	return application.SealedCredentials{}, errors.New("private encryption detail")
 }
 
@@ -337,7 +337,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			c := tracking.New(s, v, p, auth.New(false, []int64{101}), f.clock)
 			// When
 			_, err := c.Enroll(ctx, 101, input)
-			_, read := f.s.Enrollments.Enrollment(context.Background(), 101)
+			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 			// Then
 			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, data.ErrNotFound) {
 				t.Fatalf("failed enrollment committed: %v/%v", err, read)
@@ -386,7 +386,7 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	_, busyStatus := f.c.Status(context.Background(), 101)
 	_, busyEnroll := f.c.Enroll(context.Background(), 101, plain)
 	busySend := f.c.RunOwnerWork(context.Background(), 101, id, func(context.Context) error { t.Error("send during remove"); return nil })
-	before, beforeErr := f.s.Enrollments.Enrollment(context.Background(), 101)
+	before, beforeErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
 		t.Fatalf("removal returned without drain: %v", err)
@@ -397,7 +397,7 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	close(sendRelease)
 	sendErr := <-sent
 	removeErr := <-removed
-	_, missing := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	block.Store(false)
 	newID := f.enroll(t, 101)
 	lateObservation := (tracking.Persistence{DB: f.s}).Observe(context.Background(), 101, id, application.Observation{Stage: "LATE", CheckedAt: f.clock.Now()})
@@ -431,7 +431,7 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	_, busy := f.c.Enroll(context.Background(), 101, plain)
 	close(release)
 	enrollErr, removeErr := <-enrolled, <-removed
-	_, missing := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(busy, tracking.ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, data.ErrNotFound) || !errors.Is(missing, data.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
@@ -518,7 +518,7 @@ func (v rejectingVault) Open(application.SealedCredentials) (application.Credent
 
 type rejectingObserve struct{ tracking.Store }
 
-func (s rejectingObserve) Observe(context.Context, int64, application.EnrollmentID, application.Observation) error {
+func (s rejectingObserve) Observe(context.Context, int64, string, application.Observation) error {
 	return errors.New("private database details")
 }
 func TestStatusShouldPreserveOldCacheWhenCredentialAuthenticationOrObservationCommitFails(t *testing.T) {
@@ -542,7 +542,7 @@ func TestStatusShouldPreserveOldCacheWhenCredentialAuthenticationOrObservationCo
 			f.clock.set(epoch.Add(time.Minute))
 			// When
 			status, err := c.Status(context.Background(), 101)
-			e, readErr := f.s.Enrollments.Enrollment(context.Background(), 101)
+			e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 			history, historyErr := f.s.History.History(context.Background(), 101, id)
 			// Then
 			expected := tracking.ErrCredentials
@@ -580,7 +580,7 @@ func TestScheduledShouldRecheckAuthorizationBeforeCommitWhenEligibilityChangesDu
 	policy.allowed.Store(false)
 	close(release)
 	err := <-result
-	e, readErr := f.s.Enrollments.Enrollment(context.Background(), 101)
+	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(err, tracking.ErrDenied) || readErr != nil || e.Observation.Stage != "A" {
 		t.Fatalf("authorization withdrawal: err=%v read=%v stage=%s", err, readErr, e.Observation.Stage)
@@ -634,7 +634,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	cancel()
 	close(release)
 	workErr, removeErr := <-work, <-removed
-	e, readErr := f.s.Enrollments.Enrollment(context.Background(), 101)
+	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
 	if !errors.Is(workErr, context.Canceled) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.Credentials.ID != id || statusErr != nil || status.Observation == nil {

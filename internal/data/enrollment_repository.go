@@ -29,7 +29,7 @@ func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) 
 	)
 }
 
-func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int64, id application.EnrollmentID) (Enrollment, error) {
+func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int64, id string) (Enrollment, error) {
 	if !validID(id) {
 		return Enrollment{}, ErrInvalid
 	}
@@ -86,7 +86,7 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c app
 	return nil
 }
 
-func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner int64, id application.EnrollmentID, o application.Observation) error {
+func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner int64, id string, o application.Observation) error {
 	if owner <= 0 || !validID(id) || !validObservation(o) {
 		return ErrInvalid
 	}
@@ -103,7 +103,7 @@ func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner i
 	)
 }
 
-func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, id application.EnrollmentID, now time.Time) error {
+func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, id string, now time.Time) error {
 	if owner <= 0 || !validID(id) || now.IsZero() {
 		return ErrInvalid
 	}
@@ -157,7 +157,7 @@ func scanEnrollment(
 	if err != nil {
 		return Enrollment{}, ErrStorage
 	}
-	e.Credentials.ID = application.EnrollmentID(id)
+	e.Credentials.ID = id
 	e.Observation.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
 		return Enrollment{}, ErrStorage

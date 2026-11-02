@@ -14,7 +14,7 @@ type Enrollment struct {
 
 type Transition struct {
 	Sequence      int64
-	EnrollmentID  application.EnrollmentID
+	EnrollmentID  string
 	PreviousStage string
 	Stage         string
 	CheckedAt     time.Time
@@ -28,7 +28,7 @@ type CheckReservation struct {
 type Delivery struct {
 	Sequence         int64
 	RecipientID      int64
-	EnrollmentID     application.EnrollmentID
+	EnrollmentID     string
 	PreviousStage    string
 	Stage            string
 	CheckedAt        time.Time

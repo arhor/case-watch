@@ -24,7 +24,7 @@ type Store interface {
 	ReleaseDelivery(context.Context, data.Delivery) error
 }
 type Coordinator interface {
-	RunOwnerWork(context.Context, int64, application.EnrollmentID, func(context.Context) error) error
+	RunOwnerWork(context.Context, int64, string, func(context.Context) error) error
 }
 
 // Event is authenticated private membership evidence, independent of Telegram types.

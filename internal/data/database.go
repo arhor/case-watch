@@ -71,9 +71,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return store, nil
 }
 
-func validID(id application.EnrollmentID) bool {
-	b, e := hex.DecodeString(string(id))
-	return e == nil && len(b) == 16 && string(id) == strings.ToLower(string(id))
+func validID(id string) bool {
+	b, e := hex.DecodeString(id)
+	return e == nil && len(b) == 16 && id == strings.ToLower(id)
 }
 
 func validObservation(o application.Observation) bool {
