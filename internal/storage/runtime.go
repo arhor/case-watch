@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/arhor/case-watch/internal/application"
 	"time"
+
+	"github.com/arhor/case-watch/internal/application"
 )
 
 // CheckReservation is durable attempt-start eligibility, separate from cache freshness.
@@ -86,15 +87,19 @@ func (s *Store) Remove(ctx context.Context, owner int64, id application.Enrollme
 }
 
 type Delivery struct {
-	Sequence, RecipientID           int64
-	EnrollmentID                    application.EnrollmentID
-	PreviousStage, Stage            string
-	CheckedAt                       time.Time
-	Status                          string
-	CycleAttempts, LifetimeAttempts int
-	NextAttemptAt, ReservedAt       time.Time
-	Failure                         string
-	MessageID                       int64
+	Sequence         int64
+	RecipientID      int64
+	EnrollmentID     application.EnrollmentID
+	PreviousStage    string
+	Stage            string
+	CheckedAt        time.Time
+	Status           string
+	CycleAttempts    int
+	LifetimeAttempts int
+	NextAttemptAt    time.Time
+	ReservedAt       time.Time
+	Failure          string
+	MessageID        int64
 }
 type RecipientState struct {
 	Pause   string

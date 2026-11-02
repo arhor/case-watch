@@ -25,7 +25,9 @@ var (
 	ErrInvalid  = errors.New("invalid storage input")
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+}
 
 var _ application.Store = (*Store)(nil)
 
