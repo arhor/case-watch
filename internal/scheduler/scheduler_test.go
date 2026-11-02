@@ -18,7 +18,7 @@ func (c *clock) Now() time.Time { return c.now }
 
 type inventory struct{ owners []int64 }
 
-func (i inventory) Enrollments(context.Context) ([]data.Enrollment, error) {
+func (i inventory) FindAll(context.Context) ([]data.Enrollment, error) {
 	var result []data.Enrollment
 	for _, owner := range i.owners {
 		result = append(result, data.Enrollment{OwnerID: owner})
