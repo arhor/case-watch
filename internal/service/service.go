@@ -38,7 +38,7 @@ type Factories struct {
 }
 
 func Verify(ctx context.Context, s *data.Store, k *credentials.Keyring) error {
-	rows, e := s.Enrollments.Enrollments(ctx)
+	rows, e := s.Enrollments.FindAll(ctx)
 	if e != nil {
 		return ErrStartup
 	}
