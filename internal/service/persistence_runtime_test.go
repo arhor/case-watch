@@ -176,7 +176,7 @@ func TestRemoveShouldRollbackAllRowsWhenDeletionFails(t *testing.T) {
 	}
 	// When
 	err := (tracking.Persistence{DB: s.Store}).Remove(ctx, 101, c.ID)
-	current, readErr := s.Enrollments.Enrollment(ctx, 101)
+	current, readErr := s.Enrollments.FindByOwner(ctx, 101)
 	// Then
 	if !errors.Is(err, data.ErrStorage) || readErr != nil || current.Credentials.ID != c.ID || count(t, s, "history") != 1 || count(t, s, "pending") != 1 {
 		t.Fatalf("partial removal err=%v read=%v", err, readErr)
@@ -263,8 +263,8 @@ func TestRemoveShouldHideAndScrubEnrollmentWhenReopenedAfterSoftDeletion(t *test
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	_, readErr := reopened.Enrollments.Enrollment(ctx, 101)
-	all, listErr := reopened.Enrollments.Enrollments(ctx)
+	_, readErr := reopened.Enrollments.FindByOwner(ctx, 101)
+	all, listErr := reopened.Enrollments.FindAll(ctx)
 	_, reserveErr := (tracking.Persistence{DB: reopened.Store}).ReserveCheck(ctx, 101, c.ID, true, epoch)
 	_, eligibilityErr := (tracking.Persistence{DB: reopened.Store}).CheckEligibility(ctx, 101, c.ID, true)
 	repeatErr := (tracking.Persistence{DB: reopened.Store}).Remove(ctx, 101, c.ID)
