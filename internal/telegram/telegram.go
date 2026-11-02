@@ -19,7 +19,7 @@ import (
 )
 
 type EnrollmentReader interface {
-	Enrollment(context.Context, int64) (data.Enrollment, error)
+	FindByOwner(context.Context, int64) (data.Enrollment, error)
 }
 
 // Membership is ordinary authenticated evidence for the delivery worker. A private
@@ -162,7 +162,7 @@ func (a *Adapter) erase(ctx context.Context, id int64, message int) {
 	}
 }
 func (a *Adapter) exists(ctx context.Context, id int64) (bool, error) {
-	_, err := a.config.Store.Enrollment(ctx, id)
+	_, err := a.config.Store.FindByOwner(ctx, id)
 	if errors.Is(err, data.ErrNotFound) {
 		return false, nil
 	}
