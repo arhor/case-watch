@@ -14,7 +14,15 @@ func (s *Transactions) Remove(ctx context.Context, owner int64, id application.E
 	if owner <= 0 || !validID(id) {
 		return ErrInvalid
 	}
-	result, err := s.db.ExecContext(ctx, "DELETE FROM enrollments WHERE owner_id=? AND id=?", owner, string(id))
+	// ADR 0004, 2026-11-02: retain the identity as a soft-deleted enrollment.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ErrStorage
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE enrollments SET deleted_at=?,
+ credential_version=NULL,key_id=NULL,payload=NULL,stage=NULL,checked_at=NULL
+ WHERE owner_id=? AND id=? AND deleted_at IS NULL`, stamp(time.Now().UTC()), owner, string(id))
 	if err != nil {
 		return ErrStorage
 	}
@@ -24,6 +32,17 @@ func (s *Transactions) Remove(ctx context.Context, owner int64, id application.E
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	for _, query := range []string{
+		"DELETE FROM history WHERE enrollment_id=?",
+		"DELETE FROM case_guards WHERE enrollment_id=?",
+	} {
+		if _, err = tx.ExecContext(ctx, query, string(id)); err != nil {
+			return ErrStorage
+		}
+	}
+	if tx.Commit() != nil {
+		return ErrStorage
 	}
 	return nil
 }
@@ -226,16 +245,13 @@ func (s *Transactions) Enroll(ctx context.Context, owner int64, c application.Se
 	}
 	defer tx.Rollback()
 	var exists int
-	if tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM enrollments WHERE owner_id=? UNION ALL SELECT 1 FROM enrollment_ids WHERE id=?)", owner, string(c.ID)).Scan(&exists) != nil {
+	if tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM enrollments WHERE owner_id=? AND deleted_at IS NULL UNION ALL SELECT 1 FROM enrollments WHERE id=?)", owner, string(c.ID)).Scan(&exists) != nil {
 		return ErrStorage
 	}
 	if exists != 0 {
 		return ErrExists
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO enrollment_ids(id) VALUES(?)", string(c.ID)); err != nil {
-		return ErrStorage
-	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO enrollments VALUES(?,?,?,?,?,?,?)", string(c.ID), owner, c.FormatVersion, c.KeyID, c.Payload, o.Stage, stamp(o.CheckedAt)); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO enrollments (id,owner_id,credential_version,key_id,payload,stage,checked_at) VALUES(?,?,?,?,?,?,?)", string(c.ID), owner, c.FormatVersion, c.KeyID, c.Payload, o.Stage, stamp(o.CheckedAt)); err != nil {
 		return ErrStorage
 	}
 	if tx.Commit() != nil {
@@ -254,14 +270,14 @@ func (s *Transactions) Observe(ctx context.Context, owner int64, id application.
 	}
 	defer tx.Rollback()
 	var previous string
-	err = tx.QueryRowContext(ctx, "SELECT stage FROM enrollments WHERE owner_id=? AND id=?", owner, string(id)).Scan(&previous)
+	err = tx.QueryRowContext(ctx, "SELECT stage FROM enrollments WHERE owner_id=? AND id=? AND deleted_at IS NULL", owner, string(id)).Scan(&previous)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return ErrStorage
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE enrollments SET stage=?,checked_at=? WHERE owner_id=? AND id=?", o.Stage, stamp(o.CheckedAt), owner, string(id)); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE enrollments SET stage=?,checked_at=? WHERE owner_id=? AND id=? AND deleted_at IS NULL", o.Stage, stamp(o.CheckedAt), owner, string(id)); err != nil {
 		return ErrStorage
 	}
 	if previous != o.Stage {
@@ -289,7 +305,7 @@ func (s *Transactions) RewriteCredentials(ctx context.Context, rewrite func(appl
 		return ErrStorage
 	}
 	defer tx.Rollback()
-	rows, e := tx.QueryContext(ctx, `SELECT id,credential_version,key_id,payload FROM enrollments ORDER BY id`)
+	rows, e := tx.QueryContext(ctx, `SELECT id,credential_version,key_id,payload FROM enrollments WHERE deleted_at IS NULL ORDER BY id`)
 	if e != nil {
 		return ErrStorage
 	}
@@ -315,7 +331,7 @@ func (s *Transactions) RewriteCredentials(ctx context.Context, rewrite func(appl
 		if n.ID != r.ID || n.FormatVersion != 1 || n.KeyID == "" || len(n.Payload) == 0 {
 			return ErrInvalid
 		}
-		result, e := tx.ExecContext(ctx, `UPDATE enrollments SET credential_version=?,key_id=?,payload=? WHERE id=?`, n.FormatVersion, n.KeyID, n.Payload, string(r.ID))
+		result, e := tx.ExecContext(ctx, `UPDATE enrollments SET credential_version=?,key_id=?,payload=? WHERE id=? AND deleted_at IS NULL`, n.FormatVersion, n.KeyID, n.Payload, string(r.ID))
 		if e != nil {
 			return ErrStorage
 		}

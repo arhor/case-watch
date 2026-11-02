@@ -9,7 +9,7 @@ import (
 
 // History returns transitions belonging to the supplied owner and identity.
 func (s *HistoryRepository) History(ctx context.Context, owner int64, id application.EnrollmentID) ([]Transition, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? ORDER BY h.sequence`, owner, string(id))
+	rows, err := s.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL ORDER BY h.sequence`, owner, string(id))
 	if err != nil {
 		return nil, ErrStorage
 	}

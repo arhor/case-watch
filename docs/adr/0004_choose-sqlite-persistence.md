@@ -145,3 +145,12 @@ Checklist evidence maps to the reviewed implementation and offline tests in [the
 ### 2026-11-02: Data access package and repositories
 
 The maintainer moved the SQLite boundary from `internal/storage` to `internal/data`. Persisted-value models live in `models.go`; repository types own logical entities in the same package, and a transaction service coordinates multi-entity writes. This amends the package-path instruction above while retaining the SQLite, transaction, ownership, and network-boundary decisions. Earlier path references remain historical evidence.
+
+
+### 2026-11-02: Soft-delete enrollments instead of a separate identity registry
+
+The maintainer selected soft deletion for this WIP application; no production database needs migration. Replace `enrollment_ids` with retained `enrollments` rows marked by `deleted_at`. This amends the physical enrollment deletion described above, while preserving the confirmed removal contract: clear credential metadata, encrypted payload and baseline fields to SQL NULL; delete case guards and history with cascading pending deletion in the same transaction. Retain the ID, owner, deletion timestamp, owner cooldown and recipient/global gates. Restoration is outside scope.
+
+Use a partial unique index on `owner_id` for active rows. Every enrollment read, observation, check reservation/eligibility query and credential rewrite must exclude deleted rows. Reject reuse of any enrollment ID, including deleted ones. Re-enrollment allocates a fresh identity. This consolidates active and retired identities in one table, at the cost of explicit active-row predicates and transactional dependent-row cleanup instead of relying on enrollment deletion cascades.
+
+Implementation affects `internal/data/migrations/000001_initial.up.sql`, enrollment/history/check repositories, `transactions.go`, removal/rollback tests and maintained storage/product guides. Revise the initial migration directly for this pre-production change; earlier development databases require recreation rather than upgrade. Verify removal persistence after reopen, scrubbed fields, active-owner uniqueness, late-result rejection, identity non-reuse, rotation exclusion, rollback and retained gates using offline tests, then run the full test suite, race detector, vet and application build. See the dated evidence in [implementation progress](../implementation-progress.md).

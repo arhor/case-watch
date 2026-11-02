@@ -136,7 +136,7 @@ func TestRemoveShouldRetainGuardsAndFenceLateResultsWhenReenrolled(t *testing.T)
 	guard, e := s.ReserveCheck(ctx, 101, id, true, epoch.Add(59*time.Second))
 	r, g, gateErr := s.DeliveryGates(ctx, 101)
 	// Then
-	if removed != nil || !errors.Is(reuse, ErrExists) || !errors.Is(late, ErrNotFound) || !errors.Is(ack, ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.TokenPaused || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollment_ids") != 2 {
+	if removed != nil || !errors.Is(reuse, ErrExists) || !errors.Is(late, ErrNotFound) || !errors.Is(ack, ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.TokenPaused || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollments") != 2 {
 		t.Fatalf("removal guards/fence removed=%v reuse=%v late=%v ack=%v guard=%+v error=%v recipient=%+v global=%+v", removed, reuse, late, ack, guard, e, r, g)
 	}
 }
@@ -242,5 +242,45 @@ func TestCompleteDeliveryShouldRollbackGateWhenOutcomeWriteFails(t *testing.T) {
 	// Then
 	if !errors.Is(failed, ErrStorage) || err != nil || queueErr != nil || !g.RateUntil.IsZero() || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
 		t.Fatalf("partial outcome failed=%v gates=%+v queue=%+v", failed, g, q)
+	}
+}
+
+func TestRemoveShouldHideAndScrubEnrollmentWhenReopenedAfterSoftDeletion(t *testing.T) {
+	// Given
+	s, path, _, c := fixture(t)
+	enroll(t, s, c)
+	// When
+	removeErr := s.Remove(ctx, 101, c.ID)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	_, readErr := reopened.Enrollment(ctx, 101)
+	all, listErr := reopened.Enrollments(ctx)
+	_, reserveErr := reopened.ReserveCheck(ctx, 101, c.ID, true, epoch)
+	_, eligibilityErr := reopened.CheckEligibility(ctx, 101, c.ID, true)
+	repeatErr := reopened.Remove(ctx, 101, c.ID)
+	reuseErr := reopened.Enroll(ctx, 202, c, observation("A", 0))
+	rewrites := 0
+	rewriteErr := reopened.RewriteCredentials(ctx, func(record application.SealedCredentials) (application.SealedCredentials, error) {
+		rewrites++
+		return record, nil
+	})
+	// Then
+	if removeErr != nil || !errors.Is(readErr, ErrNotFound) || listErr != nil || len(all) != 0 ||
+		!errors.Is(reserveErr, ErrNotFound) || !errors.Is(eligibilityErr, ErrNotFound) ||
+		!errors.Is(repeatErr, ErrNotFound) || !errors.Is(reuseErr, ErrExists) || rewriteErr != nil || rewrites != 0 {
+		t.Fatalf("deleted enrollment visible: remove=%v read=%v list=%v reserve=%v eligibility=%v repeat=%v reuse=%v rewrite=%v calls=%d", removeErr, readErr, listErr, reserveErr, eligibilityErr, repeatErr, reuseErr, rewriteErr, rewrites)
+	}
+	var tombstones int
+	err = reopened.db.QueryRow(`SELECT count(*) FROM enrollments WHERE id=? AND owner_id=101
+ AND deleted_at IS NOT NULL AND credential_version IS NULL AND key_id IS NULL
+ AND payload IS NULL AND stage IS NULL AND checked_at IS NULL`, string(c.ID)).Scan(&tombstones)
+	if err != nil || tombstones != 1 {
+		t.Fatalf("missing scrubbed soft-deleted enrollment: count=%d error=%v", tombstones, err)
 	}
 }

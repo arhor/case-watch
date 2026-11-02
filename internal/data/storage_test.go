@@ -165,7 +165,7 @@ func TestEnrollShouldRollbackCredentialsAndIdentityWhenBaselineFails(t *testing.
 	// When
 	err := s.Enroll(ctx, 101, c, observation("A", 0))
 	// Then
-	if !errors.Is(err, ErrStorage) || count(t, s, "enrollments") != 0 || count(t, s, "enrollment_ids") != 0 {
+	if !errors.Is(err, ErrStorage) || count(t, s, "enrollments") != 0 {
 		t.Fatal("partial enrollment committed")
 	}
 }

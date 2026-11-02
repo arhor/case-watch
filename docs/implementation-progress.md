@@ -189,3 +189,9 @@ native and CGO-disabled Linux ARM64 builds, and `git diff --check` passed.
 ### 2026-11-02: Data access package refactor
 
 Moved the SQLite adapter to `internal/data` with persistence models, entity repositories, and a transaction service for multi-entity operations. Updated runtime wiring and the maintained storage guide without changing the schema. Offline verification: `GOCACHE=/private/tmp/case-watch-go-build go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -o /private/tmp/case-watch-data-refactor ./cmd/case-watch`, and `git diff --check` all exited 0. The build printed a non-fatal module stat-cache write warning in the restricted environment. No live portal or Telegram acceptance was performed.
+
+### 2026-11-02: Enrollment soft deletion
+
+Replaced `enrollment_ids` with soft-deleted enrollment rows and an active-owner partial unique index in the initial WIP schema. Removal retains ID/owner/deletion time, clears credentials and baseline, and transactionally deletes history, pending work and case guards. Active reads, observations, check guards and credential rewrites exclude deleted rows. Added reopen/scrubbing/exclusion coverage and retained rollback, late-result and gate tests. Earlier version-1 development databases require recreation; no production migration was needed.
+
+With Node v26.13.0 selected and Go 1.27.3, `GOCACHE=/private/tmp/case-watch-go-build go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -o /private/tmp/case-watch-soft-delete ./cmd/case-watch`, and `git diff --check` exited 0. The first full-suite attempt could not access the default build cache; rerunning with the writable temporary cache passed. The build emitted a non-fatal module stat-cache write warning. Verification is offline; no live portal/Telegram or deployment acceptance was performed.

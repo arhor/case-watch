@@ -33,14 +33,14 @@ func (s *EnrollmentRepository) Enrollment(ctx context.Context, owner int64) (Enr
 	if owner <= 0 {
 		return Enrollment{}, ErrInvalid
 	}
-	return scanEnrollment(s.db.QueryRowContext(ctx, "SELECT "+enrollmentColumns+" FROM enrollments WHERE owner_id=?", owner))
+	return scanEnrollment(s.db.QueryRowContext(ctx, "SELECT "+enrollmentColumns+" FROM enrollments WHERE owner_id=? AND deleted_at IS NULL", owner))
 }
 
 // Enrollments is for startup authentication and policy-filtered background work.
 // Callers must apply current authorization before decrypting or starting work.
 
 func (s *EnrollmentRepository) Enrollments(ctx context.Context) ([]Enrollment, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+enrollmentColumns+" FROM enrollments ORDER BY owner_id")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+enrollmentColumns+" FROM enrollments WHERE deleted_at IS NULL ORDER BY owner_id")
 	if err != nil {
 		return nil, ErrStorage
 	}

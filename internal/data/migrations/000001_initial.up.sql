@@ -1,22 +1,34 @@
-CREATE TABLE enrollment_ids (
-    id TEXT PRIMARY KEY
-);
-
 CREATE TABLE enrollments (
-    id                 TEXT    PRIMARY KEY REFERENCES enrollment_ids(id),
-    owner_id           INTEGER NOT NULL UNIQUE CHECK (owner_id > 0),
-    credential_version INTEGER NOT NULL,
-    key_id             TEXT    NOT NULL,
-    payload            BLOB    NOT NULL,
-    stage              TEXT    NOT NULL,
-    checked_at         TEXT    NOT NULL
+    id                 TEXT    PRIMARY KEY,
+    owner_id           INTEGER NOT NULL CHECK (owner_id > 0),
+    credential_version INTEGER,
+    key_id             TEXT,
+    payload            BLOB,
+    stage              TEXT,
+    checked_at         TEXT,
+    deleted_at         TEXT,
+    CHECK (
+        (
+            deleted_at         IS NULL AND
+            credential_version IS NOT NULL AND
+            key_id             IS NOT NULL AND
+            payload            IS NOT NULL AND
+            stage              IS NOT NULL AND
+            checked_at         IS NOT NULL
+        ) OR (
+            deleted_at         IS NOT NULL AND
+            credential_version IS NULL AND
+            key_id             IS NULL AND
+            payload            IS NULL AND
+            stage              IS NULL AND
+            checked_at         IS NULL
+        )
+    )
 );
 
-CREATE TRIGGER immutable_enrollment_id
-BEFORE UPDATE OF id ON enrollments
-BEGIN
-    SELECT RAISE(ABORT, 'immutable identity');
-END;
+CREATE UNIQUE INDEX active_enrollment_owner
+    ON enrollments (owner_id)
+    WHERE deleted_at IS NULL;
 
 CREATE TABLE history (
     sequence       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +52,8 @@ CREATE TABLE pending (
     UNIQUE (history_sequence, recipient_id)
 );
 
-CREATE INDEX pending_recipient_order ON pending (recipient_id, sequence);
+CREATE INDEX pending_recipient_order
+    ON pending (recipient_id, sequence);
 
 CREATE TABLE manual_guards (
     owner_id INTEGER PRIMARY KEY,

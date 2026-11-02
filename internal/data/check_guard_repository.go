@@ -19,7 +19,7 @@ func (s *CheckGuardRepository) ReserveCheck(ctx context.Context, owner int64, id
 	}
 	defer tx.Rollback()
 	var exists int
-	if tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM enrollments WHERE owner_id=? AND id=?)", owner, string(id)).Scan(&exists) != nil {
+	if tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM enrollments WHERE owner_id=? AND id=? AND deleted_at IS NULL)", owner, string(id)).Scan(&exists) != nil {
 		return CheckReservation{}, ErrStorage
 	}
 	if exists == 0 {
@@ -59,9 +59,6 @@ func (s *CheckGuardRepository) ReserveCheck(ctx context.Context, owner int64, id
 	return CheckReservation{Reserved: true, NextEligibleAt: now.Add(time.Minute)}, nil
 }
 
-// Remove deletes only the exact owner enrollment; registry and delivery gates survive.
-// Callers must cancel/drain work first. Identity predicates fence late results.
-
 func (s *CheckGuardRepository) CheckEligibility(ctx context.Context, owner int64, id application.EnrollmentID, manual bool) (time.Time, error) {
 	if owner <= 0 || !validID(id) {
 		return time.Time{}, ErrInvalid
@@ -70,7 +67,7 @@ func (s *CheckGuardRepository) CheckEligibility(ctx context.Context, owner int64
 	err := s.db.QueryRowContext(ctx, `SELECT
  COALESCE((SELECT started FROM case_guards WHERE enrollment_id=e.id),0),
  COALESCE((SELECT started FROM manual_guards WHERE owner_id=e.owner_id),0)
- FROM enrollments e WHERE e.owner_id=? AND e.id=?`, owner, string(id)).Scan(&caseStart, &userStart)
+ FROM enrollments e WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL`, owner, string(id)).Scan(&caseStart, &userStart)
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, ErrNotFound
 	}
