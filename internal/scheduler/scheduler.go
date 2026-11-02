@@ -15,7 +15,7 @@ import (
 var ErrScheduler = errors.New("scheduler operation failed")
 
 type Inventory interface {
-	Enrollments(context.Context) ([]data.Enrollment, error)
+	FindAll(context.Context) ([]data.Enrollment, error)
 }
 type Tracking interface {
 	// Scheduled shares manual coordination and returns after canceled work drains.
@@ -114,7 +114,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		if now := s.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		items, err := s.c.Inventory.Enrollments(ctx)
+		items, err := s.c.Inventory.FindAll(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
