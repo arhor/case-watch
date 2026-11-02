@@ -2,7 +2,7 @@ name: Go verification
 
 on:
   push:
-    branches: [master, fix/finish-repository-refactor]
+    branches: [master]
   pull_request:
 
 jobs:
