@@ -17,8 +17,8 @@ import (
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/data"
+	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/tracking"
 	"github.com/go-telegram/bot/models"
 )
@@ -81,7 +81,7 @@ func setup(t *testing.T) *fixture {
 	}
 	f.keys = keys
 	policy := auth.New(true, nil)
-	coordinator := tracking.New(f.s, keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
+	coordinator := tracking.New(tracking.Persistence{DB: f.s}, keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
 		f.calls++
 		stage := f.stage
 		if stage == "" {
@@ -89,7 +89,7 @@ func setup(t *testing.T) *fixture {
 		}
 		return application.Observation{Stage: stage}, nil
 	}), policy, f.clock)
-	f.a, err = New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: policy, Store: f.s, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
+	f.a, err = New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: policy, Store: f.s.Enrollments, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,15 +121,15 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(101, "/enroll")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
-	e, err := f.s.Enrollment(context.Background(), 101)
-	history, herr := f.s.History(context.Background(), 101, e.Credentials.ID)
+	e, err := f.s.Enrollments.Enrollment(context.Background(), 101)
+	history, herr := f.s.History.History(context.Background(), 101, e.Credentials.ID)
 	f.message(101, "/status")
 	f.message(202, "/remove")
 	f.message(202, "REMOVE")
-	_, still := f.s.Enrollment(context.Background(), 101)
+	_, still := f.s.Enrollments.Enrollment(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollment(context.Background(), 101)
+	_, removed := f.s.Enrollments.Enrollment(context.Background(), 101)
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, data.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
@@ -153,18 +153,18 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "synthetic-number")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "synthetic-password")
-	_, expired := f.s.Enrollment(context.Background(), 101)
+	_, expired := f.s.Enrollments.Enrollment(context.Background(), 101)
 	f.message(101, "/enroll")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	f.message(101, "/remove")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "REMOVE")
-	_, retained := f.s.Enrollment(context.Background(), 101)
+	_, retained := f.s.Enrollments.Enrollment(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "/cancel")
 	f.message(101, "REMOVE")
-	_, cancelled := f.s.Enrollment(context.Background(), 101)
+	_, cancelled := f.s.Enrollments.Enrollment(context.Background(), 101)
 	// Then
 	if !errors.Is(expired, data.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
 		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)
@@ -184,7 +184,7 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 			defer server.Close()
 			f := setup(t)
 
-			a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Store: f.s, Tracking: f.a.config.Tracking, Clock: f.clock})
+			a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Store: f.s.Enrollments, Tracking: f.a.config.Tracking, Clock: f.clock})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -285,7 +285,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Store: f.s, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Store: f.s.Enrollments, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,11 +317,11 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 		w.WriteHeader(429)
 		w.Write([]byte(`{"ok":false,"error_code":429,"description":"synthetic","parameters":{"retry_after":60}}`))
 	}))
-	a, e := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Store: f.s, Tracking: f.a.config.Tracking, Clock: f.clock})
+	a, e := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Store: f.s.Enrollments, Tracking: f.a.config.Tracking, Clock: f.clock})
 	if e != nil {
 		t.Fatal(e)
 	}
-	worker, e := notifications.New(notifications.Config{Store: f.s, Coordinator: f.a.config.Tracking.(notifications.Coordinator), Policy: f.a.config.Policy, Clock: f.clock, Sender: a})
+	worker, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.a.config.Tracking.(notifications.Coordinator), Policy: f.a.config.Policy, Clock: f.clock, Sender: a})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -329,7 +329,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 	// When
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 101, "synthetic")
-	_, g, e := f.s.DeliveryGates(context.Background(), 101)
+	_, g, e := (notifications.Persistence{DB: f.s}).DeliveryGates(context.Background(), 101)
 	// Then
 	if calls != 1 || e != nil || !g.RateUntil.Equal(f.clock.Now().Add(time.Minute)) {
 		t.Fatalf("calls=%d error=%v gates=%+v", calls, e, g)
@@ -359,7 +359,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	coordinator := f.a.config.Tracking.(*tracking.Coordinator)
 	sender := &scriptedSender{}
 	newWorker := func() *notifications.Worker {
-		w, err := notifications.New(notifications.Config{Store: f.s, Coordinator: coordinator, Policy: f.a.config.Policy, Clock: f.clock, Sender: sender})
+		w, err := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: coordinator, Policy: f.a.config.Policy, Clock: f.clock, Sender: sender})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -382,11 +382,11 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if _, err := coordinator.Scheduled(ctx, 101); err != nil {
 		t.Fatal(err)
 	}
-	e, err := f.s.Enrollment(ctx, 101)
+	e, err := f.s.Enrollments.Enrollment(ctx, 101)
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.s.History(ctx, 101, e.Credentials.ID)
+	history, err := f.s.History.History(ctx, 101, e.Credentials.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,12 +402,12 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator = tracking.New(f.s, f.keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
+	coordinator = tracking.New(tracking.Persistence{DB: f.s}, f.keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
 		t.Error("restart/cache/removal unexpectedly checked portal")
 		return application.Observation{}, errors.New("unexpected check")
 	}), f.a.config.Policy, f.clock)
 	f.a.config.Tracking = coordinator
-	f.a.config.Store = f.s
+	f.a.config.Store = f.s.Enrollments
 	w = newWorker()
 	if err = w.Step(ctx); err != nil {
 		t.Fatal(err)
@@ -421,14 +421,14 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err = w.Step(ctx); err != nil {
 		t.Fatal(err)
 	} // Retry oldest before newer.
-	remaining, err := f.s.Queue(ctx, 101)
+	remaining, err := f.s.Pending.Queue(ctx, 101)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.message(101, "/remove")
 	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollment(ctx, 101)
-	queue, err := f.s.Queue(ctx, 101)
+	_, removed := f.s.Enrollments.Enrollment(ctx, 101)
+	queue, err := f.s.Pending.Queue(ctx, 101)
 	// Then
 	if len(history) != 2 || gatedCalls != 1 || sender.calls != 3 || len(remaining) != 2 || remaining[0].Status != "delivered" || remaining[1].Status == "delivered" {
 		t.Fatalf("transition ordering or restart gates failed: history=%d gated=%d sends=%d queue=%+v", len(history), gatedCalls, sender.calls, remaining)

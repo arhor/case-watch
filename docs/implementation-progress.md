@@ -195,3 +195,20 @@ Moved the SQLite adapter to `internal/data` with persistence models, entity repo
 Replaced `enrollment_ids` with soft-deleted enrollment rows and an active-owner partial unique index in the initial WIP schema. Removal retains ID/owner/deletion time, clears credentials and baseline, and transactionally deletes history, pending work and case guards. Active reads, observations, check guards and credential rewrites exclude deleted rows. Added reopen/scrubbing/exclusion coverage and retained rollback, late-result and gate tests. Earlier version-1 development databases require recreation; no production migration was needed.
 
 With Node v26.13.0 selected and Go 1.27.3, `GOCACHE=/private/tmp/case-watch-go-build go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -o /private/tmp/case-watch-soft-delete ./cmd/case-watch`, and `git diff --check` exited 0. The first full-suite attempt could not access the default build cache; rerunning with the writable temporary cache passed. The build emitted a non-fatal module stat-cache write warning. Verification is offline; no live portal/Telegram or deployment acceptance was performed.
+
+### 2026-11-02: Service-owned transactions (ADR 0011)
+
+Accepted [ADR 0011](adr/0011_move-transaction-boundaries-to-services.md). Store.RunInTx binds six named DBTX repositories to one transaction and rejects nested transactions and transaction-Store closure. Removed data.Transactions and its repository compositions. Tracking and notification services now compose atomic enrollment, observations, removal, check/delivery reservations, outcomes, recovery and recipient changes. Credential rewrites are composed in the maintenance service. SQL remains in data; schema and dependencies are unchanged.
+
+Moved workflow rollback/concurrency/reopen tests into the service package and retained migration/durability tests in data. Added transaction tests for multi-repository commits and rollback, callback error identity, panic propagation, cancellation, nested lifecycle rejection, closed-database begin failure and deferred-constraint commit failure.
+
+The first full-suite attempt encountered the restricted default Go cache; using a writable temporary cache then exposed a sandbox restriction on local HTTP listeners. Elevated offline verification allowed those listeners. The next normal-suite run reproduced an intermittent startup test failure also recorded in earlier migration evidence: recovery had completed, but cancellation during a concurrent tracking storage read was reported as a fatal infrastructure error. Tracking monitoring now ignores failures from canceled operations, consistent with monitored enrollment reads. Its focused cancellation regression failed before the guard and passed afterward; the startup and monitor tests passed 100 repetitions after the fix.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, final commands all exited 0:
+
+- GOCACHE=/tmp/case-watch-go-cache go test -count=1 ./...
+- GOCACHE=/tmp/case-watch-go-cache go test -count=1 -race ./...
+- GOCACHE=/tmp/case-watch-go-cache go vet ./...
+- GOCACHE=/tmp/case-watch-go-cache go build -o /tmp/case-watch-adr-0011 ./cmd/case-watch
+
+Documentation relative links, ADR status/index consistency, formatting of changed Go files and git diff --check passed. An existing formatting difference in untouched internal/scheduler/scheduler_test.go remains outside this change. Verification used synthetic data and local HTTP fixtures. No live portal/Telegram, container execution, deployment, target-Pi checks, or new Linux cross-build was performed for this refactor.

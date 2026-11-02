@@ -71,15 +71,6 @@ type SealedCredentials struct {
 	Payload       []byte
 }
 
-// Store is the atomic write boundary needed by enrollment and observation callers.
-// Enroll rejects an existing owner association. Observe compares stages and commits
-// cache/history/pending changes together; neither operation performs network I/O.
-// Removal, reservation and queue APIs will be consumer-owned in later milestones.
-type Store interface {
-	Enroll(context.Context, int64, SealedCredentials, Observation) error
-	Observe(context.Context, int64, EnrollmentID, Observation) error
-}
-
 type SendCategory string
 
 const (

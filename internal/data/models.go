@@ -13,10 +13,11 @@ type Enrollment struct {
 }
 
 type Transition struct {
-	Sequence             int64
-	EnrollmentID         application.EnrollmentID
-	PreviousStage, Stage string
-	CheckedAt            time.Time
+	Sequence      int64
+	EnrollmentID  application.EnrollmentID
+	PreviousStage string
+	Stage         string
+	CheckedAt     time.Time
 }
 
 type CheckReservation struct {

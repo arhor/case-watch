@@ -33,3 +33,28 @@ func (s *HistoryRepository) History(ctx context.Context, owner int64, id applica
 	}
 	return result, nil
 }
+
+func (s *HistoryRepository) Append(ctx context.Context, id application.EnrollmentID, previous string, o application.Observation) (int64, error) {
+	if !validID(id) || !validObservation(o) {
+		return 0, ErrInvalid
+	}
+	result, err := s.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", string(id), previous, o.Stage, stamp(o.CheckedAt))
+	if err != nil {
+		return 0, ErrStorage
+	}
+	sequence, err := result.LastInsertId()
+	if err != nil {
+		return 0, ErrStorage
+	}
+	return sequence, nil
+}
+
+func (s *HistoryRepository) DeleteEnrollment(ctx context.Context, id application.EnrollmentID) error {
+	if !validID(id) {
+		return ErrInvalid
+	}
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", string(id)); err != nil {
+		return ErrStorage
+	}
+	return nil
+}

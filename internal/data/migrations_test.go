@@ -56,7 +56,7 @@ func TestOpenShouldRejectSchemaWhenMetadataIsInvalid(t *testing.T) {
 	} {
 		t.Run(query, func(t *testing.T) {
 			// Given
-			s, path, _, _ := fixture(t)
+			s, path := databaseFixture(t)
 			if _, err := s.db.Exec(query); err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestOpenShouldRejectSchemaWhenMetadataIsInvalid(t *testing.T) {
 
 func TestMigrationShouldRollbackSQLWhenStatementFails(t *testing.T) {
 	// Given
-	s, path, _, _ := fixture(t)
+	s, path := databaseFixture(t)
 	files := fstest.MapFS{
 		"migrations/000001_initial.up.sql": &fstest.MapFile{Data: []byte("-- existing")},
 		"migrations/000002_failure.up.sql": &fstest.MapFile{Data: []byte("CREATE TABLE synthetic(id INTEGER); INSERT INTO nonexistent VALUES(1);")},
@@ -118,7 +118,7 @@ func TestMigrationShouldRollbackSQLWhenStatementFails(t *testing.T) {
 
 func TestMigrationShouldApplyOrderedChangesWhenNewVersionsExist(t *testing.T) {
 	// Given
-	s, _, _, _ := fixture(t)
+	s, _ := databaseFixture(t)
 	defer s.Close()
 	files := fstest.MapFS{
 		"migrations/000001_initial.up.sql": &fstest.MapFile{Data: []byte("-- existing")},

@@ -17,34 +17,49 @@ import (
 )
 
 var (
-	ErrStorage  = errors.New("storage operation failed")
-	ErrNotFound = errors.New("enrollment not found")
-	ErrExists   = errors.New("owner already enrolled or identity already used")
-	ErrSchema   = errors.New("unsupported database schema")
-	ErrInvalid  = errors.New("invalid storage input")
+	ErrTransaction = errors.New("invalid transaction lifecycle operation")
+	ErrNotEligible = errors.New("attempt not eligible")
+	ErrStorage     = errors.New("storage operation failed")
+	ErrNotFound    = errors.New("enrollment not found")
+	ErrExists      = errors.New("owner already enrolled or identity already used")
+	ErrSchema      = errors.New("unsupported database schema")
+	ErrInvalid     = errors.New("invalid storage input")
 )
 
-type Store struct {
-	db *sql.DB
-	*EnrollmentRepository
-	*HistoryRepository
-	*PendingDeliveryRepository
-	*CheckGuardRepository
-	*RecipientRepository
-	*GlobalGateRepository
-	*Transactions
+// DBTX is the SQL surface shared by connections and transactions.
+type DBTX interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-type EnrollmentRepository struct{ db *sql.DB }
-type HistoryRepository struct{ db *sql.DB }
-type PendingDeliveryRepository struct{ db *sql.DB }
-type CheckGuardRepository struct{ db *sql.DB }
-type GlobalGateRepository struct{ db *sql.DB }
+type Store struct {
+	db          *sql.DB
+	inTx        bool
+	Enrollments *EnrollmentRepository
+	History     *HistoryRepository
+	Pending     *PendingDeliveryRepository
+	Guards      *CheckGuardRepository
+	Recipients  *RecipientRepository
+	Gates       *GlobalGateRepository
+}
 
-// Transactions owns writes that must update multiple logical entities atomically.
-type Transactions struct{ db *sql.DB }
+type EnrollmentRepository struct{ db DBTX }
+type HistoryRepository struct{ db DBTX }
+type PendingDeliveryRepository struct{ db DBTX }
+type CheckGuardRepository struct{ db DBTX }
+type GlobalGateRepository struct{ db DBTX }
 
-var _ application.Store = (*Store)(nil)
+func newStore(db *sql.DB, handle DBTX, inTx bool) *Store {
+	return &Store{db: db, inTx: inTx,
+		Enrollments: &EnrollmentRepository{db: handle},
+		History:     &HistoryRepository{db: handle},
+		Pending:     &PendingDeliveryRepository{db: handle},
+		Guards:      &CheckGuardRepository{db: handle},
+		Recipients:  &RecipientRepository{db: handle},
+		Gates:       &GlobalGateRepository{db: handle},
+	}
+}
 
 // NewEnrollmentID allocates an opaque identity before sealing credentials.
 func NewEnrollmentID() (application.EnrollmentID, error) {
@@ -78,15 +93,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	s := &Store{db: db,
-		EnrollmentRepository:      &EnrollmentRepository{db: db},
-		HistoryRepository:         &HistoryRepository{db: db},
-		PendingDeliveryRepository: &PendingDeliveryRepository{db: db},
-		CheckGuardRepository:      &CheckGuardRepository{db: db},
-		RecipientRepository:       &RecipientRepository{db: db},
-		GlobalGateRepository:      &GlobalGateRepository{db: db},
-		Transactions:              &Transactions{db: db},
-	}
+	s := newStore(db, db, false)
 	if err = s.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
@@ -95,6 +102,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 }
 
 func (s *Store) Close() error {
+	if s.inTx {
+		return ErrTransaction
+	}
 	if s.db.Close() != nil {
 		return ErrStorage
 	}
@@ -115,27 +125,4 @@ func instant(n int64) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(0, n).UTC()
-}
-
-// TrackingRepositories exposes only the persistence operations tracking uses.
-type TrackingRepositories struct {
-	*EnrollmentRepository
-	*CheckGuardRepository
-	*Transactions
-}
-
-// NotificationRepositories exposes delivery state and its atomic transitions.
-type NotificationRepositories struct {
-	*PendingDeliveryRepository
-	*RecipientRepository
-	*GlobalGateRepository
-	*Transactions
-}
-
-func (s *Store) TrackingRepositories() TrackingRepositories {
-	return TrackingRepositories{s.EnrollmentRepository, s.CheckGuardRepository, s.Transactions}
-}
-
-func (s *Store) NotificationRepositories() NotificationRepositories {
-	return NotificationRepositories{s.PendingDeliveryRepository, s.RecipientRepository, s.GlobalGateRepository, s.Transactions}
 }

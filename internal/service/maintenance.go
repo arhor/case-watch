@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"time"
+
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
-	"time"
+	"github.com/arhor/case-watch/internal/notifications"
 )
 
 // Maintain opens an existing database only while the service is stopped. Every
@@ -69,7 +71,7 @@ func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id
 	if e != nil {
 		return ErrService
 	}
-	e = s.RewriteCredentials(ctx, func(r application.SealedCredentials) (application.SealedCredentials, error) {
+	e = RewriteCredentials(ctx, s, func(r application.SealedCredentials) (application.SealedCredentials, error) {
 		plain, e := prepared.Open(r)
 		if e != nil {
 			return application.SealedCredentials{}, e
@@ -98,11 +100,36 @@ func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id
 	return nil
 }
 func Resume(ctx context.Context, s *data.Store, recipient int64, token bool) error {
-	if e := s.RecoverDeliveries(ctx, time.Now()); e != nil {
+	if e := (notifications.Persistence{DB: s}).RecoverDeliveries(ctx, time.Now()); e != nil {
 		return ErrService
 	}
 	if token {
-		return s.ResumeToken(ctx)
+		return s.Gates.SetTokenPaused(ctx, false)
 	}
-	return s.ResumeRecipient(ctx, recipient)
+	return (notifications.Persistence{DB: s}).ResumeRecipient(ctx, recipient)
+}
+
+// RewriteCredentials commits every active credential rewrite together. The callback
+// performs local cryptography only; keyring file writes belong outside RunInTx.
+func RewriteCredentials(ctx context.Context, s *data.Store, rewrite func(application.SealedCredentials) (application.SealedCredentials, error)) error {
+	return s.RunInTx(ctx, func(tx *data.Store) error {
+		rows, err := tx.Enrollments.Enrollments(ctx)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			original := row.Credentials
+			replacement, err := rewrite(original)
+			if err != nil {
+				return data.ErrStorage
+			}
+			if replacement.ID != original.ID {
+				return data.ErrInvalid
+			}
+			if err = tx.Enrollments.UpdateCredentials(ctx, replacement); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

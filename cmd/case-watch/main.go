@@ -13,8 +13,9 @@ import (
 
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/service"
 	"github.com/arhor/case-watch/internal/data"
+	"github.com/arhor/case-watch/internal/notifications"
+	"github.com/arhor/case-watch/internal/service"
 )
 
 const usage = "usage: case-watch run | provision-key PATH KEY_ID | rotate-key DB_PATH KEY_PATH NEW_ID | queue DB_PATH KEY_PATH RECIPIENT_ID | resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | resume-token DB_PATH KEY_PATH"
@@ -50,11 +51,11 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 			if args[0] == "resume-recipient" {
 				return service.Resume(ctx, s, id, false)
 			}
-			rows, e := s.Queue(ctx, id)
+			rows, e := s.Pending.Queue(ctx, id)
 			if e != nil {
 				return e
 			}
-			r, g, e := s.DeliveryGates(ctx, id)
+			r, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, id)
 			if e != nil {
 				return e
 			}

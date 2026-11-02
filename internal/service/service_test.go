@@ -14,6 +14,7 @@ import (
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
+	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/telegram"
 	"github.com/arhor/case-watch/internal/tracking"
 )
@@ -68,7 +69,7 @@ func seed(t *testing.T, s *data.Store, k *credentials.Keyring, owner int64) appl
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.Enroll(context.Background(), owner, r, application.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
+	if e = (tracking.Persistence{DB: s}).Enroll(context.Background(), owner, r, application.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
 		t.Fatal(e)
 	}
 	return r
@@ -147,7 +148,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			if kind == "undecryptable" {
 				s := f.open(t)
 				defer s.Close()
-				rows, e := s.Enrollments(context.Background())
+				rows, e := s.Enrollments.Enrollments(context.Background())
 				if e != nil || len(rows) != 1 {
 					t.Fatal("undecryptable state was reset")
 				}
@@ -254,7 +255,7 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 	}
 	s = f.open(t)
 	defer s.Close()
-	if _, e = s.Enrollment(context.Background(), 1); e != nil {
+	if _, e = s.Enrollments.Enrollment(context.Background(), 1); e != nil {
 		t.Fatal("database failed to reopen")
 	}
 }
@@ -265,28 +266,31 @@ func TestRunShouldRecoverUncertainReservationsBeforePollingWhenStarted(t *testin
 	s := f.open(t)
 	r := seed(t, s, f.k, 1)
 	now := time.Now()
-	if e := s.Observe(context.Background(), 1, r.ID, application.Observation{Stage: "B", CheckedAt: now}); e != nil {
+	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 1, r.ID, application.Observation{Stage: "B", CheckedAt: now}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.ReserveDelivery(context.Background(), 1, now); e != nil {
+	if _, e := (notifications.Persistence{DB: s}).ReserveDelivery(context.Background(), 1, now); e != nil {
 		t.Fatal(e)
 	}
 	s.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	recovered := false
+	var recoveryRows []data.Delivery
+	var recoveryReadErr error
 	// When
 	e := Run(ctx, f.lookup, Factories{Telegram: func(tc telegram.Config) (Transport, error) {
 		return &transport{start: func(c context.Context) {
 			reader := tc.Store.(monitoredReader)
-			q, e := reader.s.Queue(c, 1)
+			q, e := reader.s.Pending.Queue(c, 1)
+			recoveryRows, recoveryReadErr = q, e
 			recovered = e == nil && len(q) == 1 && q[0].Status != "reserved" && q[0].LifetimeAttempts == 1 && q[0].Failure == "uncertain"
 			cancel()
 		}}, nil
 	}})
 	// Then
 	if e != nil || !recovered {
-		t.Fatal("polling began before uncertainty recovery")
+		t.Fatalf("startup result=%v recovery read=%v rows=%+v", e, recoveryReadErr, recoveryRows)
 	}
 }
 
@@ -323,7 +327,7 @@ func TestRunShouldPersistKnownDirectGateWhenShutdownCancelsCaller(t *testing.T) 
 			}})
 			s := f.open(t)
 			defer s.Close()
-			_, g, readErr := s.DeliveryGates(context.Background(), 101)
+			_, g, readErr := (notifications.Persistence{DB: s}).DeliveryGates(context.Background(), 101)
 			// Then
 			if e != nil || readErr != nil || (category == application.SendRateLimited && g.RateUntil.Before(time.Now())) || (category == application.SendInvalidToken && !g.TokenPaused) {
 				t.Fatalf("run=%v read=%v gate=%+v", e, readErr, g)

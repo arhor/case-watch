@@ -25,9 +25,10 @@ var (
 	ErrInvalid     = errors.New("invalid enrollment input")
 )
 
-// Store contains only ordinary values; the concrete SQLite adapter satisfies it.
+// Store contains the atomic tracking workflows implemented by Persistence.
 type Store interface {
-	application.Store
+	Enroll(context.Context, int64, application.SealedCredentials, application.Observation) error
+	Observe(context.Context, int64, application.EnrollmentID, application.Observation) error
 	Enrollment(context.Context, int64) (data.Enrollment, error)
 	ReserveCheck(context.Context, int64, application.EnrollmentID, bool, time.Time) (data.CheckReservation, error)
 	Remove(context.Context, int64, application.EnrollmentID) error

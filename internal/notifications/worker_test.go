@@ -3,16 +3,17 @@ package notifications_test
 import (
 	"context"
 	"errors"
-	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/auth"
-	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/notifications"
-	"github.com/arhor/case-watch/internal/data"
-	"github.com/arhor/case-watch/internal/tracking"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/arhor/case-watch/internal/application"
+	"github.com/arhor/case-watch/internal/auth"
+	"github.com/arhor/case-watch/internal/credentials"
+	"github.com/arhor/case-watch/internal/data"
+	"github.com/arhor/case-watch/internal/notifications"
+	"github.com/arhor/case-watch/internal/tracking"
 )
 
 var ctx = context.Background()
@@ -60,7 +61,7 @@ func setup(t *testing.T) *fixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	f.c = tracking.New(f.s, k, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, k, portal{}, f.policy, f.clock)
 	for _, o := range []int64{101, 202} {
 		id, e := data.NewEnrollmentID()
 		if e != nil {
@@ -70,7 +71,7 @@ func setup(t *testing.T) *fixture {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = f.s.Enroll(ctx, o, sealed, application.Observation{Stage: "A", CheckedAt: epoch}); e != nil {
+		if e = (tracking.Persistence{DB: f.s}).Enroll(ctx, o, sealed, application.Observation{Stage: "A", CheckedAt: epoch}); e != nil {
 			t.Fatal(e)
 		}
 		f.ids[o] = id
@@ -79,13 +80,13 @@ func setup(t *testing.T) *fixture {
 }
 func (f *fixture) observe(t *testing.T, o int64, stage string) {
 	t.Helper()
-	if e := f.s.Observe(ctx, o, f.ids[o], application.Observation{Stage: stage, CheckedAt: f.clock.Now()}); e != nil {
+	if e := (tracking.Persistence{DB: f.s}).Observe(ctx, o, f.ids[o], application.Observation{Stage: stage, CheckedAt: f.clock.Now()}); e != nil {
 		t.Fatal(e)
 	}
 }
 func (f *fixture) worker(t *testing.T, s sender) *notifications.Worker {
 	t.Helper()
-	w, e := notifications.New(notifications.Config{Store: f.s, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: s})
+	w, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: s})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -102,7 +103,7 @@ func step(t *testing.T, w *notifications.Worker) {
 }
 func queue(t *testing.T, f *fixture, o int64) []data.Delivery {
 	t.Helper()
-	q, e := f.s.Queue(ctx, o)
+	q, e := f.s.Pending.Queue(ctx, o)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -153,7 +154,7 @@ func TestWorkerShouldExhaustSixAttemptsWithoutOvertakingWhenHeadFails(t *testing
 	step(t, w)
 	// Then
 	q := queue(t, f, 101)
-	r, _, e := f.s.DeliveryGates(ctx, 101)
+	r, _, e := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
 	if e != nil || calls[101] != 6 || calls[202] != 1 || r.Pause != "exhausted" || q[0].LifetimeAttempts != 6 || q[1].CycleAttempts != 0 || len(q) != 3 {
 		t.Fatalf("calls=%v queue=%+v gates=%+v err=%v", calls, q, r, e)
 	}
@@ -212,7 +213,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 	// Given
 	f := setup(t)
 	f.observe(t, 101, "B")
-	d, e := f.s.ReserveDelivery(ctx, 101, epoch)
+	d, e := (notifications.Persistence{DB: f.s}).ReserveDelivery(ctx, 101, epoch)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -222,7 +223,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 		t.Fatal(e)
 	}
 	calls := 0
-	f.c = tracking.New(f.s, nil, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, nil, portal{}, f.policy, f.clock)
 	// When
 	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
 		calls++
@@ -272,7 +273,7 @@ func TestWorkerShouldApplyUnblockAfterActiveSendWhenMembershipArrivesDuringReser
 }
 
 type faultStore struct {
-	*data.Store
+	notifications.Persistence
 	fail bool
 }
 
@@ -280,13 +281,13 @@ func (s *faultStore) CompleteDelivery(c context.Context, d data.Delivery, o appl
 	if s.fail {
 		return data.ErrStorage
 	}
-	return s.Store.CompleteDelivery(c, d, o, n)
+	return s.Persistence.CompleteDelivery(c, d, o, n)
 }
 func TestWorkerShouldStopForRecoveryWhenAcceptedOutcomeCannotBePersisted(t *testing.T) {
 	// Given
 	f := setup(t)
 	f.observe(t, 101, "B")
-	fs := &faultStore{Store: f.s, fail: true}
+	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	calls := 0
 	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
 		calls++
@@ -342,7 +343,7 @@ func TestWorkerShouldRetainExhaustionAndLifetimeWhenRestartAndOperatorResume(t *
 	})
 	step(t, restarted)
 	before := queue(t, f, 101)[0]
-	e := f.s.ResumeRecipient(ctx, 101)
+	e := (notifications.Persistence{DB: f.s}).ResumeRecipient(ctx, 101)
 	step(t, restarted)
 	// Then
 	q := queue(t, f, 101)
@@ -364,7 +365,7 @@ func TestWorkerShouldPreserveCountersWhenAuthorizationSuppressesDelivery(t *test
 	f.observe(t, 101, "B")
 	p := &switchPolicy{}
 	calls := 0
-	w, e := notifications.New(notifications.Config{Store: f.s, Coordinator: f.c, Policy: p, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
+	w, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.c, Policy: p, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
 		calls++
 		return application.SendOutcome{Category: application.SendAccepted, MessageID: 1}, nil
 	})})
@@ -406,7 +407,7 @@ func TestWorkerShouldDrainBeforeDeletionWhenRemovalCancelsActiveSend(t *testing.
 	sendErr := <-done
 	<-returned
 	q := queue(t, f, 101)
-	r, _, e := f.s.DeliveryGates(ctx, 101)
+	r, _, e := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
 	// Then
 	if removed != nil || sendErr != nil || e != nil || len(q) != 0 || !r.Blocked {
 		t.Fatalf("removed=%v send=%v gates=%+v queue=%+v err=%v", removed, sendErr, r, q, e)
@@ -472,8 +473,8 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 				t.Fatal(e)
 			}
 			defer s.Close()
-			_, g, e := s.DeliveryGates(ctx, 101)
-			q, qe := s.Queue(ctx, 101)
+			_, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, 101)
+			q, qe := s.Pending.Queue(ctx, 101)
 			// Then
 			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" || (category == application.SendRateLimited && !g.RateUntil.Equal(epoch.Add(time.Hour))) || (category == application.SendInvalidToken && !g.TokenPaused) {
 				t.Fatalf("errors=%v/%v/%v/%v calls=%d gates=%+v queue=%+v", directErr, stepErr, e, qe, calls, g, q)
@@ -486,13 +487,13 @@ func (s *faultStore) RecordGlobalOutcome(c context.Context, o application.SendOu
 	if s.fail {
 		return data.ErrStorage
 	}
-	return s.Store.RecordGlobalOutcome(c, o, n)
+	return s.Persistence.RecordGlobalOutcome(c, o, n)
 }
 func TestSendDirectShouldReturnFatalFailureWhenCancelledOutcomeCannotPersist(t *testing.T) {
 	// Given
 	f := setup(t)
 	c, cancel := context.WithCancel(ctx)
-	fs := &faultStore{Store: f.s, fail: true}
+	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
 		cancel()
 		return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")

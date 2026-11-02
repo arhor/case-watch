@@ -38,7 +38,7 @@ type Factories struct {
 }
 
 func Verify(ctx context.Context, s *data.Store, k *credentials.Keyring) error {
-	rows, e := s.Enrollments(ctx)
+	rows, e := s.Enrollments.Enrollments(ctx)
 	if e != nil {
 		return ErrStartup
 	}
@@ -96,7 +96,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 	if f.Portal != nil {
 		p = f.Portal()
 	}
-	coord := tracking.New(s.TrackingRepositories(), k, p, policy, clock{})
+	coord := tracking.New(tracking.Persistence{DB: s}, k, p, policy, clock{})
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var worker *notifications.Worker
@@ -131,7 +131,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		coord.Shutdown()
 		return ErrStartup
 	}
-	worker, e = notifications.New(notifications.Config{Store: s.NotificationRepositories(), Coordinator: monitored, Policy: policy, Clock: clock{}, Sender: transport, Report: func(category string) {
+	worker, e = notifications.New(notifications.Config{Store: notifications.Persistence{DB: s}, Coordinator: monitored, Policy: policy, Clock: clock{}, Sender: transport, Report: func(category string) {
 		report(category)
 		if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" {
 			fail()
@@ -150,7 +150,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		}
 		return ErrService
 	}
-	sched, e := scheduler.New(scheduler.Config{Inventory: s.EnrollmentRepository, Tracking: monitored, Policy: policy, Clock: clock{}, Report: func(category string) {
+	sched, e := scheduler.New(scheduler.Config{Inventory: s.Enrollments, Tracking: monitored, Policy: policy, Clock: clock{}, Report: func(category string) {
 		report(category)
 		if category == "inventory_failed" {
 			fail()
