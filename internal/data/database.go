@@ -26,48 +26,18 @@ var (
 	ErrInvalid     = errors.New("invalid storage input")
 )
 
-// DBTX is the SQL surface shared by connections and transactions.
-type DBTX interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-type Store struct {
-	db          *sql.DB
-	inTx        bool
-	Enrollments *EnrollmentRepository
-	History     *HistoryRepository
-	Pending     *PendingDeliveryRepository
-	Guards      *CheckGuardRepository
-	Recipients  *RecipientRepository
-	Gates       *GlobalGateRepository
-}
-
-type EnrollmentRepository struct{ db DBTX }
 type HistoryRepository struct{ db DBTX }
 type PendingDeliveryRepository struct{ db DBTX }
 type CheckGuardRepository struct{ db DBTX }
 type GlobalGateRepository struct{ db DBTX }
 
-func newStore(db *sql.DB, handle DBTX, inTx bool) *Store {
-	return &Store{db: db, inTx: inTx,
-		Enrollments: &EnrollmentRepository{db: handle},
-		History:     &HistoryRepository{db: handle},
-		Pending:     &PendingDeliveryRepository{db: handle},
-		Guards:      &CheckGuardRepository{db: handle},
-		Recipients:  &RecipientRepository{db: handle},
-		Gates:       &GlobalGateRepository{db: handle},
-	}
-}
-
 // NewEnrollmentID allocates an opaque identity before sealing credentials.
-func NewEnrollmentID() (application.EnrollmentID, error) {
+func NewEnrollmentID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", ErrStorage
 	}
-	return application.EnrollmentID(hex.EncodeToString(b)), nil
+	return hex.EncodeToString(b), nil
 }
 
 // Open initializes or transactionally migrates one local file. The parent
@@ -93,22 +63,12 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	s := newStore(db, db, false)
-	if err = s.migrate(ctx); err != nil {
+	store := NewStore(db)
+	if err = store.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
 	}
-	return s, nil
-}
-
-func (s *Store) Close() error {
-	if s.inTx {
-		return ErrTransaction
-	}
-	if s.db.Close() != nil {
-		return ErrStorage
-	}
-	return nil
+	return store, nil
 }
 
 func validID(id application.EnrollmentID) bool {
@@ -116,9 +76,13 @@ func validID(id application.EnrollmentID) bool {
 	return e == nil && len(b) == 16 && string(id) == strings.ToLower(string(id))
 }
 
-func validObservation(o application.Observation) bool { return !o.CheckedAt.IsZero() }
+func validObservation(o application.Observation) bool {
+	return !o.CheckedAt.IsZero()
+}
 
-func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+func stamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339Nano)
+}
 
 func instant(n int64) time.Time {
 	if n == 0 {

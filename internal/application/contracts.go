@@ -58,14 +58,10 @@ type Tracking interface {
 	Remove(context.Context, int64) error
 }
 
-// EnrollmentID is immutable and never reused after removal; storage rejects
-// observations and acknowledgements for a removed enrollment.
-type EnrollmentID string
-
 // SealedCredentials contains only authenticated ciphertext and format metadata.
 // Credential ID is also the immutable destination identity used for AAD binding.
 type SealedCredentials struct {
-	ID            EnrollmentID
+	ID            string
 	FormatVersion int
 	KeyID         string
 	Payload       []byte

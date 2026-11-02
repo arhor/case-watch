@@ -202,7 +202,7 @@ func Provision(path, id string) error {
 	return nil
 }
 
-func aad(id application.EnrollmentID, version int, keyID string) []byte {
+func aad(id string, version int, keyID string) []byte {
 	// JSON array encodes field boundaries and types unambiguously.
 	data, _ := json.Marshal([]any{"case-watch/portal-credentials", version, keyID, string(id)})
 	return data
@@ -228,8 +228,8 @@ func (k *Keyring) aead(id string) (cipher.AEAD, error) {
 
 // Seal encrypts number and password together with fresh prefixed random nonce.
 // Use fewer than 2^32 encryptions per key. The returned ID must remain immutable.
-func (k *Keyring) Seal(id application.EnrollmentID, plaintext application.Credentials) (application.SealedCredentials, error) {
-	if k == nil || strings.TrimSpace(string(id)) == "" || !utf8.ValidString(string(id)) || !utf8.ValidString(plaintext.Number) || !utf8.ValidString(plaintext.Password) {
+func (k *Keyring) Seal(id string, plaintext application.Credentials) (application.SealedCredentials, error) {
+	if k == nil || strings.TrimSpace(id) == "" || !utf8.ValidString(id) || !utf8.ValidString(plaintext.Number) || !utf8.ValidString(plaintext.Password) {
 		return application.SealedCredentials{}, ErrCredentials
 	}
 	a, err := k.aead(k.active)
@@ -247,7 +247,7 @@ func (k *Keyring) Seal(id application.EnrollmentID, plaintext application.Creden
 // Open reconstructs AAD from the immutable destination record ID and its metadata.
 // Storage must supply the destination ID, never an ID copied from another payload.
 func (k *Keyring) Open(record application.SealedCredentials) (application.Credentials, error) {
-	if record.FormatVersion != 1 || strings.TrimSpace(string(record.ID)) == "" || !utf8.ValidString(string(record.ID)) {
+	if record.FormatVersion != 1 || strings.TrimSpace(record.ID) == "" || !utf8.ValidString(record.ID) {
 		return application.Credentials{}, ErrCredentials
 	}
 	a, err := k.aead(record.KeyID)
