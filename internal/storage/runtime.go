@@ -8,23 +8,6 @@ import (
 	"time"
 )
 
-const runtimeSchema = `
-CREATE TABLE manual_guards(owner_id INTEGER PRIMARY KEY, started INTEGER NOT NULL);
-CREATE TABLE case_guards(enrollment_id TEXT PRIMARY KEY REFERENCES enrollments(id) ON DELETE CASCADE, started INTEGER NOT NULL);
-CREATE TABLE recipients(recipient_id INTEGER PRIMARY KEY, pause TEXT NOT NULL DEFAULT '', blocked INTEGER NOT NULL DEFAULT 0);
-INSERT INTO recipients(recipient_id) SELECT DISTINCT recipient_id FROM pending;
-CREATE TABLE delivery_gates(singleton INTEGER PRIMARY KEY CHECK(singleton=1), token_paused INTEGER NOT NULL DEFAULT 0, rate_until INTEGER NOT NULL DEFAULT 0);
-INSERT INTO delivery_gates(singleton) VALUES(1);
-ALTER TABLE pending ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
-ALTER TABLE pending ADD COLUMN cycle_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE pending ADD COLUMN lifetime_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE pending ADD COLUMN next_attempt INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE pending ADD COLUMN reserved_at INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE pending ADD COLUMN failure TEXT NOT NULL DEFAULT '';
-ALTER TABLE pending ADD COLUMN message_id INTEGER NOT NULL DEFAULT 0;
-CREATE TRIGGER pending_recipient AFTER INSERT ON pending BEGIN INSERT OR IGNORE INTO recipients(recipient_id) VALUES(NEW.recipient_id); END;
-`
-
 // CheckReservation is durable attempt-start eligibility, separate from cache freshness.
 // The coordinator must join in-process work before requesting another reservation.
 type CheckReservation struct {

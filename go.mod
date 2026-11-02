@@ -6,6 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/go-telegram/bot v1.27.0
+	github.com/golang-migrate/migrate/v4 v4.20.1
 	modernc.org/sqlite v1.61.1
 )
 

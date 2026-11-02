@@ -28,3 +28,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Choose weekday polling and rate-limited fresh status checks](0007_choose-polling-and-status-behavior.md) (accepted, 2026-11-01)
 - [Choose Docker Compose with persistent storage and defer backups](0008_choose-container-deployment-without-backups.md) (accepted, 2026-11-01)
 - [Choose bounded retries and ordered notification recovery](0009_choose-notification-retry-policy.md) (accepted, 2026-11-01)
+- [Adopt golang-migrate for database migrations](0010_adopt-golang-migrate.md) (proposed, 2026-11-02)

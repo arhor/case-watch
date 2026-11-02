@@ -75,59 +75,6 @@ func (s *Store) Close() error {
 	return nil
 }
 
-const schema = `
-CREATE TABLE enrollment_ids(id TEXT PRIMARY KEY);
-CREATE TABLE enrollments(
- id TEXT PRIMARY KEY REFERENCES enrollment_ids(id), owner_id INTEGER NOT NULL UNIQUE CHECK(owner_id>0),
- credential_version INTEGER NOT NULL, key_id TEXT NOT NULL, payload BLOB NOT NULL,
- stage TEXT NOT NULL, checked_at TEXT NOT NULL);
-CREATE TRIGGER immutable_enrollment_id BEFORE UPDATE OF id ON enrollments BEGIN SELECT RAISE(ABORT,'immutable identity'); END;
-CREATE TABLE history(
- sequence INTEGER PRIMARY KEY AUTOINCREMENT, enrollment_id TEXT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
- previous_stage TEXT NOT NULL, stage TEXT NOT NULL, checked_at TEXT NOT NULL);
-CREATE TABLE pending(
- sequence INTEGER PRIMARY KEY AUTOINCREMENT, history_sequence INTEGER NOT NULL REFERENCES history(sequence) ON DELETE CASCADE,
- recipient_id INTEGER NOT NULL CHECK(recipient_id>0), UNIQUE(history_sequence,recipient_id));
-CREATE INDEX pending_recipient_order ON pending(recipient_id,sequence);
-`
-
-func (s *Store) migrate(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return ErrStorage
-	}
-	defer tx.Rollback()
-	var version int
-	if tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil {
-		return ErrStorage
-	}
-	if version > 2 {
-		return ErrSchema
-	}
-	if version < 0 {
-		return ErrSchema
-	}
-	if version == 0 {
-		if _, err = tx.ExecContext(ctx, schema); err != nil {
-			return ErrStorage
-		}
-		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=1"); err != nil {
-			return ErrStorage
-		}
-	}
-	if version < 2 {
-		if _, err = tx.ExecContext(ctx, runtimeSchema); err != nil {
-			return ErrStorage
-		}
-		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
-			return ErrStorage
-		}
-	}
-	if tx.Commit() != nil {
-		return ErrStorage
-	}
-	return nil
-}
 func validID(id application.EnrollmentID) bool {
 	b, e := hex.DecodeString(string(id))
 	return e == nil && len(b) == 16 && string(id) == strings.ToLower(string(id))

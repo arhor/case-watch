@@ -10,3 +10,5 @@
 !internal/**/*.go
 # Tests are verified outside the image; keep fixtures and test-only text out.
 **/*_test.go
+
+!internal/storage/migrations/*.up.sql

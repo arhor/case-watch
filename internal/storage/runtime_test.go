@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"database/sql"
 	"errors"
 	"github.com/arhor/case-watch/internal/application"
 	"sync"
@@ -177,44 +176,6 @@ func TestRemoveShouldRollbackAllRowsWhenDeletionFails(t *testing.T) {
 	// Then
 	if !errors.Is(err, ErrStorage) || readErr != nil || current.Credentials.ID != c.ID || count(t, s, "history") != 1 || count(t, s, "pending") != 1 {
 		t.Fatalf("partial removal err=%v read=%v", err, readErr)
-	}
-}
-
-func TestMigrationShouldPreserveVersionOneRowsWhenRuntimeSchemaAdded(t *testing.T) {
-	// Given
-	s, _, _, c := fixture(t)
-	s.Close()
-	path := t.TempDir() + "/v1.db"
-	db, e := sql.Open("sqlite", path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	// When
-	if _, e = db.Exec(schema + `PRAGMA user_version=1;`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec("INSERT INTO enrollment_ids VALUES(?)", string(c.ID)); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec("INSERT INTO enrollments VALUES(?,?,?,?,?,?,?)", string(c.ID), 101, c.FormatVersion, c.KeyID, c.Payload, "A", stamp(epoch)); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec("INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", string(c.ID), "A", "B", stamp(epoch)); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec("INSERT INTO pending(history_sequence,recipient_id) VALUES(1,101)"); e != nil {
-		t.Fatal(e)
-	}
-	db.Close()
-	s, e = Open(ctx, path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer s.Close()
-	d, e := s.ReserveDelivery(ctx, 101, epoch)
-	// Then
-	if e != nil || d.CycleAttempts != 1 || d.Stage != "B" || count(t, s, "history") != 1 {
-		t.Fatalf("migration delivery=%+v error=%v", d, e)
 	}
 }
 

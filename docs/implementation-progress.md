@@ -138,3 +138,50 @@ A fresh independent agent reviewed every accepted ADR, dated amendment, product 
 Final parent verification after every code correction (exit 0): run `source "$NVM_DIR/nvm.sh"` and `nvm use`, then export `GOCACHE=/private/tmp/case-watch-go-build`, `GOMODCACHE=/private/tmp/case-watch-go-mod`, `GOPROXY=off`, `GOSUMDB=off`; execute `go test -count=1 ./...`, `go test -count=1 -race ./...`, `go vet ./...`, `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /private/tmp/case-watch-final-arm64 ./cmd/case-watch`, `file /private/tmp/case-watch-final-arm64`, and `git diff --check`. All test packages passed in both runs; vet and diff checks passed; the binary is a statically linked ARM aarch64 Linux ELF. Approved escalation was used solely for existing offline loopback HTTP fixtures. An initial final-verification attempt did not execute because approval review hit a usage limit; after the user reported the reset, this full sequence executed successfully.
 
 No commits, pushes, deployment, live portal/Telegram checks, real key provisioning, raw capture reads or backups were performed. The pre-existing untracked HTML/HAR captures remain untouched. Docker daemon access remains unavailable; actual image builds, container permissions/persistence/termination/restart and host boot behavior are unverified. Additional live integration and Pi resource measurements remain separately authorized environment acceptance tasks, not claimed successes.
+
+### 2026-11-02: golang-migrate replacement
+
+Replaced custom migration sequencing with pinned golang-migrate v4.20.1,
+embedded up SQL, and the modernc SQLite adapter. The consolidated baseline uses
+schema_migrations version 1. Legacy user_version databases are rejected unchanged;
+no compatibility conversion or automatic reset is supplied. Added metadata
+rejection, ordered-upgrade and transactional failure/dirty-state tests. Proposed
+ADR 0010 records the dependency decision.
+
+Verification: Go 1.27.3; go test ./... passed; go test -race ./... passed on
+rerun (the first race run failed the existing service uncertainty-recovery test);
+go vet ./... passed; native and CGO_ENABLED=0 Linux ARM64 application builds
+passed. Documentation relative links and git diff --check passed. Sandbox
+loopback/cache restrictions required elevated verification. Docker client exists
+but its daemon is unreachable, so image build and container behavior remain
+unverified. No live endpoints, deployment, or data reset were performed.
+
+### 2026-11-02: Migration change review
+
+Reviewed migration initialization, legacy/dirty/future-schema refusal, embedded
+SQL, connection ownership, cancellation and Docker source inclusion against the
+implementation plan. Added a regression test confirming that an unversioned
+populated database is rejected byte-for-byte unchanged. With Go 1.27.3,
+`go test -count=1 ./...`, `go test -count=1 -race ./...`, `go vet ./...`, native
+build, CGO-disabled Linux ARM64 build and `git diff --check` all passed. Go tests
+used local loopback fixtures and a temporary build cache under approved sandbox
+access. The Docker daemon remains unavailable; image contents were inspected
+through the Dockerfile and `.dockerignore`, not a container build.
+
+### 2026-11-02: Initial migration SQL review
+
+Folded the old v2 `pending` column additions into the fresh database's initial
+`CREATE TABLE` and removed the now-empty recipient copy. Compared the old
+two-step schema with the revised initial SQL using SQLite introspection: tables,
+columns, foreign keys, indexes, triggers and delivery-gate seed matched. With
+Go 1.27.3, `go test -count=1 ./...`, `go test -count=1 -race ./...`,
+`go vet ./...`, native and CGO-disabled Linux ARM64 builds, and
+`git diff --check` passed. Docker execution remains unverified without a daemon.
+
+### 2026-11-02: Initial SQL formatting
+
+Reformatted the initial migration for readable table definitions, constraints,
+index, triggers and seed data. SQLite introspection confirmed the resulting
+tables, columns, foreign keys, indexes and gate seed match the former two-step
+schema. `go test -count=1 ./...`, `go test -count=1 -race ./...`, `go vet ./...`,
+native and CGO-disabled Linux ARM64 builds, and `git diff --check` passed.

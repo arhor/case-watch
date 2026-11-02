@@ -73,3 +73,14 @@ Container removal alone does not remove the named volume or host key. Do not use
 ## Validation still required on Docker
 
 The development environment currently has no reachable Docker daemon. Image build, runtime UID/certificate/timezone checks, volume copy-up, file mount permissions, container recreation, signal delivery, restart policy and host boot behavior remain unverified. Linux ARM64 cross-compilation and offline Go tests do not establish these properties. Before deployment, use synthetic keys/cases and fake portal/Telegram transports to verify retained encrypted credentials, history, cooldowns, queue/gates across recreation; normal and forced termination with SQLite reopen; refusal of invalid startup; and explicit loss/re-enrollment. Do not connect production endpoints for those checks. The current production CLI deliberately has no endpoint override; an offline container harness must inject test factories/build a test binary rather than passing fake-looking production tokens. Run `docker version`, the build command above, and `docker compose config --quiet` with synthetic settings before lifecycle checks. Confirm the image user/entrypoint with `docker image inspect`, and inspect the created volume and file access as UID 10001. Perform Docker/host reboot checks only in an authorized disposable environment. Pi resource suitability requires later target-device measurement.
+
+## Migration transition (2026-11-02)
+
+The golang-migrate release supports fresh databases only. Existing PRAGMA
+user_version v1/v2 databases are rejected unchanged. To adopt this release with
+existing data, explicitly accept loss and follow the stopped-service reset
+procedure; owners must re-enroll. Never reset automatically. New migrations run
+during storage.Open, including maintenance, under the existing process lock.
+Dirty migration metadata prevents startup; keep the service stopped and inspect
+the failed migration before correcting state. No automatic version forcing,
+downgrade command, or backup tooling is provided.

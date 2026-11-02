@@ -23,3 +23,14 @@ Recipient IDs are positive numeric Telegram user IDs. Recovery does not mark any
 Rotation is recoverable at each ordering boundary. Before the database commit, old ciphertext remains decryptable. After commit but before active-ID replacement, the persisted keyring already contains the new decryption key; restarting can still read every record. Retry an interrupted rotation with the same inactive `NEW_ID`. If it already became active, rotation completed; do not retire old keys automatically. Stop and correct missing keys or failed verification rather than resetting the database. A read-only key mount suffices for normal service operation; rotation requires explicit writable access to its protected directory with the service stopped.
 
 No backup creation, restore automation, automatic data reset, deployment or Pi provisioning is provided. Losing the database or required key can require re-enrollment and cannot reconstruct history or undelivered transitions. Live portal checks, actual deployment and Pi resource measurements require separate authorization and evidence.
+
+## Migration transition (2026-11-02)
+
+The golang-migrate release supports fresh databases only. Existing PRAGMA
+user_version v1/v2 databases are rejected unchanged. To adopt this release with
+existing data, explicitly accept loss and follow the stopped-service reset
+procedure; owners must re-enroll. Never reset automatically. New migrations run
+during storage.Open, including maintenance, under the existing process lock.
+Dirty migration metadata prevents startup; keep the service stopped and inspect
+the failed migration before correcting state. No automatic version forcing,
+downgrade command, or backup tooling is provided.
