@@ -1,8 +1,6 @@
 name: Go verification
 
 on:
-  push:
-    branches: [fix/finish-repository-refactor]
   pull_request:
 
 jobs:
