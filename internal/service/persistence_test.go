@@ -90,7 +90,7 @@ func TestObserveShouldPreserveOccurrencesWhenStagesReturnToBaseline(t *testing.T
 	if count(t, reopened, "pending") != 2 {
 		t.Fatal("lost pending work")
 	}
-	e, err := reopened.Enrollments.Enrollment(ctx, 101)
+	e, err := reopened.Enrollments.FindByOwner(ctx, 101)
 	if err != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(observation("A", 4).CheckedAt) {
 		t.Fatal("cache not persisted")
 	}
@@ -108,7 +108,7 @@ func TestObserveShouldRefreshTimeOnlyWhenStageIsUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := s.Enrollments.Enrollment(ctx, 101)
+	e, err := s.Enrollments.FindByOwner(ctx, 101)
 	if err != nil || !e.Observation.CheckedAt.Equal(observation("A", 2).CheckedAt) || count(t, s, "history") != 0 || count(t, s, "pending") != 0 {
 		t.Fatal("unchanged observation changed history or lost time")
 	}
@@ -158,7 +158,7 @@ func TestObserveShouldRollbackEveryEffectWhenPersistenceFails(t *testing.T) {
 	if !errors.Is(err, data.ErrStorage) || err.Error() != data.ErrStorage.Error() {
 		t.Fatal("error was not sanitized")
 	}
-	e, err := reopened.Enrollments.Enrollment(ctx, 101)
+	e, err := reopened.Enrollments.FindByOwner(ctx, 101)
 	if err != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(epoch) || count(t, reopened, "history") != 0 || count(t, reopened, "pending") != 0 {
 		t.Fatal("partial observation survived rollback")
 	}
@@ -194,7 +194,7 @@ func TestEnrollShouldRefuseReplacementWhenOwnerAlreadyExists(t *testing.T) {
 	if !errors.Is(err, data.ErrExists) || count(t, s, "enrollments") != 1 {
 		t.Fatal("owner replacement accepted")
 	}
-	e, err := s.Enrollments.Enrollment(ctx, 101)
+	e, err := s.Enrollments.FindByOwner(ctx, 101)
 	if err != nil || e.Credentials.ID != c.ID || e.Observation.Stage != "A" {
 		t.Fatal("original changed")
 	}
@@ -205,7 +205,7 @@ func TestStorageShouldDenyOtherOwnerWhenIdentityIsKnown(t *testing.T) {
 	enroll(t, s, c)
 	// When
 	observeErr := (tracking.Persistence{DB: s.Store}).Observe(ctx, 202, c.ID, observation("B", 1))
-	_, readErr := s.Enrollments.Enrollment(ctx, 202)
+	_, readErr := s.Enrollments.FindByOwner(ctx, 202)
 	history, historyErr := s.History.History(ctx, 202, c.ID)
 	// Then
 	if !errors.Is(observeErr, data.ErrNotFound) || !errors.Is(readErr, data.ErrNotFound) || historyErr != nil || len(history) != 0 || count(t, s, "history") != 0 {
@@ -259,7 +259,7 @@ func TestStorageShouldKeepCredentialsSealedWhenWrittenAndReopened(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := s.Enrollments.Enrollment(ctx, 202)
+	e, err := s.Enrollments.FindByOwner(ctx, 202)
 	if err != nil {
 		t.Fatal(err)
 	}
