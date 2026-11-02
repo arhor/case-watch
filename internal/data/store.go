@@ -12,14 +12,14 @@ type DBTX interface {
 }
 
 type Store struct {
-	db               *sql.DB
-	inTx bool
-	Enrollments      *EnrollmentRepository
-	History          *HistoryRepository
-	Pending          *PendingDeliveryRepository
-	Guards           *CheckGuardRepository
-	Recipients       *RecipientRepository
-	Gates            *GlobalGateRepository
+	db          *sql.DB
+	inTx        bool
+	Enrollments *EnrollmentRepository
+	History     *HistoryRepository
+	Pending     *PendingDeliveryRepository
+	Guards      *CheckGuardRepository
+	Recipients  *RecipientRepository
+	Gates       *GlobalGateRepository
 }
 
 func NewStore(db *sql.DB) *Store {
