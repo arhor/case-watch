@@ -148,7 +148,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			if kind == "undecryptable" {
 				s := f.open(t)
 				defer s.Close()
-				rows, e := s.Enrollments.Enrollments(context.Background())
+				rows, e := s.Enrollments.FindAll(context.Background())
 				if e != nil || len(rows) != 1 {
 					t.Fatal("undecryptable state was reset")
 				}
@@ -255,7 +255,7 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 	}
 	s = f.open(t)
 	defer s.Close()
-	if _, e = s.Enrollments.Enrollment(context.Background(), 1); e != nil {
+	if _, e = s.Enrollments.FindByOwner(context.Background(), 1); e != nil {
 		t.Fatal("database failed to reopen")
 	}
 }

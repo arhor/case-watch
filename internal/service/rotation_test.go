@@ -28,7 +28,7 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 			if e := (tracking.Persistence{DB: s}).Observe(ctx, 1, a.ID, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
 				t.Fatal(e)
 			}
-			before, e := s.Enrollments.Enrollments(ctx)
+			before, e := s.Enrollments.FindAll(ctx)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -49,7 +49,7 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 			})
 			persisted, load := credentials.Load(f.key)
 			verify := Verify(ctx, s, persisted)
-			after, read := s.Enrollments.Enrollments(ctx)
+			after, read := s.Enrollments.FindAll(ctx)
 			// Then
 			if load != nil || verify != nil || read != nil {
 				t.Fatal("interruption made records undecryptable")

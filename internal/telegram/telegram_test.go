@@ -121,15 +121,15 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(101, "/enroll")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
-	e, err := f.s.Enrollments.Enrollment(context.Background(), 101)
+	e, err := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	history, herr := f.s.History.History(context.Background(), 101, e.Credentials.ID)
 	f.message(101, "/status")
 	f.message(202, "/remove")
 	f.message(202, "REMOVE")
-	_, still := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, still := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, removed := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, data.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
@@ -153,18 +153,18 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "synthetic-number")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "synthetic-password")
-	_, expired := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, expired := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	f.message(101, "/enroll")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	f.message(101, "/remove")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "REMOVE")
-	_, retained := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, retained := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "/cancel")
 	f.message(101, "REMOVE")
-	_, cancelled := f.s.Enrollments.Enrollment(context.Background(), 101)
+	_, cancelled := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(expired, data.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
 		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)
@@ -382,7 +382,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if _, err := coordinator.Scheduled(ctx, 101); err != nil {
 		t.Fatal(err)
 	}
-	e, err := f.s.Enrollments.Enrollment(ctx, 101)
+	e, err := f.s.Enrollments.FindByOwner(ctx, 101)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	}
 	f.message(101, "/remove")
 	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollments.Enrollment(ctx, 101)
+	_, removed := f.s.Enrollments.FindByOwner(ctx, 101)
 	queue, err := f.s.Pending.Queue(ctx, 101)
 	// Then
 	if len(history) != 2 || gatedCalls != 1 || sender.calls != 3 || len(remaining) != 2 || remaining[0].Status != "delivered" || remaining[1].Status == "delivered" {

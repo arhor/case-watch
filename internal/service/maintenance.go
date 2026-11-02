@@ -113,7 +113,7 @@ func Resume(ctx context.Context, s *data.Store, recipient int64, token bool) err
 // performs local cryptography only; keyring file writes belong outside RunInTx.
 func RewriteCredentials(ctx context.Context, s *data.Store, rewrite func(application.SealedCredentials) (application.SealedCredentials, error)) error {
 	return s.RunInTx(ctx, func(tx *data.Store) error {
-		rows, err := tx.Enrollments.Enrollments(ctx)
+		rows, err := tx.Enrollments.FindAll(ctx)
 		if err != nil {
 			return err
 		}

@@ -150,7 +150,7 @@ func scanEnrollment(
 ) (Enrollment, error) {
 	var e Enrollment
 	var id, checked string
-	err := row.Scan(&e.OwnerID, &id, &e.Credentials.FormatVersion, &e.Credentials.KeyID, &e.Credentials.Payload, &e.Observation.Stage, &checked)
+	err := row.Scan(&id, &e.OwnerID, &e.Credentials.FormatVersion, &e.Credentials.KeyID, &e.Credentials.Payload, &e.Observation.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
 	}

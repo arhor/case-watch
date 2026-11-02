@@ -1,0 +1,19 @@
+name: Go verification
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.3'
+      - run: go build ./cmd/case-watch
+      - run: go vet ./...
+      - run: go test -timeout 60s ./...
+      - run: go test -race -timeout 90s ./...
