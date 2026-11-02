@@ -14,12 +14,12 @@ type DBTX interface {
 type Store struct {
 	db               *sql.DB
 	transactionBound bool
-	Enrollments *EnrollmentRepository
-	History     *HistoryRepository
-	Pending     *PendingDeliveryRepository
-	Guards      *CheckGuardRepository
-	Recipients  *RecipientRepository
-	Gates       *GlobalGateRepository
+	Enrollments      *EnrollmentRepository
+	History          *HistoryRepository
+	Pending          *PendingDeliveryRepository
+	Guards           *CheckGuardRepository
+	Recipients       *RecipientRepository
+	Gates            *GlobalGateRepository
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -58,12 +58,12 @@ func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
 	txStore := &Store{
 		db:               this.db,
 		transactionBound: true,
-		Enrollments: &EnrollmentRepository{db: tx},
-		History:     &HistoryRepository{db: tx},
-		Pending:     &PendingDeliveryRepository{db: tx},
-		Guards:      &CheckGuardRepository{db: tx},
-		Recipients:  &RecipientRepository{db: tx},
-		Gates:       &GlobalGateRepository{db: tx},
+		Enrollments:      &EnrollmentRepository{db: tx},
+		History:          &HistoryRepository{db: tx},
+		Pending:          &PendingDeliveryRepository{db: tx},
+		Guards:           &CheckGuardRepository{db: tx},
+		Recipients:       &RecipientRepository{db: tx},
+		Gates:            &GlobalGateRepository{db: tx},
 	}
 
 	if err = fn(txStore); err != nil {
