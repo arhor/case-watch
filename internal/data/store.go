@@ -12,7 +12,8 @@ type DBTX interface {
 }
 
 type Store struct {
-	db          *sql.DB
+	db               *sql.DB
+	transactionBound bool
 	Enrollments *EnrollmentRepository
 	History     *HistoryRepository
 	Pending     *PendingDeliveryRepository
@@ -34,6 +35,9 @@ func NewStore(db *sql.DB) *Store {
 }
 
 func (this *Store) Close() error {
+	if this.transactionBound {
+		return ErrTransaction
+	}
 	if err := this.db.Close(); err != nil {
 		return err
 	}
@@ -41,15 +45,19 @@ func (this *Store) Close() error {
 }
 
 func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
+	if this.transactionBound {
+		return ErrTransaction
+	}
 	tx, err := this.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return ErrStorage
 	}
 
 	defer tx.Rollback()
 
 	txStore := &Store{
-		db:          this.db,
+		db:               this.db,
+		transactionBound: true,
 		Enrollments: &EnrollmentRepository{db: tx},
 		History:     &HistoryRepository{db: tx},
 		Pending:     &PendingDeliveryRepository{db: tx},
@@ -61,8 +69,11 @@ func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
 	if err = fn(txStore); err != nil {
 		return err
 	}
+	if ctx.Err() != nil {
+		return ErrStorage
+	}
 	if err = tx.Commit(); err != nil {
-		return err
+		return ErrStorage
 	}
 	return nil
 }
