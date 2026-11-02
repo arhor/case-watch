@@ -39,7 +39,6 @@ type EnrollmentRepository struct{ db *sql.DB }
 type HistoryRepository struct{ db *sql.DB }
 type PendingDeliveryRepository struct{ db *sql.DB }
 type CheckGuardRepository struct{ db *sql.DB }
-type RecipientRepository struct{ db *sql.DB }
 type GlobalGateRepository struct{ db *sql.DB }
 
 // Transactions owns writes that must update multiple logical entities atomically.
