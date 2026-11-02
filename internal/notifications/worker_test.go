@@ -7,7 +7,7 @@ import (
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/notifications"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/tracking"
 	"path/filepath"
 	"sync"
@@ -39,7 +39,7 @@ func (portal) Check(context.Context, application.Credentials) (application.Obser
 }
 
 type fixture struct {
-	s      *storage.Store
+	s      *data.Store
 	c      *tracking.Coordinator
 	clock  *clock
 	policy application.Policy
@@ -51,7 +51,7 @@ func setup(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), policy: auth.New(false, []int64{101, 202}), ids: map[int64]application.EnrollmentID{}}
 	var e error
-	f.s, e = storage.Open(ctx, f.path)
+	f.s, e = data.Open(ctx, f.path)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -62,7 +62,7 @@ func setup(t *testing.T) *fixture {
 	}
 	f.c = tracking.New(f.s, k, portal{}, f.policy, f.clock)
 	for _, o := range []int64{101, 202} {
-		id, e := storage.NewEnrollmentID()
+		id, e := data.NewEnrollmentID()
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -100,7 +100,7 @@ func step(t *testing.T, w *notifications.Worker) {
 		t.Fatal(e)
 	}
 }
-func queue(t *testing.T, f *fixture, o int64) []storage.Delivery {
+func queue(t *testing.T, f *fixture, o int64) []data.Delivery {
 	t.Helper()
 	q, e := f.s.Queue(ctx, o)
 	if e != nil {
@@ -217,7 +217,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 		t.Fatal(e)
 	}
 	f.s.Close()
-	f.s, e = storage.Open(ctx, f.path)
+	f.s, e = data.Open(ctx, f.path)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -272,13 +272,13 @@ func TestWorkerShouldApplyUnblockAfterActiveSendWhenMembershipArrivesDuringReser
 }
 
 type faultStore struct {
-	*storage.Store
+	*data.Store
 	fail bool
 }
 
-func (s *faultStore) CompleteDelivery(c context.Context, d storage.Delivery, o application.SendOutcome, n time.Time) error {
+func (s *faultStore) CompleteDelivery(c context.Context, d data.Delivery, o application.SendOutcome, n time.Time) error {
 	if s.fail {
-		return storage.ErrStorage
+		return data.ErrStorage
 	}
 	return s.Store.CompleteDelivery(c, d, o, n)
 }
@@ -467,7 +467,7 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 			close(release)
 			directErr, stepErr := <-direct, <-done
 			f.s.Close()
-			s, e := storage.Open(ctx, f.path)
+			s, e := data.Open(ctx, f.path)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -484,7 +484,7 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 
 func (s *faultStore) RecordGlobalOutcome(c context.Context, o application.SendOutcome, n time.Time) error {
 	if s.fail {
-		return storage.ErrStorage
+		return data.ErrStorage
 	}
 	return s.Store.RecordGlobalOutcome(c, o, n)
 }

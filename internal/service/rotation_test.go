@@ -10,7 +10,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurableBoundary(t *testing.T) {
@@ -120,7 +120,7 @@ func TestResumeShouldPreserveLifetimeAndHistoryWhenRecoveringStoppedReservation(
 	before, _ := s.History(ctx, 1, r.ID)
 	s.Close()
 	// When
-	e = Maintain(ctx, f.db, f.key, func(s *storage.Store, _ *credentials.Keyring, _ string) error { return Resume(ctx, s, 1, false) })
+	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error { return Resume(ctx, s, 1, false) })
 	s = f.open(t)
 	defer s.Close()
 	q, qe := s.Queue(ctx, 1)

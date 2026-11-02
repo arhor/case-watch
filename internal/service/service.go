@@ -12,10 +12,10 @@ import (
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/credentials"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/portal"
 	"github.com/arhor/case-watch/internal/scheduler"
-	"github.com/arhor/case-watch/internal/storage"
 	"github.com/arhor/case-watch/internal/telegram"
 	"github.com/arhor/case-watch/internal/tracking"
 )
@@ -37,7 +37,7 @@ type Factories struct {
 	Telegram func(telegram.Config) (Transport, error)
 }
 
-func Verify(ctx context.Context, s *storage.Store, k *credentials.Keyring) error {
+func Verify(ctx context.Context, s *data.Store, k *credentials.Keyring) error {
 	rows, e := s.Enrollments(ctx)
 	if e != nil {
 		return ErrStartup
@@ -76,7 +76,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 	if e = databaseFile(db, true); e != nil {
 		return e
 	}
-	s, e := storage.Open(ctx, db)
+	s, e := data.Open(ctx, db)
 	if e != nil {
 		return ErrStartup
 	}
@@ -96,7 +96,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 	if f.Portal != nil {
 		p = f.Portal()
 	}
-	coord := tracking.New(s, k, p, policy, clock{})
+	coord := tracking.New(s.TrackingRepositories(), k, p, policy, clock{})
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var worker *notifications.Worker
@@ -131,7 +131,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		coord.Shutdown()
 		return ErrStartup
 	}
-	worker, e = notifications.New(notifications.Config{Store: s, Coordinator: monitored, Policy: policy, Clock: clock{}, Sender: transport, Report: func(category string) {
+	worker, e = notifications.New(notifications.Config{Store: s.NotificationRepositories(), Coordinator: monitored, Policy: policy, Clock: clock{}, Sender: transport, Report: func(category string) {
 		report(category)
 		if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" {
 			fail()
@@ -150,7 +150,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		}
 		return ErrService
 	}
-	sched, e := scheduler.New(scheduler.Config{Inventory: s, Tracking: monitored, Policy: policy, Clock: clock{}, Report: func(category string) {
+	sched, e := scheduler.New(scheduler.Config{Inventory: s.EnrollmentRepository, Tracking: monitored, Policy: policy, Clock: clock{}, Report: func(category string) {
 		report(category)
 		if category == "inventory_failed" {
 			fail()

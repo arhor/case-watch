@@ -9,7 +9,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/scheduler"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 type clock struct{ now time.Time }
@@ -18,10 +18,10 @@ func (c *clock) Now() time.Time { return c.now }
 
 type inventory struct{ owners []int64 }
 
-func (i inventory) Enrollments(context.Context) ([]storage.Enrollment, error) {
-	var result []storage.Enrollment
+func (i inventory) Enrollments(context.Context) ([]data.Enrollment, error) {
+	var result []data.Enrollment
 	for _, owner := range i.owners {
-		result = append(result, storage.Enrollment{OwnerID: owner})
+		result = append(result, data.Enrollment{OwnerID: owner})
 	}
 	return result, nil
 }

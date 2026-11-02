@@ -4,13 +4,13 @@ import (
 	"context"
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"time"
 )
 
 // Maintain opens an existing database only while the service is stopped. Every
 // operation, including inspection, authenticates all credentials without reset.
-func Maintain(ctx context.Context, db, key string, fn func(*storage.Store, *credentials.Keyring, string) error) (result error) {
+func Maintain(ctx context.Context, db, key string, fn func(*data.Store, *credentials.Keyring, string) error) (result error) {
 	db, key, e := Paths(db, key)
 	if e != nil {
 		return e
@@ -27,7 +27,7 @@ func Maintain(ctx context.Context, db, key string, fn func(*storage.Store, *cred
 	if e = databaseFile(db, false); e != nil {
 		return e
 	}
-	s, e := storage.Open(ctx, db)
+	s, e := data.Open(ctx, db)
 	if e != nil {
 		return ErrStartup
 	}
@@ -48,7 +48,7 @@ func Maintain(ctx context.Context, db, key string, fn func(*storage.Store, *cred
 // Rotate persists old+new keys with the old active ID, commits all ciphertext,
 // verifies committed rows, then activates the new ID durably. Retained keys make
 // every interruption recoverable. Hook is an offline fault-injection boundary.
-func Rotate(ctx context.Context, s *storage.Store, k *credentials.Keyring, path, id string, hook func(string) error) error {
+func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id string, hook func(string) error) error {
 	stage := func(s string) error {
 		if hook != nil {
 			return hook(s)
@@ -97,7 +97,7 @@ func Rotate(ctx context.Context, s *storage.Store, k *credentials.Keyring, path,
 	}
 	return nil
 }
-func Resume(ctx context.Context, s *storage.Store, recipient int64, token bool) error {
+func Resume(ctx context.Context, s *data.Store, recipient int64, token bool) error {
 	if e := s.RecoverDeliveries(ctx, time.Now()); e != nil {
 		return ErrService
 	}

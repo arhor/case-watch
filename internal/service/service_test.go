@@ -13,7 +13,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/telegram"
 	"github.com/arhor/case-watch/internal/tracking"
 )
@@ -47,20 +47,20 @@ func setup(t *testing.T) *fixture {
 	return f
 }
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }
-func (f *fixture) open(t *testing.T) *storage.Store {
+func (f *fixture) open(t *testing.T) *data.Store {
 	t.Helper()
 	if e := databaseFile(f.db, true); e != nil {
 		t.Fatal(e)
 	}
-	s, e := storage.Open(context.Background(), f.db)
+	s, e := data.Open(context.Background(), f.db)
 	if e != nil {
 		t.Fatal(e)
 	}
 	return s
 }
-func seed(t *testing.T, s *storage.Store, k *credentials.Keyring, owner int64) application.SealedCredentials {
+func seed(t *testing.T, s *data.Store, k *credentials.Keyring, owner int64) application.SealedCredentials {
 	t.Helper()
-	id, e := storage.NewEnrollmentID()
+	id, e := data.NewEnrollmentID()
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -192,7 +192,7 @@ func TestRunShouldExcludeOtherServicesAndMaintenanceWhenDatabaseLocked(t *testin
 	callback := false
 	// When
 	second := Run(context.Background(), f.lookup, Factories{})
-	maintenance := Maintain(context.Background(), f.db, f.key, func(*storage.Store, *credentials.Keyring, string) error { callback = true; return nil })
+	maintenance := Maintain(context.Background(), f.db, f.key, func(*data.Store, *credentials.Keyring, string) error { callback = true; return nil })
 	cancel()
 	stopped := result(t, done)
 	// Then

@@ -9,13 +9,13 @@ import (
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
 	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
 
 type Inventory interface {
-	Enrollments(context.Context) ([]storage.Enrollment, error)
+	Enrollments(context.Context) ([]data.Enrollment, error)
 }
 type Tracking interface {
 	// Scheduled shares manual coordination and returns after canceled work drains.

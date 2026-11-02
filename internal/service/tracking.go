@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/tracking"
 )
 
@@ -47,13 +47,13 @@ func (m monitoredTracking) RunOwnerWork(c context.Context, o int64, id applicati
 }
 
 type monitoredReader struct {
-	s    *storage.Store
+	s    *data.Store
 	fail func()
 }
 
-func (m monitoredReader) Enrollment(c context.Context, o int64) (storage.Enrollment, error) {
+func (m monitoredReader) Enrollment(c context.Context, o int64) (data.Enrollment, error) {
 	v, e := m.s.Enrollment(c, o)
-	if e != nil && c.Err() == nil && !errors.Is(e, storage.ErrNotFound) {
+	if e != nil && c.Err() == nil && !errors.Is(e, data.ErrNotFound) {
 		m.fail()
 	}
 	return v, e

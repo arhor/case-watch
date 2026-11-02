@@ -13,13 +13,13 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
 type EnrollmentReader interface {
-	Enrollment(context.Context, int64) (storage.Enrollment, error)
+	Enrollment(context.Context, int64) (data.Enrollment, error)
 }
 
 // Membership is ordinary authenticated evidence for the delivery worker. A private
@@ -163,7 +163,7 @@ func (a *Adapter) erase(ctx context.Context, id int64, message int) {
 }
 func (a *Adapter) exists(ctx context.Context, id int64) (bool, error) {
 	_, err := a.config.Store.Enrollment(ctx, id)
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, data.ErrNotFound) {
 		return false, nil
 	}
 	return err == nil, err
@@ -258,7 +258,7 @@ func (a *Adapter) handle(ctx context.Context, _ *bot.Bot, u *models.Update) {
 		s.mu.Unlock()
 		status, e := a.config.Tracking.Status(ctx, id)
 		s.mu.Lock()
-		if errors.Is(e, storage.ErrNotFound) {
+		if errors.Is(e, data.ErrNotFound) {
 			a.reply(ctx, id, "No tracked case. Use /enroll.")
 			return
 		}

@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 var ErrWorker = errors.New("notification operation failed")
 
 type Store interface {
-	DeliveryHeads(context.Context) ([]storage.Delivery, error)
-	ReserveDelivery(context.Context, int64, time.Time) (storage.Delivery, error)
-	CompleteDelivery(context.Context, storage.Delivery, application.SendOutcome, time.Time) error
+	DeliveryHeads(context.Context) ([]data.Delivery, error)
+	ReserveDelivery(context.Context, int64, time.Time) (data.Delivery, error)
+	CompleteDelivery(context.Context, data.Delivery, application.SendOutcome, time.Time) error
 	RecoverDeliveries(context.Context, time.Time) error
-	DeliveryGates(context.Context, int64) (storage.RecipientState, storage.GlobalState, error)
+	DeliveryGates(context.Context, int64) (data.RecipientState, data.GlobalState, error)
 	SetBlocked(context.Context, int64, bool) error
 	ResumeUnblocked(context.Context, int64) error
-	ReleaseDelivery(context.Context, storage.Delivery) error
+	ReleaseDelivery(context.Context, data.Delivery) error
 }
 type Coordinator interface {
 	RunOwnerWork(context.Context, int64, application.EnrollmentID, func(context.Context) error) error
@@ -153,7 +153,7 @@ func (w *Worker) Step(ctx context.Context) error {
 	for _, o := range owners {
 		w.events(ctx, o)
 	}
-	var heads []storage.Delivery
+	var heads []data.Delivery
 	if err := w.bounded(ctx, func(c context.Context) error { var e error; heads, e = w.c.Store.DeliveryHeads(c); return e }); err != nil {
 		return ErrWorker
 	}
@@ -172,7 +172,7 @@ func (w *Worker) Step(ctx context.Context) error {
 			}
 			return w.bounded(c, func(b context.Context) error {
 				d, e := w.c.Store.ReserveDelivery(b, head.RecipientID, w.c.Clock.Now())
-				if errors.Is(e, storage.ErrNotEligible) || errors.Is(e, storage.ErrNotFound) {
+				if errors.Is(e, data.ErrNotEligible) || errors.Is(e, data.ErrNotFound) {
 					return nil
 				}
 				if e != nil {
@@ -280,7 +280,7 @@ func (w *Worker) RecordDirectOutcome(ctx context.Context, out application.SendOu
 	return w.bounded(context.WithoutCancel(ctx), func(c context.Context) error { return s.RecordGlobalOutcome(c, out, w.c.Clock.Now()) })
 }
 
-func (w *Worker) release(ctx context.Context, d storage.Delivery) error {
+func (w *Worker) release(ctx context.Context, d data.Delivery) error {
 	c, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.c.Timeout)
 	defer cancel()
 	if w.c.Store.ReleaseDelivery(c, d) != nil {
@@ -301,7 +301,7 @@ func (w *Worker) SendDirect(ctx context.Context, owner int64, text string) (appl
 	if !w.c.Policy.Allows(owner) {
 		return application.SendOutcome{}, nil
 	}
-	var g storage.GlobalState
+	var g data.GlobalState
 	err := w.bounded(ctx, func(c context.Context) error { var e error; _, g, e = w.c.Store.DeliveryGates(c, owner); return e })
 	if err != nil {
 		if ctx.Err() != nil {

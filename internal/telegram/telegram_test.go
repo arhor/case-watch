@@ -18,7 +18,7 @@ import (
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/notifications"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/tracking"
 	"github.com/go-telegram/bot/models"
 )
@@ -35,7 +35,7 @@ func (p portal) Check(c context.Context, v application.Credentials) (application
 
 type fixture struct {
 	a       *Adapter
-	s       *storage.Store
+	s       *data.Store
 	clock   *fakeClock
 	mu      sync.Mutex
 	replies []string
@@ -70,7 +70,7 @@ func setup(t *testing.T) *fixture {
 	t.Cleanup(server.Close)
 	var err error
 	f.path = filepath.Join(t.TempDir(), "state.db")
-	f.s, err = storage.Open(context.Background(), f.path)
+	f.s, err = data.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(101, "REMOVE")
 	_, removed := f.s.Enrollment(context.Background(), 101)
 	// Then
-	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, storage.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
+	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, data.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
 	}
 	combined := strings.Join(append(f.replies, f.logs...), "\n")
@@ -166,7 +166,7 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "REMOVE")
 	_, cancelled := f.s.Enrollment(context.Background(), 101)
 	// Then
-	if !errors.Is(expired, storage.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
+	if !errors.Is(expired, data.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
 		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)
 	}
 }
@@ -398,7 +398,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err = f.s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f.s, err = storage.Open(ctx, path)
+	f.s, err = data.Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if len(history) != 2 || gatedCalls != 1 || sender.calls != 3 || len(remaining) != 2 || remaining[0].Status != "delivered" || remaining[1].Status == "delivered" {
 		t.Fatalf("transition ordering or restart gates failed: history=%d gated=%d sends=%d queue=%+v", len(history), gatedCalls, sender.calls, remaining)
 	}
-	if err != nil || !errors.Is(removed, storage.ErrNotFound) || len(queue) != 0 || f.calls != 3 {
+	if err != nil || !errors.Is(removed, data.ErrNotFound) || len(queue) != 0 || f.calls != 3 {
 		t.Fatalf("confirmed removal did not clear retained work: %v %v queued=%d checks=%d", removed, err, len(queue), f.calls)
 	}
 }

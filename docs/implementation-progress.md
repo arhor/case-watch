@@ -185,3 +185,7 @@ index, triggers and seed data. SQLite introspection confirmed the resulting
 tables, columns, foreign keys, indexes and gate seed match the former two-step
 schema. `go test -count=1 ./...`, `go test -count=1 -race ./...`, `go vet ./...`,
 native and CGO-disabled Linux ARM64 builds, and `git diff --check` passed.
+
+### 2026-11-02: Data access package refactor
+
+Moved the SQLite adapter to `internal/data` with persistence models, entity repositories, and a transaction service for multi-entity operations. Updated runtime wiring and the maintained storage guide without changing the schema. Offline verification: `GOCACHE=/private/tmp/case-watch-go-build go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -o /private/tmp/case-watch-data-refactor ./cmd/case-watch`, and `git diff --check` all exited 0. The build printed a non-fatal module stat-cache write warning in the restricted environment. No live portal or Telegram acceptance was performed.

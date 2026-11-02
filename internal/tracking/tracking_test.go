@@ -15,7 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/scheduler"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/tracking"
 )
 
@@ -38,7 +38,7 @@ func (f portalFunc) Check(ctx context.Context, p application.Credentials) (appli
 
 type fixture struct {
 	c     *tracking.Coordinator
-	s     *storage.Store
+	s     *data.Store
 	k     *credentials.Keyring
 	clock *clock
 	path  string
@@ -49,7 +49,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	t.Helper()
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db")}
 	var err error
-	f.s, err = storage.Open(context.Background(), f.path)
+	f.s, err = data.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
 	f.s.Close()
-	reopened, err := storage.Open(context.Background(), f.path)
+	reopened, err := data.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsUnauthorized(t *tes
 			t.Fatalf("denial: %v", err)
 		}
 	}
-	if !errors.Is(other, storage.ErrNotFound) || f.calls.Load() != 1 {
+	if !errors.Is(other, data.ErrNotFound) || f.calls.Load() != 1 {
 		t.Fatalf("owner isolation: %v calls=%d", other, f.calls.Load())
 	}
 }
@@ -285,7 +285,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	e, read := f.s.Enrollment(context.Background(), 101)
 	queue, qerr := f.s.Queue(context.Background(), 101)
 	// Then
-	if !errors.Is(err, storage.ErrExists) || read != nil || qerr != nil || e.Credentials.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
+	if !errors.Is(err, data.ErrExists) || read != nil || qerr != nil || e.Credentials.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
 		t.Fatalf("replacement: %v/%v/%v calls=%d queue=%d", err, read, qerr, f.calls.Load(), len(queue))
 	}
 	recovered, err := f.k.Open(e.Credentials)
@@ -338,7 +338,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			_, err := c.Enroll(ctx, 101, input)
 			_, read := f.s.Enrollment(context.Background(), 101)
 			// Then
-			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, storage.ErrNotFound) {
+			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, data.ErrNotFound) {
 				t.Fatalf("failed enrollment committed: %v/%v", err, read)
 			}
 		})
@@ -404,7 +404,7 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	f.clock.set(epoch.Add(119 * time.Second))
 	cached, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || !errors.Is(busySend, tracking.ErrRemoving) || beforeErr != nil || before.Credentials.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || !errors.Is(sendErr, context.Canceled) || removeErr != nil || !errors.Is(missing, storage.ErrNotFound) || newID == id || !errors.Is(lateObservation, storage.ErrNotFound) || !errors.Is(oldSend, storage.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
+	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || !errors.Is(busySend, tracking.ErrRemoving) || beforeErr != nil || before.Credentials.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || !errors.Is(sendErr, context.Canceled) || removeErr != nil || !errors.Is(missing, data.ErrNotFound) || newID == id || !errors.Is(lateObservation, data.ErrNotFound) || !errors.Is(oldSend, data.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("removal results: late=%v send=%v remove=%v missing=%v lateObservation=%v oldSend=%v status=%+v err=%v", late.err, sendErr, removeErr, missing, lateObservation, oldSend, cached, statusErr)
 	}
 	obs(t, cached, "A", epoch.Add(time.Minute))
@@ -432,7 +432,7 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	enrollErr, removeErr := <-enrolled, <-removed
 	_, missing := f.s.Enrollment(context.Background(), 101)
 	// Then
-	if !errors.Is(busy, tracking.ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, storage.ErrNotFound) || !errors.Is(missing, storage.ErrNotFound) {
+	if !errors.Is(busy, tracking.ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, data.ErrNotFound) || !errors.Is(missing, data.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
 	}
 }
@@ -642,7 +642,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.s.Close()
-	reopened, err := storage.Open(context.Background(), f.path)
+	reopened, err := data.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}

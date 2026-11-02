@@ -14,7 +14,7 @@ import (
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/service"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 const usage = "usage: case-watch run | provision-key PATH KEY_ID | rotate-key DB_PATH KEY_PATH NEW_ID | queue DB_PATH KEY_PATH RECIPIENT_ID | resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | resume-token DB_PATH KEY_PATH"
@@ -34,19 +34,19 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 		return service.Run(ctx, lookup, service.Factories{})
 	}
 	if len(args) == 4 && args[0] == "rotate-key" {
-		return service.Maintain(ctx, args[1], args[2], func(s *storage.Store, k *credentials.Keyring, path string) error {
+		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, k *credentials.Keyring, path string) error {
 			return service.Rotate(ctx, s, k, path, args[3], nil)
 		})
 	}
 	if len(args) == 3 && args[0] == "resume-token" {
-		return service.Maintain(ctx, args[1], args[2], func(s *storage.Store, _ *credentials.Keyring, _ string) error { return service.Resume(ctx, s, 0, true) })
+		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, _ *credentials.Keyring, _ string) error { return service.Resume(ctx, s, 0, true) })
 	}
 	if len(args) == 4 && (args[0] == "queue" || args[0] == "resume-recipient") {
 		id, e := strconv.ParseInt(args[3], 10, 64)
 		if e != nil || id <= 0 {
 			return errors.New("invalid recipient ID")
 		}
-		return service.Maintain(ctx, args[1], args[2], func(s *storage.Store, _ *credentials.Keyring, _ string) error {
+		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, _ *credentials.Keyring, _ string) error {
 			if args[0] == "resume-recipient" {
 				return service.Resume(ctx, s, id, false)
 			}

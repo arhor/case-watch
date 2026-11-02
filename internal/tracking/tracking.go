@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/storage"
+	"github.com/arhor/case-watch/internal/data"
 )
 
 var (
@@ -28,8 +28,8 @@ var (
 // Store contains only ordinary values; the concrete SQLite adapter satisfies it.
 type Store interface {
 	application.Store
-	Enrollment(context.Context, int64) (storage.Enrollment, error)
-	ReserveCheck(context.Context, int64, application.EnrollmentID, bool, time.Time) (storage.CheckReservation, error)
+	Enrollment(context.Context, int64) (data.Enrollment, error)
+	ReserveCheck(context.Context, int64, application.EnrollmentID, bool, time.Time) (data.CheckReservation, error)
 	Remove(context.Context, int64, application.EnrollmentID) error
 	CheckEligibility(context.Context, int64, application.EnrollmentID, bool) (time.Time, error)
 }
@@ -92,11 +92,11 @@ func safeStore(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	if errors.Is(err, storage.ErrNotFound) {
-		return storage.ErrNotFound
+	if errors.Is(err, data.ErrNotFound) {
+		return data.ErrNotFound
 	}
-	if errors.Is(err, storage.ErrExists) {
-		return storage.ErrExists
+	if errors.Is(err, data.ErrExists) {
+		return data.ErrExists
 	}
 	return ErrStorage
 }
@@ -150,9 +150,9 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials appli
 	_, err := c.store.Enrollment(ctx, owner)
 	if err == nil {
 		c.mu.Unlock()
-		return application.Observation{}, storage.ErrExists
+		return application.Observation{}, data.ErrExists
 	}
-	if !errors.Is(err, storage.ErrNotFound) {
+	if !errors.Is(err, data.ErrNotFound) {
 		c.mu.Unlock()
 		return application.Observation{}, safeStore(err)
 	}
@@ -161,7 +161,7 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials appli
 	s.flight = f
 	c.mu.Unlock()
 	defer func() { cancel(); c.mu.Lock(); s.flight = nil; close(f.done); c.mu.Unlock() }()
-	id, err := storage.NewEnrollmentID()
+	id, err := data.NewEnrollmentID()
 	if err != nil {
 		return application.Observation{}, ErrStorage
 	}
@@ -303,7 +303,7 @@ func copyStatus(s application.Status) application.Status {
 	}
 	return s
 }
-func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f *flight, e storage.Enrollment) {
+func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f *flight, e data.Enrollment) {
 	var credentials application.Credentials
 	var err error
 	if !c.allowed(owner) {
@@ -379,7 +379,7 @@ func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id applicat
 		}
 		if e.OwnerID != owner || e.Credentials.ID != id {
 			c.mu.Unlock()
-			return storage.ErrNotFound
+			return data.ErrNotFound
 		}
 	}
 	work, cancel := context.WithCancel(ctx)
