@@ -282,7 +282,7 @@ func TestRunShouldRecoverUncertainReservationsBeforePollingWhenStarted(t *testin
 	e := Run(ctx, f.lookup, Factories{Telegram: func(tc telegram.Config) (Transport, error) {
 		return &transport{start: func(c context.Context) {
 			reader := tc.Store.(monitoredReader)
-			q, e := reader.s.Pending.Queue(c, 1)
+			q, e := reader.s.Pending.FindByRecipient(c, 1)
 			recoveryRows, recoveryReadErr = q, e
 			recovered = e == nil && len(q) == 1 && q[0].Status != "reserved" && q[0].LifetimeAttempts == 1 && q[0].Failure == "uncertain"
 			cancel()
