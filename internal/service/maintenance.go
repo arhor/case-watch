@@ -13,35 +13,41 @@ import (
 // Maintain opens an existing database only while the service is stopped. Every
 // operation, including inspection, authenticates all credentials without reset.
 func Maintain(ctx context.Context, db, key string, fn func(*data.Store, *credentials.Keyring, string) error) (result error) {
-	db, key, e := Paths(db, key)
-	if e != nil {
-		return e
+	db, key, err := Paths(db, key)
+	if err != nil {
+		return err
 	}
-	k, e := credentials.Load(key)
-	if e != nil {
+
+	keyring, err := credentials.Load(key)
+	if err != nil {
 		return ErrStartup
 	}
-	lock, e := Acquire(db)
-	if e != nil {
-		return e
+
+	lock, err := Acquire(db)
+	if err != nil {
+		return err
 	}
 	defer lock.Close()
-	if e = databaseFile(db, false); e != nil {
-		return e
+
+	if err = databaseFile(db, false); err != nil {
+		return err
 	}
-	s, e := data.Open(ctx, db)
-	if e != nil {
+
+	store, err := data.Open(ctx, db)
+	if err != nil {
 		return ErrStartup
 	}
+
 	defer func() {
-		if s.Close() != nil {
+		if err := store.Close(); err != nil {
 			result = ErrService
 		}
 	}()
-	if e = Verify(ctx, s, k); e != nil {
-		return e
+
+	if err = Verify(ctx, store, keyring); err != nil {
+		return err
 	}
-	if e = fn(s, k, key); e != nil {
+	if err = fn(store, keyring, key); err != nil {
 		return ErrService
 	}
 	return nil
@@ -99,6 +105,7 @@ func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id
 	}
 	return nil
 }
+
 func Resume(ctx context.Context, s *data.Store, recipient int64, token bool) error {
 	if e := (notifications.Persistence{DB: s}).RecoverDeliveries(ctx, time.Now()); e != nil {
 		return ErrService
