@@ -18,7 +18,7 @@ Install Docker Engine and Compose on the host and explicitly enable its system s
 sudo install -d -m 0700 -o 10001 -g 10001 /var/lib/case-watch-keys
 docker run --rm --platform linux/arm64 --user 10001:10001 \
   --mount type=bind,src=/var/lib/case-watch-keys,dst=/keys \
-  case-watch:2026-11-01 provision-key /keys/keyring.json initial
+  case-watch:2026-11-01 --provision-key /keys/keyring.json initial
 ```
 
 This explicit command creates a random mode-0600 key, refuses overwrite, and performs no network or database work. Do not provision again during container replacement. The host directory remains mode 0700, owned by UID/GID 10001; the file must also be owned by that identity. Normal Compose operation mounts only that existing file read-only into the image's private mode-0700 `/keys` directory. Rootless Docker or user-namespace remapping needs equivalent mapped host ownership, verified before startup.
@@ -51,7 +51,7 @@ For an update, build or pull the next version first, stop the existing service, 
 
 ## Stopped-service maintenance
 
-Stop the service before inspection, resumption or rotation. For ordinary maintenance `docker compose run --rm --no-deps case-watch queue /data/case-watch.db /keys/keyring.json RECIPIENT_ID` reuses the read-only key file and named volume; substitute the documented resume commands as needed. Explicitly restart afterward.
+Stop the service before inspection, resumption or rotation. For ordinary maintenance `docker compose run --rm --no-deps case-watch --queue /data/case-watch.db /keys/keyring.json RECIPIENT_ID` reuses the read-only key file and named volume; substitute the documented resume commands as needed. Explicitly restart afterward.
 
 Rotation atomically replaces the key file. A file bind mount pins the old inode, so do not rotate through the normal file mount or start an old container after host-side replacement. With the service stopped, mount the protected key **directory** read-write for one maintenance invocation:
 
@@ -60,7 +60,7 @@ docker compose stop case-watch
 docker run --rm --platform linux/arm64 --user 10001:10001 \
   --mount type=volume,src=case-watch-data,dst=/data \
   --mount type=bind,src=/var/lib/case-watch-keys,dst=/keys \
-  "$CASE_WATCH_IMAGE" rotate-key /data/case-watch.db /keys/keyring.json next-id
+  "$CASE_WATCH_IMAGE" --rotate-key /data/case-watch.db /keys/keyring.json next-id
 docker compose up -d --no-deps --force-recreate case-watch
 ```
 

@@ -17,8 +17,8 @@ Configure the Telegram bot token, database path, encryption key path, and access
 Provision a key before starting the service:
 
 ```sh
-./case-watch provision-key /path/to/keyring.json initial
-./case-watch run
+./case-watch --provision-key /path/to/keyring.json initial
+./case-watch --run
 ```
 
 The key directory must already exist and be protected. Keep the key outside both the repository and the database directory. The application reads environment variables directly; it does not load `.env` files. See [credential setup](docs/credentials.md) and [operator commands](docs/operations.md) for details.

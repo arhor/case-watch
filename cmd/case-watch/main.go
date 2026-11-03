@@ -19,7 +19,7 @@ import (
 	"github.com/arhor/case-watch/internal/service"
 )
 
-const usage = "usage: case-watch run | provision-key PATH KEY_ID | rotate-key DB_PATH KEY_PATH NEW_ID | queue DB_PATH KEY_PATH RECIPIENT_ID | resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | resume-token DB_PATH KEY_PATH"
+const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID | --resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | --resume-token DB_PATH KEY_PATH"
 
 func main() {
 	ctx, stop :=
@@ -46,17 +46,17 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 	commandArgs := args[1:]
 
 	switch command {
-	case "run":
+	case "--run":
 		return onRun(ctx, commandArgs, lookup)
-	case "provision-key":
+	case "--provision-key":
 		return onProvisionKey(commandArgs)
-	case "rotate-key":
+	case "--rotate-key":
 		return onRotateKey(ctx, commandArgs)
-	case "resume-token":
+	case "--resume-token":
 		return onResumeToken(ctx, commandArgs)
-	case "queue":
+	case "--queue":
 		return onQueue(ctx, commandArgs, output)
-	case "resume-recipient":
+	case "--resume-recipient":
 		return onResumeRecipient(ctx, commandArgs)
 	default:
 		return errors.New(usage)

@@ -261,3 +261,21 @@ using `GOCACHE=/private/tmp/case-watch-go-build`. Full suites used elevated
 loopback access for local HTTP fixtures. The build emitted a non-fatal module
 stat-cache write warning. The changed Go file is gofmt-clean and
 `git diff --check` passed. No live integration or deployment checks were run.
+
+### 2026-11-03: Double-dash CLI commands
+
+Replaced all six bare command names with double-dash commands, preserving
+positional arguments and handler behavior. Bare and single-dash spellings
+return usage without reading the environment. Updated CLI tests, the Docker
+default command and maintained operator examples. Existing operator scripts
+must adopt the new spellings.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, verification passed:
+`go test ./cmd/case-watch`, `go test ./...`, `go test -race ./...`,
+`go vet ./...`, and
+`go build -o /private/tmp/case-watch-double-dash ./cmd/case-watch`,
+using `GOCACHE=/private/tmp/case-watch-go-build`. The build emitted a
+non-fatal module stat-cache write warning. Changed Go files are gofmt-clean;
+maintained documentation local links, code fences and command spellings,
+and `git diff --check` passed. No Docker runtime, live portal/Telegram or
+deployment acceptance checks were run.

@@ -22,4 +22,4 @@ COPY --from=build /out/case-watch /case-watch
 # Europe/Warsaw rules are embedded by internal/scheduler's time/tzdata import.
 USER 10001:10001
 ENTRYPOINT ["/case-watch"]
-CMD ["run"]
+CMD ["--run"]

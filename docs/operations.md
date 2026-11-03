@@ -1,6 +1,8 @@
 # Service and operator commands
 
-Use Go 1.27.3. From the repository root, build with `go build -o case-watch ./cmd/case-watch`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Provision a key explicitly as described in [credentials](credentials.md), then run `case-watch run`.
+Use Go 1.27.3. From the repository root, build with `go build -o case-watch ./cmd/case-watch`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Provision a key explicitly as described in [credentials](credentials.md), then run `case-watch --run`.
+
+Commands require the double-dash spelling shown here. Bare command names are rejected; update existing operator scripts when upgrading.
 
 Startup validates environment syntax, canonical path separation, restricted file permissions, the database schema and every encrypted credential before constructing network adapters. Keys must be outside the database directory subtree and the repository. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. All service and maintenance processes must use the same database path. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 
@@ -12,11 +14,11 @@ Stop the service before every database maintenance command, including inspection
 
 | Command | Purpose |
 | --- | --- |
-| `case-watch provision-key KEY_PATH KEY_ID` | Explicitly create one new protected keyring; refuse overwrite. No database access. |
-| `case-watch queue DB_PATH KEY_PATH RECIPIENT_ID` | Inspect queue counts, attempt metadata, deadlines and gates without printing credentials or notification text. |
-| `case-watch resume-recipient DB_PATH KEY_PATH RECIPIENT_ID` | Recover uncertain reservations, then reset the oldest unsent item's cycle and recipient pause after correcting the cause. Preserve lifetime attempts and all queued transitions. |
-| `case-watch resume-token DB_PATH KEY_PATH` | Recover uncertain reservations and clear the global token suspension after correcting the token. Preserve rate-limit deadlines and recipient pauses. |
-| `case-watch rotate-key DB_PATH KEY_PATH NEW_ID` | Persist retained old/new keys, transactionally rewrite credentials with stable identities, verify, then activate the new key. |
+| `case-watch --provision-key KEY_PATH KEY_ID` | Explicitly create one new protected keyring; refuse overwrite. No database access. |
+| `case-watch --queue DB_PATH KEY_PATH RECIPIENT_ID` | Inspect queue counts, attempt metadata, deadlines and gates without printing credentials or notification text. |
+| `case-watch --resume-recipient DB_PATH KEY_PATH RECIPIENT_ID` | Recover uncertain reservations, then reset the oldest unsent item's cycle and recipient pause after correcting the cause. Preserve lifetime attempts and all queued transitions. |
+| `case-watch --resume-token DB_PATH KEY_PATH` | Recover uncertain reservations and clear the global token suspension after correcting the token. Preserve rate-limit deadlines and recipient pauses. |
+| `case-watch --rotate-key DB_PATH KEY_PATH NEW_ID` | Persist retained old/new keys, transactionally rewrite credentials with stable identities, verify, then activate the new key. |
 
 Recipient IDs are positive numeric Telegram user IDs. Recovery does not mark any notification delivered or erase history. Ordinary messages only resume an evidenced block pause; exhausted/permanent queues require operator recovery unless a later block/unblock cycle is observed. Restoring authorization makes retained work eligible subject to existing gates.
 

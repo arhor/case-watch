@@ -1,6 +1,6 @@
 # Startup configuration
 
-`case-watch run` reads environment variables (it does not load `.env` files). Startup validates syntax, key separation and permissions, the database schema, and every stored credential before starting Telegram polling or background work. It never provisions keys implicitly. See [operator commands and lifecycle](operations.md).
+`case-watch --run` reads environment variables (it does not load `.env` files). Startup validates syntax, key separation and permissions, the database schema, and every stored credential before starting Telegram polling or background work. It never provisions keys implicitly. See [operator commands and lifecycle](operations.md).
 
 All three values are required: `CASE_WATCH_TELEGRAM_BOT_TOKEN`, `CASE_WATCH_DB_PATH`, and `CASE_WATCH_KEY_FILE`. Token syntax is a positive decimal bot identifier, a colon, and 35 ASCII letters, digits, underscores or hyphens. Local syntax validation does not verify Telegram acceptance. Paths must be nonblank and contain no NUL/newline. They are preserved as supplied; relative paths resolve against the process working directory. No defaults silently choose storage or key locations.
 

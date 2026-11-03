@@ -15,7 +15,7 @@ func TestRunShouldRejectInvalidConfigWhenServiceRequested(t *testing.T) {
 	lookup := func(string) (string, bool) { return "sensitive-input", true }
 
 	// When
-	err := run([]string{"run"}, lookup)
+	err := run([]string{"--run"}, lookup)
 
 	// Then
 	if err == nil || !strings.Contains(err.Error(), "CASE_WATCH_TELEGRAM_BOT_TOKEN") || strings.Contains(err.Error(), "sensitive-input") {
@@ -27,7 +27,7 @@ func TestRunShouldRejectStartupWhenRequiredPathsUnavailable(t *testing.T) {
 	// Given
 	env := map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": "/data/db", "CASE_WATCH_KEY_FILE": "/keys/keyring", "CASE_WATCH_ALLOW_ALL_USERS": "true"}
 	// When
-	err := run([]string{"run"}, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	err := run([]string{"--run"}, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
 	// Then
 	if err == nil || err.Error() != "service startup validation failed" {
 		t.Fatal("startup must reject unavailable paths")
@@ -38,17 +38,31 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 	for _, args := range [][]string{
 		nil,
 		{"unknown"},
-		{"run", "extra"},
-		{"provision-key"},
-		{"provision-key", "key", "initial", "extra"},
-		{"rotate-key", "database", "key"},
-		{"rotate-key", "database", "key", "new", "extra"},
-		{"resume-token", "database"},
-		{"resume-token", "database", "key", "extra"},
-		{"queue", "database", "key"},
-		{"queue", "database", "key", "123", "extra"},
-		{"resume-recipient", "database", "key"},
-		{"resume-recipient", "database", "key", "123", "extra"},
+		{"--unknown"},
+		{"run"},
+		{"provision-key", "key", "initial"},
+		{"rotate-key", "database", "key", "new"},
+		{"queue", "database", "key", "123"},
+		{"resume-recipient", "database", "key", "123"},
+		{"resume-token", "database", "key"},
+		{"-run"},
+		{"-provision-key", "key", "initial"},
+		{"-rotate-key", "database", "key", "new"},
+		{"-queue", "database", "key", "123"},
+		{"-resume-recipient", "database", "key", "123"},
+		{"-resume-token", "database", "key"},
+		{"--run=true"},
+		{"--run", "extra"},
+		{"--provision-key"},
+		{"--provision-key", "key", "initial", "extra"},
+		{"--rotate-key", "database", "key"},
+		{"--rotate-key", "database", "key", "new", "extra"},
+		{"--resume-token", "database"},
+		{"--resume-token", "database", "key", "extra"},
+		{"--queue", "database", "key"},
+		{"--queue", "database", "key", "123", "extra"},
+		{"--resume-recipient", "database", "key"},
+		{"--resume-recipient", "database", "key", "123", "extra"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			// Given
@@ -70,7 +84,7 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 }
 
 func TestRunShouldRejectInvalidRecipientIDWhenRecipientCommandRequested(t *testing.T) {
-	for _, command := range []string{"queue", "resume-recipient"} {
+	for _, command := range []string{"--queue", "--resume-recipient"} {
 		for _, recipientID := range []string{"", "abc", "0", "-1", "9223372036854775808"} {
 			t.Run(command+"/"+recipientID, func(t *testing.T) {
 				// Given
@@ -101,7 +115,7 @@ func TestRunShouldProvisionWithoutEnvironmentWhenOperatorRequestsKey(t *testing.
 	path := filepath.Join(dir, "keyring")
 	calls := 0
 	// When
-	err := run([]string{"provision-key", path, "initial"}, func(string) (string, bool) { calls++; return "", false })
+	err := run([]string{"--provision-key", path, "initial"}, func(string) (string, bool) { calls++; return "", false })
 	k, loadErr := credentials.Load(path)
 	// Then
 	if err != nil || loadErr != nil || k == nil || calls != 0 {
