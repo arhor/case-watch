@@ -7,9 +7,18 @@ import (
 	"github.com/arhor/case-watch/internal/application"
 )
 
-// History returns transitions belonging to the supplied owner and identity.
+// FindByEnrollment returns transitions belonging to the supplied owner and identity.
 func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]Transition, error) {
-	rows, err := this.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL ORDER BY h.sequence`, owner, string(id))
+	rows, err := this.db.QueryContext(ctx, `
+		SELECT h.sequence, h.enrollment_id, h.previous_stage, h.stage, h.checked_at
+		  FROM history AS h
+		  JOIN enrollments AS e
+		    ON e.id = h.enrollment_id
+		 WHERE e.owner_id = ?
+		   AND e.id = ?
+		   AND e.deleted_at IS NULL
+		 ORDER BY h.sequence
+	`, owner, string(id))
 	if err != nil {
 		return nil, ErrStorage
 	}
@@ -38,7 +47,10 @@ func (s *HistoryRepository) Append(ctx context.Context, id string, previous stri
 	if !validID(id) || !validObservation(o) {
 		return 0, ErrInvalid
 	}
-	result, err := this.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", id, previous, o.Stage, stamp(o.CheckedAt))
+	result, err := this.db.ExecContext(ctx, `
+		INSERT INTO history (enrollment_id, previous_stage, stage, checked_at)
+		VALUES (?, ?, ?, ?)
+	`, id, previous, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return 0, ErrStorage
 	}
@@ -53,7 +65,10 @@ func (this *HistoryRepository) DeleteByEnrollmentID(ctx context.Context, id stri
 	if !validID(id) {
 		return ErrInvalid
 	}
-	if _, err := this.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", id); err != nil {
+	if _, err := this.db.ExecContext(ctx, `
+		DELETE FROM history
+		WHERE enrollment_id = ?
+	`, id); err != nil {
 		return ErrStorage
 	}
 	return nil
