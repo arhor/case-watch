@@ -25,7 +25,8 @@ func (this *RecipientRepository) GetState(ctx context.Context, recipient int64) 
 	}
 	return r, nil
 }
-func (s *RecipientRepository) SetState(ctx context.Context, recipient int64, state RecipientState) error {
+
+func (this *RecipientRepository) SetState(ctx context.Context, recipient int64, state RecipientState) error {
 	if recipient <= 0 {
 		return ErrInvalid
 	}
