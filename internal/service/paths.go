@@ -7,9 +7,31 @@ import (
 	"syscall"
 )
 
-var ErrStartup = errors.New("service startup validation failed")
-var ErrLocked = errors.New("database is in use; stop the service before maintenance")
-var ErrService = errors.New("service operation failed")
+var (
+	ErrStartup = errors.New("service startup validation failed")
+	ErrLocked  = errors.New("database is in use; stop the service before maintenance")
+	ErrService = errors.New("service operation failed")
+)
+
+const (
+	// ownerReadWriteMode is read and write for the owner and no access for
+	// group or others. Database and lock files must have exactly this mode.
+	//
+	//	Digit  Who     Value                 Meaning
+	//	6      owner   4 (read) + 2 (write)  read and write
+	//	0      group   0                     no access
+	//	0      others  0                     no access
+	ownerReadWriteMode = os.FileMode(0o600)
+
+	// groupOtherPermissions is every group and other permission bit.
+	// The database directory is rejected when any of these bits is set.
+	//
+	//	Digit  Who     Value                                 Meaning
+	//	0      owner   0                                     not tested
+	//	7      group   4 (read) + 2 (write) + 1 (execute)    any access
+	//	7      others  4 (read) + 2 (write) + 1 (execute)    any access
+	groupOtherPermissions = os.FileMode(0o077)
+)
 
 // Paths resolves trusted parent directories before any database or network work.
 // Existing final symlinks and shared database hardlinks are rejected.
@@ -66,11 +88,11 @@ func Paths(db, key string) (string, string, error) {
 		}
 	}
 	info, e := os.Stat(filepath.Dir(d))
-	if e != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+	if e != nil || !info.IsDir() || info.Mode().Perm()&groupOtherPermissions != 0 {
 		return "", "", ErrStartup
 	}
 	if info, e := os.Lstat(d); e == nil {
-		if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		if !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
 			return "", "", ErrStartup
 		}
 		if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
@@ -87,13 +109,13 @@ type Lock struct{ f *os.File }
 // Acquire holds a persistent advisory lock file; it must never be unlinked while
 // processes may be waiting on its inode. Every service and maintenance entry uses it.
 func Acquire(db string) (*Lock, error) {
-	fd, e := syscall.Open(db+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0600)
+	fd, e := syscall.Open(db+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, uint32(ownerReadWriteMode))
 	if e != nil {
 		return nil, ErrStartup
 	}
 	f := os.NewFile(uintptr(fd), "database maintenance lock")
 	info, e := f.Stat()
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
 		f.Close()
 		return nil, ErrStartup
 	}
@@ -114,19 +136,23 @@ func (l *Lock) Close() error {
 	return nil
 }
 
+// Opens a database file with the given path and creates it if create is true.
 func databaseFile(path string, create bool) error {
 	flags := syscall.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
 	if create {
 		flags |= syscall.O_CREAT
 	}
-	fd, e := syscall.Open(path, flags, 0600)
-	if e != nil {
+
+	descriptor, err := syscall.Open(path, flags, uint32(ownerReadWriteMode))
+	if err != nil {
 		return ErrStartup
 	}
-	f := os.NewFile(uintptr(fd), "database")
-	defer f.Close()
-	i, e := f.Stat()
-	if e != nil || !i.Mode().IsRegular() || i.Mode().Perm() != 0600 {
+
+	file := os.NewFile(uintptr(descriptor), "database")
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
 		return ErrStartup
 	}
 	return nil
