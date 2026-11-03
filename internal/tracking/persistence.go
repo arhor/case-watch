@@ -44,14 +44,14 @@ func (p Persistence) Remove(ctx context.Context, owner int64, id string) error {
 		if err := tx.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
-		if err := tx.History.DeleteEnrollment(ctx, id); err != nil {
+		if err := tx.History.DeleteByEnrollmentID(ctx, id); err != nil {
 			return err
 		}
-		return tx.Guards.DeleteEnrollment(ctx, id)
+		return tx.Guards.DeleteByEnrollmentID(ctx, id)
 	})
 }
 func eligibility(ctx context.Context, tx *data.Store, owner int64, id string, manual bool) (time.Time, error) {
-	caseStart, userStart, err := tx.Guards.Starts(ctx, owner, id)
+	caseStart, userStart, err := tx.Guards.FindAttemptStartTimes(ctx, owner, id)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -80,11 +80,11 @@ func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id string, m
 		if now.Before(next) {
 			return nil
 		}
-		if err = tx.Guards.StartCase(ctx, id, now); err != nil {
+		if err = tx.Guards.RecordCaseStart(ctx, id, now); err != nil {
 			return err
 		}
 		if manual {
-			if err = tx.Guards.StartManual(ctx, owner, now); err != nil {
+			if err = tx.Guards.RecordManualStart(ctx, owner, now); err != nil {
 				return err
 			}
 		}

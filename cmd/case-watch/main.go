@@ -51,7 +51,7 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 			if args[0] == "resume-recipient" {
 				return service.Resume(ctx, s, id, false)
 			}
-			rows, e := s.Pending.Queue(ctx, id)
+			rows, e := s.Pending.FindByRecipient(ctx, id)
 			if e != nil {
 				return e
 			}

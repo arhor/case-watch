@@ -157,7 +157,7 @@ func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *t
 	cached, e3 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(2 * time.Minute))
 	manual, e4 := f.c.Status(context.Background(), 101)
-	history, e5 := f.s.History.History(context.Background(), 101, id)
+	history, e5 := f.s.History.FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || f.calls.Load() != 3 || !scheduled.Fresh || !guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) || cached.Fresh || !manual.Fresh || len(history) != 0 {
 		t.Fatalf("scheduled guard: %+v %+v %+v calls=%d errors=%v/%v/%v/%v/%v", scheduled, guarded, cached, f.calls.Load(), e1, e2, e3, e4, e5)
@@ -284,7 +284,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	// When
 	_, err := f.c.Enroll(context.Background(), 101, plain)
 	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	queue, qerr := f.s.Pending.Queue(context.Background(), 101)
+	queue, qerr := f.s.Pending.FindByRecipient(context.Background(), 101)
 	// Then
 	if !errors.Is(err, data.ErrExists) || read != nil || qerr != nil || e.Credentials.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
 		t.Fatalf("replacement: %v/%v/%v calls=%d queue=%d", err, read, qerr, f.calls.Load(), len(queue))
@@ -543,7 +543,7 @@ func TestStatusShouldPreserveOldCacheWhenCredentialAuthenticationOrObservationCo
 			// When
 			status, err := c.Status(context.Background(), 101)
 			e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-			history, historyErr := f.s.History.History(context.Background(), 101, id)
+			history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
 			// Then
 			expected := tracking.ErrCredentials
 			if kind == "observation" {
@@ -602,8 +602,8 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	f.clock.set(epoch.Add(2 * time.Minute))
 	stage.Store("A")
 	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
-	history, e3 := f.s.History.History(context.Background(), 101, id)
-	queue, e4 := f.s.Pending.Queue(context.Background(), 101)
+	history, e3 := f.s.History.FindByEnrollment(context.Background(), 101, id)
+	queue, e4 := f.s.Pending.FindByRecipient(context.Background(), 101)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || len(queue) != 2 || queue[0].Stage != "B" || queue[1].Stage != "A" || queue[0].MessageID != 0 || queue[1].MessageID != 0 {
 		t.Fatalf("shared observation transaction: history=%+v queue=%+v errors=%v/%v/%v/%v", history, queue, e1, e2, e3, e4)

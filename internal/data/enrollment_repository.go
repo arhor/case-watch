@@ -73,13 +73,29 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c app
 		return ErrInvalid
 	}
 	var exists bool
-	if this.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM enrollments WHERE owner_id=? AND deleted_at IS NULL UNION ALL SELECT 1 FROM enrollments WHERE id=?)", owner, string(c.ID)).Scan(&exists) != nil {
+	if this.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM enrollments
+			 WHERE owner_id = ?
+			   AND deleted_at IS NULL
+			UNION ALL
+			SELECT 1
+			  FROM enrollments
+			 WHERE id = ?
+		)
+	`, owner, string(c.ID)).Scan(&exists) != nil {
 		return ErrStorage
 	}
 	if exists {
 		return ErrExists
 	}
-	_, err := this.db.ExecContext(ctx, "INSERT INTO enrollments (id,owner_id,credential_version,key_id,payload,stage,checked_at) VALUES(?,?,?,?,?,?,?)", string(c.ID), owner, c.FormatVersion, c.KeyID, c.Payload, o.Stage, stamp(o.CheckedAt))
+	_, err := this.db.ExecContext(ctx, `
+		INSERT INTO enrollments (
+			id, owner_id, credential_version, key_id, payload, stage, checked_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, string(c.ID), owner, c.FormatVersion, c.KeyID, c.Payload, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return ErrStorage
 	}

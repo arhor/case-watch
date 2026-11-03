@@ -204,7 +204,7 @@ func TestReserveDeliveryShouldAllowOneAttemptWhenCallersRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	queue, err := s.Pending.Queue(ctx, 101)
+	queue, err := s.Pending.FindByRecipient(ctx, 101)
 	// Then
 	if err != nil || wins.Load() != 1 || len(queue) != 1 || queue[0].LifetimeAttempts != 1 {
 		t.Fatalf("reservations=%d queue=%+v error=%v", wins.Load(), queue, err)
@@ -242,7 +242,7 @@ func TestCompleteDeliveryShouldRollbackGateWhenOutcomeWriteFails(t *testing.T) {
 	// When
 	failed := (notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, epoch)
 	_, g, err := (notifications.Persistence{DB: s.Store}).DeliveryGates(ctx, 101)
-	q, queueErr := s.Pending.Queue(ctx, 101)
+	q, queueErr := s.Pending.FindByRecipient(ctx, 101)
 	// Then
 	if !errors.Is(failed, data.ErrStorage) || err != nil || queueErr != nil || !g.RateUntil.IsZero() || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
 		t.Fatalf("partial outcome failed=%v gates=%+v queue=%+v", failed, g, q)

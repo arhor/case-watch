@@ -103,7 +103,7 @@ func step(t *testing.T, w *notifications.Worker) {
 }
 func queue(t *testing.T, f *fixture, o int64) []data.Delivery {
 	t.Helper()
-	q, e := f.s.Pending.Queue(ctx, o)
+	q, e := f.s.Pending.FindByRecipient(ctx, o)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -474,7 +474,7 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 			}
 			defer s.Close()
 			_, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, 101)
-			q, qe := s.Pending.Queue(ctx, 101)
+			q, qe := s.Pending.FindByRecipient(ctx, 101)
 			// Then
 			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" || (category == application.SendRateLimited && !g.RateUntil.Equal(epoch.Add(time.Hour))) || (category == application.SendInvalidToken && !g.TokenPaused) {
 				t.Fatalf("errors=%v/%v/%v/%v calls=%d gates=%+v queue=%+v", directErr, stepErr, e, qe, calls, g, q)

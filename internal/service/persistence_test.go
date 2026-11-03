@@ -80,7 +80,7 @@ func TestObserveShouldPreserveOccurrencesWhenStagesReturnToBaseline(t *testing.T
 	}
 	defer reopened.Close()
 	// Then
-	history, err := reopened.History.History(ctx, 101, c.ID)
+	history, err := reopened.History.FindByEnrollment(ctx, 101, c.ID)
 	if err != nil || len(history) != 2 {
 		t.Fatalf("history count %d error %v", len(history), err)
 	}
@@ -206,7 +206,7 @@ func TestStorageShouldDenyOtherOwnerWhenIdentityIsKnown(t *testing.T) {
 	// When
 	observeErr := (tracking.Persistence{DB: s.Store}).Observe(ctx, 202, c.ID, observation("B", 1))
 	_, readErr := s.Enrollments.FindByOwner(ctx, 202)
-	history, historyErr := s.History.History(ctx, 202, c.ID)
+	history, historyErr := s.History.FindByEnrollment(ctx, 202, c.ID)
 	// Then
 	if !errors.Is(observeErr, data.ErrNotFound) || !errors.Is(readErr, data.ErrNotFound) || historyErr != nil || len(history) != 0 || count(t, s, "history") != 0 {
 		t.Fatal("ownership bypass")
