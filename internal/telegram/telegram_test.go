@@ -122,7 +122,7 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	e, err := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	history, herr := f.s.History.History(context.Background(), 101, e.Credentials.ID)
+	history, herr := f.s.History.FindByEnrollment(context.Background(), 101, e.Credentials.ID)
 	f.message(101, "/status")
 	f.message(202, "/remove")
 	f.message(202, "REMOVE")
@@ -386,7 +386,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.s.History.History(ctx, 101, e.Credentials.ID)
+	history, err := f.s.History.FindByEnrollment(ctx, 101, e.Credentials.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,14 +421,14 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err = w.Step(ctx); err != nil {
 		t.Fatal(err)
 	} // Retry oldest before newer.
-	remaining, err := f.s.Pending.Queue(ctx, 101)
+	remaining, err := f.s.Pending.FindByRecipient(ctx, 101)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.message(101, "/remove")
 	f.message(101, "REMOVE")
 	_, removed := f.s.Enrollments.FindByOwner(ctx, 101)
-	queue, err := f.s.Pending.Queue(ctx, 101)
+	queue, err := f.s.Pending.FindByRecipient(ctx, 101)
 	// Then
 	if len(history) != 2 || gatedCalls != 1 || sender.calls != 3 || len(remaining) != 2 || remaining[0].Status != "delivered" || remaining[1].Status == "delivered" {
 		t.Fatalf("transition ordering or restart gates failed: history=%d gated=%d sends=%d queue=%+v", len(history), gatedCalls, sender.calls, remaining)
