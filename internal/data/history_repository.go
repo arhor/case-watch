@@ -8,8 +8,8 @@ import (
 )
 
 // History returns transitions belonging to the supplied owner and identity.
-func (s *HistoryRepository) History(ctx context.Context, owner int64, id string) ([]Transition, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL ORDER BY h.sequence`, owner, string(id))
+func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]Transition, error) {
+	rows, err := this.db.QueryContext(ctx, `SELECT h.sequence,h.enrollment_id,h.previous_stage,h.stage,h.checked_at FROM history h JOIN enrollments e ON e.id=h.enrollment_id WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL ORDER BY h.sequence`, owner, string(id))
 	if err != nil {
 		return nil, ErrStorage
 	}
@@ -38,7 +38,7 @@ func (s *HistoryRepository) Append(ctx context.Context, id string, previous stri
 	if !validID(id) || !validObservation(o) {
 		return 0, ErrInvalid
 	}
-	result, err := s.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", id, previous, o.Stage, stamp(o.CheckedAt))
+	result, err := this.db.ExecContext(ctx, "INSERT INTO history(enrollment_id,previous_stage,stage,checked_at) VALUES(?,?,?,?)", id, previous, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return 0, ErrStorage
 	}
@@ -49,11 +49,11 @@ func (s *HistoryRepository) Append(ctx context.Context, id string, previous stri
 	return sequence, nil
 }
 
-func (s *HistoryRepository) DeleteEnrollment(ctx context.Context, id string) error {
+func (this *HistoryRepository) DeleteByEnrollmentID(ctx context.Context, id string) error {
 	if !validID(id) {
 		return ErrInvalid
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", id); err != nil {
+	if _, err := this.db.ExecContext(ctx, "DELETE FROM history WHERE enrollment_id=?", id); err != nil {
 		return ErrStorage
 	}
 	return nil
