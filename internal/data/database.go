@@ -29,7 +29,6 @@ var (
 type HistoryRepository struct{ db DBTX }
 type PendingDeliveryRepository struct{ db DBTX }
 type CheckGuardRepository struct{ db DBTX }
-type GlobalGateRepository struct{ db DBTX }
 
 // NewEnrollmentID allocates an opaque identity before sealing credentials.
 func NewEnrollmentID() (string, error) {

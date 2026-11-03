@@ -1,4 +1,4 @@
-// Package notifications delivers durable ordered transitions under ADR 0009.
+// Package notifications delivers durable ordered transitions under ADR 0013.
 package notifications
 
 import (
@@ -18,7 +18,7 @@ type Store interface {
 	ReserveDelivery(context.Context, int64, time.Time) (data.Delivery, error)
 	CompleteDelivery(context.Context, data.Delivery, application.SendOutcome, time.Time) error
 	RecoverDeliveries(context.Context, time.Time) error
-	DeliveryGates(context.Context, int64) (data.RecipientState, data.GlobalState, error)
+	RecipientState(context.Context, int64) (data.RecipientState, error)
 	SetBlocked(context.Context, int64, bool) error
 	ResumeUnblocked(context.Context, int64) error
 	ReleaseDelivery(context.Context, data.Delivery) error
@@ -48,9 +48,10 @@ type Worker struct {
 	started bool
 	pending map[int64][]Event
 	// Serializing sends also ensures a newly reported global gate prevents the next send.
-	failed  bool // guarded by send; a rejected token closes outbound admission until restart
-	send    sync.Mutex
-	eventMu sync.Mutex
+	rateUntil time.Time // guarded by send; process-local cooldown under ADR 0013
+	failed    bool      // guarded by send; a rejected token closes outbound admission until restart
+	send      sync.Mutex
+	eventMu   sync.Mutex
 }
 
 func New(c Config) (*Worker, error) {
@@ -171,6 +172,9 @@ func (w *Worker) Step(ctx context.Context) error {
 			if w.failed {
 				return ErrWorker
 			}
+			if w.c.Clock.Now().Before(w.rateUntil) {
+				return nil
+			}
 			if !w.c.Policy.Allows(head.RecipientID) {
 				return nil
 			}
@@ -184,14 +188,14 @@ func (w *Worker) Step(ctx context.Context) error {
 				}
 				// Check again at the network boundary. A reservation whose send is
 				// suppressed remains uncertain, never falsely delivered.
-				r, g, e := w.c.Store.DeliveryGates(b, d.RecipientID)
+				r, e := w.c.Store.RecipientState(b, d.RecipientID)
 				if e != nil {
 					if w.release(b, d) != nil {
 						return ErrWorker
 					}
 					return ErrWorker
 				}
-				if !w.c.Policy.Allows(d.RecipientID) || r.Blocked || r.Pause != "" || w.c.Clock.Now().Before(g.RateUntil) || b.Err() != nil {
+				if !w.c.Policy.Allows(d.RecipientID) || r.Blocked || r.Pause != "" || w.c.Clock.Now().Before(w.rateUntil) || b.Err() != nil {
 					return w.release(b, d)
 				}
 				text := "Case stage changed:\n" + d.PreviousStage + " → " + d.Stage
@@ -214,6 +218,7 @@ func (w *Worker) Step(ctx context.Context) error {
 				if out.Category == application.SendInvalidToken {
 					w.failed = true
 				}
+				w.recordRateLimit(out)
 				// Removal cancels the network call, but outcome persistence must drain
 				// before its deletion transaction and must not inherit that cancellation.
 				ack, cancel := context.WithTimeout(context.WithoutCancel(c), w.c.Timeout)
@@ -261,39 +266,20 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-// AllowOutbound also gates direct replies without touching the durable queue.
-func (w *Worker) AllowOutbound(ctx context.Context, owner int64) bool {
-	w.send.Lock()
-	defer w.send.Unlock()
-	if w.failed {
-		return false
+// recordRateLimit requires the send lock. Recording needs no context or storage,
+// so a known rate limit survives caller cancellation and outcome storage failure.
+func (w *Worker) recordRateLimit(out application.SendOutcome) {
+	if out.Category != application.SendRateLimited {
+		return
 	}
-	if !w.c.Policy.Allows(owner) {
-		return false
+	delay := out.RetryAfter
+	if delay <= 0 {
+		delay = 30 * time.Second
 	}
-	allowed := false
-	err := w.bounded(ctx, func(c context.Context) error {
-		_, g, e := w.c.Store.DeliveryGates(c, owner)
-		if e == nil {
-			allowed = !w.c.Clock.Now().Before(g.RateUntil)
-		}
-		return e
-	})
-	if err != nil && ctx.Err() == nil {
-		w.report("outbound_gate_storage_failed")
+	until := w.c.Clock.Now().Add(delay)
+	if until.After(w.rateUntil) {
+		w.rateUntil = until
 	}
-	return err == nil && allowed
-}
-
-// RecordDirectOutcome persists the global rate deadline only. It never acknowledges queued work.
-func (w *Worker) RecordDirectOutcome(ctx context.Context, out application.SendOutcome) error {
-	s, ok := w.c.Store.(interface {
-		RecordGlobalOutcome(context.Context, application.SendOutcome, time.Time) error
-	})
-	if !ok {
-		return ErrWorker
-	}
-	return w.bounded(context.WithoutCancel(ctx), func(c context.Context) error { return s.RecordGlobalOutcome(c, out, w.c.Clock.Now()) })
 }
 
 func (w *Worker) release(ctx context.Context, d data.Delivery) error {
@@ -306,8 +292,8 @@ func (w *Worker) release(ctx context.Context, d data.Delivery) error {
 }
 
 // SendDirect serializes gate admission, a single raw transport attempt and global
-// outcome persistence with durable sends. It never changes notification rows.
-// Rate deadlines persist after caller cancellation; token rejection closes admission.
+// cooldown updates with durable sends. It never changes notification rows.
+// Rate deadlines are retained after caller cancellation; token rejection closes admission.
 func (w *Worker) SendDirect(ctx context.Context, owner int64, text string) (application.SendOutcome, error) {
 	w.send.Lock()
 	defer w.send.Unlock()
@@ -317,23 +303,8 @@ func (w *Worker) SendDirect(ctx context.Context, owner int64, text string) (appl
 	if ctx.Err() != nil {
 		return application.SendOutcome{}, ctx.Err()
 	}
-	if !w.c.Policy.Allows(owner) {
+	if w.c.Clock.Now().Before(w.rateUntil) || !w.c.Policy.Allows(owner) {
 		return application.SendOutcome{}, nil
-	}
-	var g data.GlobalState
-	err := w.bounded(ctx, func(c context.Context) error { var e error; _, g, e = w.c.Store.DeliveryGates(c, owner); return e })
-	if err != nil {
-		if ctx.Err() != nil {
-			return application.SendOutcome{}, ctx.Err()
-		}
-		w.report("outbound_gate_storage_failed")
-		return application.SendOutcome{}, ErrWorker
-	}
-	if w.c.Clock.Now().Before(g.RateUntil) || !w.c.Policy.Allows(owner) {
-		return application.SendOutcome{}, nil
-	}
-	if ctx.Err() != nil {
-		return application.SendOutcome{}, ctx.Err()
 	}
 	c, cancel := context.WithTimeout(ctx, w.c.Timeout)
 	out, sendErr := w.c.Sender.Send(c, owner, text)
@@ -343,11 +314,6 @@ func (w *Worker) SendDirect(ctx context.Context, owner int64, text string) (appl
 		w.report(string(out.Category))
 		return out, ErrWorker
 	}
-	if out.Category == application.SendRateLimited {
-		if e := w.RecordDirectOutcome(ctx, out); e != nil {
-			w.report("outbound_gate_storage_failed")
-			return out, ErrWorker
-		}
-	}
+	w.recordRateLimit(out)
 	return out, sendErr
 }

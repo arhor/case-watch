@@ -2,6 +2,7 @@ package data
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -134,5 +135,22 @@ func TestMigrationShouldApplyOrderedChangesWhenNewVersionsExist(t *testing.T) {
 	var value int
 	if e := s.db.QueryRow("SELECT id FROM synthetic").Scan(&value); e != nil || value != 42 {
 		t.Fatal("upgrade failed", e)
+	}
+}
+
+func TestOpenShouldOmitGlobalDeliveryGatesWhenInitializingFreshDatabase(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "state.db")
+	// When
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var tables int
+	err = s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='delivery_gates'").Scan(&tables)
+	// Then
+	if err != nil || tables != 0 {
+		t.Fatalf("tables=%d error=%v", tables, err)
 	}
 }

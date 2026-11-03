@@ -468,7 +468,7 @@ func TestOwnerWorkShouldSerializeMembershipAfterSendWhenAnUnblockArrives(t *test
 	}
 	close(release)
 	sendErr, eventErr := <-sent, <-event
-	recipient, _, gateErr := (notifications.Persistence{DB: f.s}).DeliveryGates(context.Background(), 101)
+	recipient, gateErr := (notifications.Persistence{DB: f.s}).RecipientState(context.Background(), 101)
 	removed := f.c.Remove(context.Background(), 101)
 	noCaseEvent := f.c.RunOwnerWork(context.Background(), 101, "", func(ctx context.Context) error {
 		return (notifications.Persistence{DB: f.s}).SetBlocked(ctx, 101, true)

@@ -145,7 +145,7 @@ func printQueue(ctx context.Context, store *data.Store, recipientID int64, outpu
 		return err
 	}
 	persistence := notifications.Persistence{DB: store}
-	recipientState, globalState, err := persistence.DeliveryGates(ctx, recipientID)
+	recipientState, err := persistence.RecipientState(ctx, recipientID)
 	if err != nil {
 		return err
 	}
@@ -158,11 +158,10 @@ func printQueue(ctx context.Context, store *data.Store, recipientID int64, outpu
 	}
 	if _, err := fmt.Fprintf(
 		output,
-		"recipient=%d blocked=%t pause=%s rate_until=%s pending=%d records=%d\n",
+		"recipient=%d blocked=%t pause=%s pending=%d records=%d\n",
 		recipientID,
 		recipientState.Blocked,
 		safeCategory(recipientState.Pause),
-		globalState.RateUntil.UTC().Format(time.RFC3339),
 		pendingCount,
 		len(deliveries),
 	); err != nil {

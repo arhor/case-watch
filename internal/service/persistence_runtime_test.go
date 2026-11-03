@@ -98,7 +98,7 @@ func TestDeliveryShouldResumeWhenExplicitUnblockFollowsExhaustion(t *testing.T) 
 		}
 		now = now.Add(30 * time.Second * time.Duration(1<<uint(i)))
 	}
-	r, _, e := (notifications.Persistence{DB: s.Store}).DeliveryGates(ctx, 101)
+	r, e := (notifications.Persistence{DB: s.Store}).RecipientState(ctx, 101)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -138,14 +138,14 @@ func TestRemoveShouldRetainGuardsAndFenceLateResultsWhenReenrolled(t *testing.T)
 	late := (tracking.Persistence{DB: s.Store}).Observe(ctx, 101, c.ID, observation("D", 2))
 	ack := (notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendAccepted, MessageID: 3}, epoch)
 	guard, e := (tracking.Persistence{DB: s.Store}).ReserveCheck(ctx, 101, id, true, epoch.Add(59*time.Second))
-	r, g, gateErr := (notifications.Persistence{DB: s.Store}).DeliveryGates(ctx, 101)
+	r, gateErr := (notifications.Persistence{DB: s.Store}).RecipientState(ctx, 101)
 	// Then
-	if removed != nil || !errors.Is(reuse, data.ErrExists) || !errors.Is(late, data.ErrNotFound) || !errors.Is(ack, data.ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.RateUntil.Equal(epoch.Add(time.Hour)) || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollments") != 2 {
-		t.Fatalf("removal guards/fence removed=%v reuse=%v late=%v ack=%v guard=%+v error=%v recipient=%+v global=%+v", removed, reuse, late, ack, guard, e, r, g)
+	if removed != nil || !errors.Is(reuse, data.ErrExists) || !errors.Is(late, data.ErrNotFound) || !errors.Is(ack, data.ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollments") != 2 {
+		t.Fatalf("removal guards/fence removed=%v reuse=%v late=%v ack=%v guard=%+v error=%v recipient=%+v", removed, reuse, late, ack, guard, e, r)
 	}
 }
 
-func TestDeliveryShouldHonorGlobalRateDeadlineWhenRecipientResumes(t *testing.T) {
+func TestDeliveryShouldHonorRetryAfterWhenRateLimited(t *testing.T) {
 	// Given
 	s, _, _, c := persistenceFixture(t)
 	enroll(t, s, c)
@@ -156,12 +156,10 @@ func TestDeliveryShouldHonorGlobalRateDeadlineWhenRecipientResumes(t *testing.T)
 	}
 	// When
 	completed := (notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: 2 * time.Minute}, epoch)
-	(notifications.Persistence{DB: s.Store}).SetBlocked(ctx, 101, true)
-	(notifications.Persistence{DB: s.Store}).SetBlocked(ctx, 101, false)
 	_, early := (notifications.Persistence{DB: s.Store}).ReserveDelivery(ctx, 101, epoch.Add(119*time.Second))
 	at, e := (notifications.Persistence{DB: s.Store}).ReserveDelivery(ctx, 101, epoch.Add(2*time.Minute))
 	// Then
-	if completed != nil || !errors.Is(early, data.ErrNotEligible) || e != nil || at.CycleAttempts != 1 || at.LifetimeAttempts != 2 {
+	if completed != nil || !errors.Is(early, data.ErrNotEligible) || e != nil || at.CycleAttempts != 2 || at.LifetimeAttempts != 2 {
 		t.Fatalf("rate gate completed=%v early=%v at=%+v error=%v", completed, early, at, e)
 	}
 }
@@ -227,7 +225,7 @@ func TestReserveCheckShouldRollbackCaseGuardWhenManualWriteFails(t *testing.T) {
 	}
 }
 
-func TestCompleteDeliveryShouldRollbackGateWhenOutcomeWriteFails(t *testing.T) {
+func TestCompleteDeliveryShouldRetainReservationWhenOutcomeWriteFails(t *testing.T) {
 	// Given
 	s, _, _, c := persistenceFixture(t)
 	enroll(t, s, c)
@@ -241,11 +239,10 @@ func TestCompleteDeliveryShouldRollbackGateWhenOutcomeWriteFails(t *testing.T) {
 	}
 	// When
 	failed := (notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, epoch)
-	_, g, err := (notifications.Persistence{DB: s.Store}).DeliveryGates(ctx, 101)
 	q, queueErr := s.Pending.FindByRecipient(ctx, 101)
 	// Then
-	if !errors.Is(failed, data.ErrStorage) || err != nil || queueErr != nil || !g.RateUntil.IsZero() || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
-		t.Fatalf("partial outcome failed=%v gates=%+v queue=%+v", failed, g, q)
+	if !errors.Is(failed, data.ErrStorage) || err != nil || queueErr != nil || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
+		t.Fatalf("partial outcome failed=%v queue=%+v", failed, q)
 	}
 }
 

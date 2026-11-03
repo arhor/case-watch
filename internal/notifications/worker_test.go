@@ -154,7 +154,7 @@ func TestWorkerShouldExhaustSixAttemptsWithoutOvertakingWhenHeadFails(t *testing
 	step(t, w)
 	// Then
 	q := queue(t, f, 101)
-	r, _, e := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
+	r, e := (notifications.Persistence{DB: f.s}).RecipientState(ctx, 101)
 	if e != nil || calls[101] != 6 || calls[202] != 1 || r.Pause != "exhausted" || q[0].LifetimeAttempts != 6 || q[1].CycleAttempts != 0 || len(q) != 3 {
 		t.Fatalf("calls=%v queue=%+v gates=%+v err=%v", calls, q, r, e)
 	}
@@ -199,11 +199,11 @@ func TestWorkerShouldGateAllRecipientsWhenRateLimitFailureOccurs(t *testing.T) {
 			// When
 			step(t, w)
 			step(t, w)
-			allowed := w.AllowOutbound(ctx, 202)
+			_, directErr := w.SendDirect(ctx, 202, "synthetic")
 			// Then
 			q := queue(t, f, 202)
-			if calls != 1 || allowed || q[0].LifetimeAttempts != 0 {
-				t.Fatalf("calls=%d allowed=%v queue=%+v", calls, allowed, q)
+			if calls != 1 || directErr != nil || q[0].LifetimeAttempts != 0 {
+				t.Fatalf("calls=%d error=%v queue=%+v", calls, directErr, q)
 			}
 		})
 	}
@@ -313,15 +313,14 @@ func TestWorkerShouldKeepDirectRepliesSeparateWhenGlobalFailureRecorded(t *testi
 	f := setup(t)
 	f.observe(t, 101, "B")
 	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
-		t.Fatal("unexpected durable send")
-		return application.SendOutcome{}, nil
+		return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, nil
 	})
 	// When
-	e := w.RecordDirectOutcome(ctx, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour})
+	_, e := w.SendDirect(ctx, 202, "synthetic")
 	step(t, w)
 	// Then
 	q := queue(t, f, 101)
-	if e != nil || w.AllowOutbound(ctx, 202) || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" {
+	if e != nil || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" {
 		t.Fatalf("err=%v queue=%+v", e, q)
 	}
 }
@@ -407,7 +406,7 @@ func TestWorkerShouldDrainBeforeDeletionWhenRemovalCancelsActiveSend(t *testing.
 	sendErr := <-done
 	<-returned
 	q := queue(t, f, 101)
-	r, _, e := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
+	r, e := (notifications.Persistence{DB: f.s}).RecipientState(ctx, 101)
 	// Then
 	if removed != nil || sendErr != nil || e != nil || len(q) != 0 || !r.Blocked {
 		t.Fatalf("removed=%v send=%v gates=%+v queue=%+v err=%v", removed, sendErr, r, q, e)
@@ -473,39 +472,12 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 				t.Fatal(e)
 			}
 			defer s.Close()
-			_, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, 101)
 			q, qe := s.Pending.FindByRecipient(ctx, 101)
 			// Then
-			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" || (category == application.SendRateLimited && !g.RateUntil.Equal(epoch.Add(time.Hour))) {
-				t.Fatalf("errors=%v/%v/%v/%v calls=%d gates=%+v queue=%+v", directErr, stepErr, e, qe, calls, g, q)
+			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" {
+				t.Fatalf("errors=%v/%v/%v/%v calls=%d queue=%+v", directErr, stepErr, e, qe, calls, q)
 			}
 		})
-	}
-}
-
-func (s *faultStore) RecordGlobalOutcome(c context.Context, o application.SendOutcome, n time.Time) error {
-	if s.fail {
-		return data.ErrStorage
-	}
-	return s.Persistence.RecordGlobalOutcome(c, o, n)
-}
-func TestSendDirectShouldReturnFatalFailureWhenCancelledOutcomeCannotPersist(t *testing.T) {
-	// Given
-	f := setup(t)
-	c, cancel := context.WithCancel(ctx)
-	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
-	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
-		cancel()
-		return application.SendOutcome{Category: application.SendRateLimited}, errors.New("sanitized")
-	})})
-	if e != nil {
-		t.Fatal(e)
-	}
-	// When
-	_, err := w.SendDirect(c, 101, "synthetic")
-	// Then
-	if !errors.Is(err, notifications.ErrWorker) {
-		t.Fatalf("err=%v", err)
 	}
 }
 
@@ -611,7 +583,7 @@ func TestWorkerShouldRetainLastRetryWhenSixthAttemptRejectsToken(t *testing.T) {
 	// When
 	err := w.Step(ctx)
 	q := queue(t, f, 101)
-	r, _, gateErr := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
+	r, gateErr := (notifications.Persistence{DB: f.s}).RecipientState(ctx, 101)
 	// Then
 	if !errors.Is(err, notifications.ErrWorker) || gateErr != nil || r.Pause != "" || q[0].Status != "pending" || q[0].CycleAttempts != 5 || q[0].LifetimeAttempts != 5 {
 		t.Fatalf("error=%v gate=%v recipient=%+v queue=%+v", err, gateErr, r, q)
@@ -641,5 +613,147 @@ func TestWorkerShouldRefuseFurtherSendsWhenRejectedTokenOutcomeCannotPersist(t *
 	q := queue(t, f, 101)
 	if !errors.Is(stepErr, notifications.ErrWorker) || !errors.Is(directErr, notifications.ErrWorker) || calls != 1 || q[0].Status != "reserved" {
 		t.Fatalf("step=%v direct=%v calls=%d queue=%+v", stepErr, directErr, calls, q)
+	}
+}
+
+func TestWorkerShouldResumeAtCooldownDeadlineWhenTelegramRateLimitsDirectReply(t *testing.T) {
+	for _, retryAfter := range []time.Duration{0, -time.Second, time.Minute} {
+		t.Run(retryAfter.String(), func(t *testing.T) {
+			// Given
+			f := setup(t)
+			f.observe(t, 101, "B")
+			calls := 0
+			w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+				calls++
+				if calls == 1 {
+					return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: retryAfter}, nil
+				}
+				return application.SendOutcome{Category: application.SendAccepted, MessageID: int64(calls)}, nil
+			})
+			delay := retryAfter
+			if delay <= 0 {
+				delay = 30 * time.Second
+			}
+			// When
+			_, firstErr := w.SendDirect(ctx, 202, "synthetic")
+			f.clock.add(delay - time.Nanosecond)
+			step(t, w)
+			_, suppressedErr := w.SendDirect(ctx, 101, "synthetic")
+			before := calls
+			f.clock.add(time.Nanosecond)
+			step(t, w)
+			_, resumedErr := w.SendDirect(ctx, 202, "synthetic")
+			// Then
+			q := queue(t, f, 101)
+			if firstErr != nil || suppressedErr != nil || resumedErr != nil || before != 1 || calls != 3 || q[0].Status != "delivered" || q[0].LifetimeAttempts != 1 {
+				t.Fatalf("errors=%v/%v/%v before=%d calls=%d queue=%+v", firstErr, suppressedErr, resumedErr, before, calls, q)
+			}
+		})
+	}
+}
+
+func TestWorkerShouldForgetSharedCooldownWhenRestartedButRetainNotificationDeadline(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, nil
+	})
+	step(t, w)
+	if err := f.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	f.s, err = data.Open(ctx, f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	restarted := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		return application.SendOutcome{Category: application.SendAccepted, MessageID: 1}, nil
+	})
+	// When
+	step(t, restarted)
+	out, directErr := restarted.SendDirect(ctx, 202, "synthetic")
+	// Then
+	q := queue(t, f, 101)
+	if directErr != nil || out.Category != application.SendAccepted || calls != 1 || q[0].LifetimeAttempts != 1 || q[0].Status != "pending" || !q[0].NextAttemptAt.Equal(epoch.Add(time.Hour)) {
+		t.Fatalf("error=%v calls=%d outcome=%+v queue=%+v", directErr, calls, out, q)
+	}
+}
+
+func TestSendDirectShouldHonorCooldownWithoutStorageWhenDatabaseIsClosed(t *testing.T) {
+	// Given
+	f := setup(t)
+	calls := 0
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Minute}, nil
+	})
+	if err := f.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	_, firstErr := w.SendDirect(ctx, 101, "synthetic")
+	_, suppressedErr := w.SendDirect(ctx, 202, "synthetic")
+	f.clock.add(time.Minute)
+	_, nextErr := w.SendDirect(ctx, 202, "synthetic")
+	// Then
+	if firstErr != nil || suppressedErr != nil || nextErr != nil || calls != 2 {
+		t.Fatalf("errors=%v/%v/%v calls=%d", firstErr, suppressedErr, nextErr, calls)
+	}
+}
+
+func TestWorkerShouldRetainCooldownWhenNotificationOutcomeCannotBePersisted(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
+	calls := 0
+	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, nil
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	stepErr := w.Step(ctx)
+	_, directErr := w.SendDirect(ctx, 202, "synthetic")
+	// Then
+	q := queue(t, f, 101)
+	if !errors.Is(stepErr, notifications.ErrWorker) || directErr != nil || calls != 1 || q[0].Status != "reserved" || q[0].LifetimeAttempts != 1 {
+		t.Fatalf("errors=%v/%v calls=%d queue=%+v", stepErr, directErr, calls, q)
+	}
+}
+
+func TestWorkerShouldKeepSharedCooldownWhenRecipientIsResumed(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	calls := 0
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		if calls == 1 {
+			return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Minute}, nil
+		}
+		return application.SendOutcome{Category: application.SendAccepted, MessageID: 1}, nil
+	})
+	step(t, w)
+	// When
+	w.Membership(ctx, notifications.Event{Owner: 101, Blocked: true})
+	w.Membership(ctx, notifications.Event{Owner: 101, Unblocked: true})
+	step(t, w)
+	before := calls
+	f.clock.add(time.Minute)
+	step(t, w)
+	// Then
+	q := queue(t, f, 101)
+	if before != 1 || calls != 2 || q[0].Status != "delivered" || q[0].CycleAttempts != 1 || q[0].LifetimeAttempts != 2 {
+		t.Fatalf("before=%d calls=%d queue=%+v", before, calls, q)
 	}
 }

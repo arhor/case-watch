@@ -71,13 +71,6 @@ CREATE TABLE recipients (
     blocked      INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE delivery_gates (
-    singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
-    rate_until INTEGER NOT NULL DEFAULT 0
-);
-
-INSERT INTO delivery_gates (singleton) VALUES (1);
-
 CREATE TRIGGER pending_recipient
 AFTER INSERT ON pending
 BEGIN

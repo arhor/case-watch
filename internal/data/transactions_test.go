@@ -30,7 +30,7 @@ func writeAcrossRepositories(ctx context.Context, tx *Store) error {
 	if err = tx.Recipients.SetState(ctx, 101, RecipientState{Blocked: true, Pause: "blocked"}); err != nil {
 		return err
 	}
-	return tx.Gates.ExtendRateUntil(ctx, time.Unix(1, 0))
+	return nil
 }
 func assertTransactionRows(t *testing.T, s *Store, want int) {
 	t.Helper()
@@ -43,10 +43,7 @@ func assertTransactionRows(t *testing.T, s *Store, want int) {
 			t.Fatalf("%s rows=%d, want %d", table, n, want)
 		}
 	}
-	g, err := s.Gates.GetState(context.Background())
-	if err != nil || (!g.RateUntil.IsZero()) != (want == 1) {
-		t.Fatalf("gates=%+v error=%v", g, err)
-	}
+
 }
 func TestRunInTxShouldCommitEveryRepositoryWhenCallbackSucceeds(t *testing.T) {
 	// Given

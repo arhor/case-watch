@@ -45,7 +45,3 @@ type RecipientState struct {
 	Pause   string
 	Blocked bool
 }
-
-type GlobalState struct {
-	RateUntil time.Time
-}

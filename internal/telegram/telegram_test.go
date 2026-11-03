@@ -329,10 +329,9 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 	// When
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 101, "synthetic")
-	_, g, e := (notifications.Persistence{DB: f.s}).DeliveryGates(context.Background(), 101)
 	// Then
-	if calls != 1 || e != nil || !g.RateUntil.Equal(f.clock.Now().Add(time.Minute)) {
-		t.Fatalf("calls=%d error=%v gates=%+v", calls, e, g)
+	if calls != 1 {
+		t.Fatalf("calls=%d", calls)
 	}
 }
 
@@ -392,7 +391,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	}
 	if err = w.Step(ctx); err != nil {
 		t.Fatal(err)
-	} // Global rate limit persists.
+	} // The notification retry deadline persists.
 	path := f.path
 	coordinator.Shutdown()
 	if err = f.s.Close(); err != nil {

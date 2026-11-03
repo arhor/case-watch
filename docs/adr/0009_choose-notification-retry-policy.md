@@ -1,10 +1,13 @@
 ---
-status: accepted
+status: superseded
+superseded-by: 0013_keep-telegram-send-cooldown-in-memory.md
 date: 2026-11-01
 decision-makers: Repository maintainer
 ---
 
 # Choose bounded retries and ordered notification recovery
+
+Superseded on 2026-11-03 by [ADR 0013](0013_keep-telegram-send-cooldown-in-memory.md).
 
 ## Context and Problem Statement
 

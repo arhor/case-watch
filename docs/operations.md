@@ -6,19 +6,21 @@ Commands require the double-dash spelling shown here. Bare command names are rej
 
 Startup validates environment syntax, canonical path separation, restricted file permissions, the database schema and every encrypted credential before constructing network adapters. Keys must be outside the database directory subtree and the repository. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. All service and maintenance processes must use the same database path. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 
-After local validation, startup validates the Telegram token with a bounded `getMe` request. Any validation failure prevents workers from starting. Startup then recovers uncertain notification reservations and starts one Telegram long poller, the notification worker and the Warsaw scheduler. All share the same coordinator and authorization policy. No scheduler catch-up occurs at startup. Direct replies honor persisted global rate-limit gates and never acknowledge queued change notifications. Diagnostic messages contain fixed operational categories, without credentials, tokens, stage text or message bodies.
+After local validation, startup validates the Telegram token with a bounded `getMe` request. Any validation failure prevents workers from starting. Startup then recovers uncertain notification reservations and starts one Telegram long poller, the notification worker and the Warsaw scheduler. All share the same coordinator and authorization policy. No scheduler catch-up occurs at startup. Direct replies honor the shared in-memory send cooldown and never acknowledge queued change notifications. Diagnostic messages contain fixed operational categories, without credentials, tokens, stage text or message bodies.
 
 SIGINT or SIGTERM cancels intake and workers, closes coordinator admission, cancels/drains portal and send work, waits for handlers and enrollment work, and closes SQLite before releasing the lock. Unexpected worker/storage failure stops the service with a sanitized error so supervision can restart it. Tracking infrastructure monitoring ignores errors from canceled operations, so an interrupted storage read during shutdown does not itself mark the process as failed. Transaction recovery preserves reserved attempt counts; accepted-but-unrecorded Telegram sends may be duplicated after recovery. An ordinary shutdown does not guarantee completion of each pending delivery.
 
-An invalid or revoked Telegram token during polling, sending or credential-message deletion stops the entire service, including portal checks. Diagnostics use a fixed sanitized category. Correct `CASE_WATCH_TELEGRAM_BOT_TOKEN` and restart normally; no resume command is required. A notification explicitly rejected for an invalid token retains its retry budget. Pending work, recipient pauses and rate-limit deadlines remain intact. See [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md).
+An invalid or revoked Telegram token during polling, sending or credential-message deletion stops the entire service, including portal checks. Diagnostics use a fixed sanitized category. Correct `CASE_WATCH_TELEGRAM_BOT_TOKEN` and restart normally; no resume command is required. A notification explicitly rejected for an invalid token retains its retry budget. Pending work, recipient pauses and notification retry deadlines remain intact. The shared send cooldown resets on restart under [ADR 0013](adr/0013_keep-telegram-send-cooldown-in-memory.md). See [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md).
 
 Stop the service before every database maintenance command, including inspection. Commands refuse a held lock and authenticate all stored credentials before operating. Maintenance requires the database and key paths, without Telegram configuration:
 
 | Command | Purpose |
 | --- | --- |
 | `case-watch --provision-key KEY_PATH KEY_ID` | Explicitly create one new protected keyring; refuse overwrite. No database access. |
-| `case-watch --queue DB_PATH KEY_PATH RECIPIENT_ID` | Inspect queue counts, attempt metadata, deadlines and gates without printing credentials or notification text. |
+| `case-watch --queue DB_PATH KEY_PATH RECIPIENT_ID` | Inspect queue counts, attempt metadata, notification deadlines and recipient gates without printing credentials or notification text. |
 | `case-watch --rotate-key DB_PATH KEY_PATH NEW_ID` | Persist retained old/new keys, transactionally rewrite credentials with stable identities, verify, then activate the new key. |
+
+Queue inspection omits the shared send cooldown because it exists only in the running worker.
 
 Recipient IDs are positive numeric Telegram user IDs. Recovery does not mark any notification delivered or erase history. Ordinary messages only resume an evidenced block pause; exhausted/permanent queues require operator recovery unless a later block/unblock cycle is observed. Restoring authorization makes retained work eligible subject to existing gates.
 
@@ -31,7 +33,7 @@ sqlite3 -bail /path/to/case-watch.db \
   < scripts/resume-recipient.sql
 ```
 
-The script atomically clears that recipient's pause/blocked state and resets only the oldest undelivered notification's cycle attempts, retry deadline and failure category. It preserves lifetime attempts, delivery status, history, later queued transitions and global rate-limit gates. Restart the service afterward to process eligible work.
+The script atomically clears that recipient's pause/blocked state and resets only the oldest undelivered notification's cycle attempts, retry deadline and failure category. It preserves lifetime attempts, delivery status, history, later queued transitions. Restart the service afterward to process eligible work.
 
 The script rolls back if the recipient ID is missing/invalid or any notification in the database is still reserved. If reservations remain after an interrupted shutdown, start the service to perform normal uncertain-attempt recovery, stop it again, then rerun the script. Recovery can cause duplicate delivery for accepted-but-unrecorded sends. Use `-bail` so SQLite exits immediately on an error. Direct SQL does not acquire the application's advisory lock or verify encrypted credentials; keep the service and other maintenance processes stopped throughout. SQLite must already be installed; the database must already exist.
 

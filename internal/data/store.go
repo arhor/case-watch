@@ -19,7 +19,6 @@ type Store struct {
 	Pending     *PendingDeliveryRepository
 	Guards      *CheckGuardRepository
 	Recipients  *RecipientRepository
-	Gates       *GlobalGateRepository
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -30,7 +29,6 @@ func NewStore(db *sql.DB) *Store {
 		Pending:     &PendingDeliveryRepository{db: db},
 		Guards:      &CheckGuardRepository{db: db},
 		Recipients:  &RecipientRepository{db: db},
-		Gates:       &GlobalGateRepository{db: db},
 	}
 }
 
@@ -63,7 +61,6 @@ func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
 		Pending:     &PendingDeliveryRepository{db: tx},
 		Guards:      &CheckGuardRepository{db: tx},
 		Recipients:  &RecipientRepository{db: tx},
-		Gates:       &GlobalGateRepository{db: tx},
 	}
 
 	if err = fn(txStore); err != nil {

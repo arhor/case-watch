@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -318,56 +317,21 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 	}
 }
 
-func TestRunShouldPersistKnownDirectGateWhenShutdownCancelsCaller(t *testing.T) {
-	for _, category := range []application.SendCategory{application.SendRateLimited} {
-		t.Run(string(category), func(t *testing.T) {
-			// Given
-			f := setup(t)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			// When
-			e := Run(ctx, f.lookup, Factories{Report: func(string) {}, Telegram: func(tc telegram.Config) (Transport, error) {
-				return &transport{start: func(c context.Context) { tc.DirectSend(c, 101, "synthetic") }, send: func(context.Context, int64, string) (application.SendOutcome, error) {
-					cancel()
-					return application.SendOutcome{Category: category, RetryAfter: time.Hour}, errors.New("sanitized")
-				}}, nil
-			}})
-			s := f.open(t)
-			defer s.Close()
-			_, g, readErr := (notifications.Persistence{DB: s}).DeliveryGates(context.Background(), 101)
-			// Then
-			if e != nil || readErr != nil || (category == application.SendRateLimited && g.RateUntil.Before(time.Now())) {
-				t.Fatalf("run=%v read=%v gate=%+v", e, readErr, g)
-			}
-		})
-	}
-}
-
-func TestRunShouldFailWhenCancelledKnownDirectOutcomeCannotPersist(t *testing.T) {
+func TestRunShouldDrainNormallyWhenRateLimitedDirectSendIsCancelled(t *testing.T) {
 	// Given
 	f := setup(t)
-	s := f.open(t)
-	s.Close()
-	db, e := sql.Open("sqlite", f.db)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec("CREATE TRIGGER reject_global BEFORE UPDATE ON delivery_gates BEGIN SELECT RAISE(ABORT, 'synthetic fault'); END"); e != nil {
-		t.Fatal(e)
-	}
-	db.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// When
-	e = Run(ctx, f.lookup, Factories{Report: func(string) {}, Telegram: func(tc telegram.Config) (Transport, error) {
+	err := Run(ctx, f.lookup, Factories{Report: func(string) {}, Telegram: func(tc telegram.Config) (Transport, error) {
 		return &transport{start: func(c context.Context) { tc.DirectSend(c, 101, "synthetic") }, send: func(context.Context, int64, string) (application.SendOutcome, error) {
 			cancel()
-			return application.SendOutcome{Category: application.SendRateLimited}, errors.New("sanitized")
+			return application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, errors.New("sanitized")
 		}}, nil
 	}})
 	// Then
-	if !errors.Is(e, ErrService) {
-		t.Fatalf("result=%v", e)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

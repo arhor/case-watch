@@ -17,23 +17,8 @@ var _ Store = Persistence{}
 func (p Persistence) DeliveryHeads(ctx context.Context) ([]data.Delivery, error) {
 	return p.DB.Pending.FindUndeliveredHeads(ctx)
 }
-func gates(ctx context.Context, s *data.Store, recipient int64) (data.RecipientState, data.GlobalState, error) {
-	r, err := s.Recipients.GetState(ctx, recipient)
-	if err != nil {
-		return r, data.GlobalState{}, err
-	}
-	g, err := s.Gates.GetState(ctx)
-	return r, g, err
-}
-func (p Persistence) DeliveryGates(ctx context.Context, recipient int64) (data.RecipientState, data.GlobalState, error) {
-	var r data.RecipientState
-	var g data.GlobalState
-	err := p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		var err error
-		r, g, err = gates(ctx, tx, recipient)
-		return err
-	})
-	return r, g, err
+func (p Persistence) RecipientState(ctx context.Context, recipient int64) (data.RecipientState, error) {
+	return p.DB.Recipients.GetState(ctx, recipient)
 }
 func (p Persistence) ReserveDelivery(ctx context.Context, recipient int64, now time.Time) (data.Delivery, error) {
 	if recipient <= 0 || now.IsZero() {
@@ -41,11 +26,11 @@ func (p Persistence) ReserveDelivery(ctx context.Context, recipient int64, now t
 	}
 	var result data.Delivery
 	err := p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		r, g, err := gates(ctx, tx, recipient)
+		r, err := tx.Recipients.GetState(ctx, recipient)
 		if err != nil {
 			return err
 		}
-		if r.Pause != "" || r.Blocked || now.Before(g.RateUntil) {
+		if r.Pause != "" || r.Blocked {
 			return data.ErrNotEligible
 		}
 		d, err := tx.Pending.FindUndeliveredHeadByRecipient(ctx, recipient)
@@ -99,13 +84,6 @@ func (p Persistence) CompleteDelivery(ctx context.Context, d data.Delivery, out 
 		return finishDelivery(ctx, tx, current, out, now, false)
 	})
 }
-func recordGlobal(ctx context.Context, tx *data.Store, out application.SendOutcome, now time.Time) error {
-	switch out.Category {
-	case application.SendRateLimited:
-		return tx.Gates.ExtendRateUntil(ctx, now.Add(out.RetryAfter))
-	}
-	return nil
-}
 func finishDelivery(ctx context.Context, tx *data.Store, d data.Delivery, out application.SendOutcome, now time.Time, uncertain bool) error {
 	status, failure, pause := "pending", string(out.Category), ""
 	var next time.Time
@@ -126,9 +104,6 @@ func finishDelivery(ctx context.Context, tx *data.Store, d data.Delivery, out ap
 		}
 		if d.CycleAttempts >= 6 && pause == "" {
 			pause = "exhausted"
-		}
-		if err := recordGlobal(ctx, tx, out, now); err != nil {
-			return err
 		}
 		out.MessageID = 0
 	}
@@ -201,10 +176,4 @@ func (p Persistence) resume(ctx context.Context, recipient int64, onlyBlocked bo
 		}
 		return tx.Pending.ResetHeadForRetry(ctx, recipient)
 	})
-}
-func (p Persistence) RecordGlobalOutcome(ctx context.Context, out application.SendOutcome, now time.Time) error {
-	if now.IsZero() || out.RetryAfter < 0 {
-		return data.ErrInvalid
-	}
-	return recordGlobal(ctx, p.DB, out, now)
 }
