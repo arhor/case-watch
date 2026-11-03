@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/credentials"
@@ -20,78 +21,227 @@ import (
 
 const usage = "usage: case-watch run | provision-key PATH KEY_ID | rotate-key DB_PATH KEY_PATH NEW_ID | queue DB_PATH KEY_PATH RECIPIENT_ID | resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | resume-token DB_PATH KEY_PATH"
 
-func run(args []string, lookup func(string) (string, bool)) error {
-	return execute(context.Background(), args, lookup, os.Stdout)
-}
-func execute(ctx context.Context, args []string, lookup func(string) (string, bool), out io.Writer) error {
-	if len(args) == 3 && args[0] == "provision-key" {
-		return credentials.Provision(args[1], args[2])
-	}
-	if len(args) == 1 && args[0] == "run" {
-		// Syntax validation occurs before any runtime operation.
-		if _, e := config.Load(lookup); e != nil {
-			return e
-		}
-		return service.Run(ctx, lookup, service.Factories{})
-	}
-	if len(args) == 4 && args[0] == "rotate-key" {
-		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, k *credentials.Keyring, path string) error {
-			return service.Rotate(ctx, s, k, path, args[3], nil)
-		})
-	}
-	if len(args) == 3 && args[0] == "resume-token" {
-		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, _ *credentials.Keyring, _ string) error { return service.Resume(ctx, s, 0, true) })
-	}
-	if len(args) == 4 && (args[0] == "queue" || args[0] == "resume-recipient") {
-		id, e := strconv.ParseInt(args[3], 10, 64)
-		if e != nil || id <= 0 {
-			return errors.New("invalid recipient ID")
-		}
-		return service.Maintain(ctx, args[1], args[2], func(s *data.Store, _ *credentials.Keyring, _ string) error {
-			if args[0] == "resume-recipient" {
-				return service.Resume(ctx, s, id, false)
-			}
-			rows, e := s.Pending.FindByRecipient(ctx, id)
-			if e != nil {
-				return e
-			}
-			r, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, id)
-			if e != nil {
-				return e
-			}
-			pending := 0
-			for _, d := range rows {
-				if d.Status != "delivered" {
-					pending++
-				}
-			}
-			if _, e = fmt.Fprintf(out, "recipient=%d blocked=%t pause=%s token_paused=%t rate_until=%s pending=%d records=%d\n", id, r.Blocked, safeCategory(r.Pause), g.TokenPaused, g.RateUntil.UTC().Format("2006-01-02T15:04:05Z"), pending, len(rows)); e != nil {
-				return service.ErrService
-			}
-			for _, d := range rows {
-				if _, e = fmt.Fprintf(out, "sequence=%d cycle_attempts=%d lifetime_attempts=%d status=%s failure=%s message_id=%d next_attempt=%s\n", d.Sequence, d.CycleAttempts, d.LifetimeAttempts, safeCategory(d.Status), safeCategory(d.Failure), d.MessageID, d.NextAttemptAt.UTC().Format("2006-01-02T15:04:05Z")); e != nil {
-					return service.ErrService
-				}
-			}
-			return nil
-		})
-	}
-	return errors.New(usage)
-}
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop :=
+		signal.NotifyContext(
+			context.Background(),
+			os.Interrupt,
+			syscall.SIGTERM,
+		)
+
 	defer stop()
-	if e := execute(ctx, os.Args[1:], os.LookupEnv, os.Stdout); e != nil {
-		fmt.Fprintln(os.Stderr, e)
+
+	if err := execute(ctx, os.Args[1:], os.LookupEnv, os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// Queue fields are a closed diagnostic vocabulary, even for a corrupted DB.
-func safeCategory(s string) string {
-	switch s {
+func execute(ctx context.Context, args []string, lookup func(string) (string, bool), output io.Writer) error {
+	if len(args) == 0 {
+		return errors.New(usage)
+	}
+
+	command := args[0]
+	commandArgs := args[1:]
+
+	switch command {
+	case "run":
+		return onRun(ctx, commandArgs, lookup)
+	case "provision-key":
+		return onProvisionKey(commandArgs)
+	case "rotate-key":
+		return onRotateKey(ctx, commandArgs)
+	case "resume-token":
+		return onResumeToken(ctx, commandArgs)
+	case "queue":
+		return onQueue(ctx, commandArgs, output)
+	case "resume-recipient":
+		return onResumeRecipient(ctx, commandArgs)
+	default:
+		return errors.New(usage)
+	}
+}
+
+// ------------------------------ Command Handlers ------------------------------
+
+func onRun(ctx context.Context, args []string, lookup func(string) (string, bool)) error {
+	if len(args) != 0 {
+		return errors.New(usage)
+	}
+	if _, err := config.Load(lookup); err != nil {
+		return err
+	}
+
+	return service.Run(
+		ctx,
+		lookup,
+		service.Factories{},
+	)
+}
+
+func onProvisionKey(args []string) error {
+	if len(args) != 2 {
+		return errors.New(usage)
+	}
+	keyPath, keyID := args[0], args[1]
+
+	return credentials.Provision(
+		keyPath,
+		keyID,
+	)
+}
+
+func onRotateKey(ctx context.Context, args []string) error {
+	if len(args) != 3 {
+		return errors.New(usage)
+	}
+	databasePath, keyPath, newKeyID := args[0], args[1], args[2]
+
+	return service.Maintain(
+		ctx,
+		databasePath,
+		keyPath,
+		func(store *data.Store, keyring *credentials.Keyring, canonicalKeyPath string) error {
+			return service.Rotate(
+				ctx,
+				store,
+				keyring,
+				canonicalKeyPath,
+				newKeyID,
+				nil,
+			)
+		},
+	)
+}
+
+func onResumeToken(ctx context.Context, args []string) error {
+	if len(args) != 2 {
+		return errors.New(usage)
+	}
+	databasePath, keyPath := args[0], args[1]
+
+	return service.Maintain(
+		ctx,
+		databasePath,
+		keyPath,
+		func(store *data.Store, _ *credentials.Keyring, _ string) error {
+			return service.Resume(
+				ctx,
+				store,
+				0,
+				true,
+			)
+		},
+	)
+}
+
+func onQueue(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) != 3 {
+		return errors.New(usage)
+	}
+	databasePath, keyPath, recipientIDArg := args[0], args[1], args[2]
+	recipientID, err := strconv.ParseInt(recipientIDArg, 10, 64)
+
+	if err != nil || recipientID <= 0 {
+		return errors.New("invalid recipient ID")
+	}
+
+	return service.Maintain(
+		ctx,
+		databasePath,
+		keyPath,
+		func(store *data.Store, _ *credentials.Keyring, _ string) error {
+			return printQueue(
+				ctx,
+				store,
+				recipientID,
+				output,
+			)
+		},
+	)
+}
+
+func onResumeRecipient(ctx context.Context, args []string) error {
+	if len(args) != 3 {
+		return errors.New(usage)
+	}
+	databasePath, keyPath, recipientIDArg := args[0], args[1], args[2]
+	recipientID, err := strconv.ParseInt(recipientIDArg, 10, 64)
+
+	if err != nil || recipientID <= 0 {
+		return errors.New("invalid recipient ID")
+	}
+
+	return service.Maintain(
+		ctx,
+		databasePath,
+		keyPath,
+		func(store *data.Store, _ *credentials.Keyring, _ string) error {
+			return service.Resume(
+				ctx,
+				store,
+				recipientID,
+				false,
+			)
+		},
+	)
+}
+
+// ------------------------------ Internal Helpers ------------------------------
+
+func printQueue(ctx context.Context, store *data.Store, recipientID int64, output io.Writer) error {
+	deliveries, err := store.Pending.FindByRecipient(ctx, recipientID)
+	if err != nil {
+		return err
+	}
+	persistence := notifications.Persistence{DB: store}
+	recipientState, globalState, err := persistence.DeliveryGates(ctx, recipientID)
+	if err != nil {
+		return err
+	}
+
+	pendingCount := 0
+	for _, delivery := range deliveries {
+		if delivery.Status != "delivered" {
+			pendingCount++
+		}
+	}
+	if _, err := fmt.Fprintf(
+		output,
+		"recipient=%d blocked=%t pause=%s token_paused=%t rate_until=%s pending=%d records=%d\n",
+		recipientID,
+		recipientState.Blocked,
+		safeCategory(recipientState.Pause),
+		globalState.TokenPaused,
+		globalState.RateUntil.UTC().Format(time.RFC3339),
+		pendingCount,
+		len(deliveries),
+	); err != nil {
+		return service.ErrService
+	}
+	for _, delivery := range deliveries {
+		if _, err := fmt.Fprintf(
+			output,
+			"sequence=%d cycle_attempts=%d lifetime_attempts=%d status=%s failure=%s message_id=%d next_attempt=%s\n",
+			delivery.Sequence,
+			delivery.CycleAttempts,
+			delivery.LifetimeAttempts,
+			safeCategory(delivery.Status),
+			safeCategory(delivery.Failure),
+			delivery.MessageID,
+			delivery.NextAttemptAt.UTC().Format(time.RFC3339),
+		); err != nil {
+			return service.ErrService
+		}
+	}
+	return nil
+}
+
+func safeCategory(category string) string {
+	switch category {
 	case "", "blocked", "permanent", "exhausted", "pending", "reserved", "retry", "delivered", "uncertain", "transient", "rate_limited", "invalid_token", "accepted":
-		return s
+		return category
 	default:
 		return "unknown"
 	}

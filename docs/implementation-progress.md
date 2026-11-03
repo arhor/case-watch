@@ -212,3 +212,52 @@ With Node v26.13.0 selected through nvm and Go 1.27.3, final commands all exited
 - GOCACHE=/tmp/case-watch-go-cache go build -o /tmp/case-watch-adr-0011 ./cmd/case-watch
 
 Documentation relative links, ADR status/index consistency, formatting of changed Go files and git diff --check passed. An existing formatting difference in untouched internal/scheduler/scheduler_test.go remains outside this change. Verification used synthetic data and local HTTP fixtures. No live portal/Telegram, container execution, deployment, target-Pi checks, or new Linux cross-build was performed for this refactor.
+
+### 2026-11-03: Command entry point readability
+
+Refactored command dispatch to a switch with explicit argument-count checks and
+named command arguments. Replaced abbreviated local names, extracted queue
+reporting, and used time.RFC3339 for the existing UTC timestamp format. Command
+syntax, errors and diagnostic fields are unchanged. Expanded command tests for
+missing/extra arguments, unknown commands and invalid recipient IDs.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3,
+`GOCACHE=/private/tmp/case-watch-go-build go test ./cmd/case-watch`,
+`go test ./...`, `go test -race ./...`, `go vet ./...`, and
+`go build -o /private/tmp/case-watch-cli-refactor ./cmd/case-watch` passed
+using the same temporary build cache. The full normal and race suites initially
+hit sandbox loopback restrictions; both passed with elevated access for local
+HTTP fixtures. The build emitted a non-fatal module stat-cache write warning.
+Formatting of the changed Go files and `git diff --check` passed. Verification
+used synthetic data; no live portal/Telegram or deployment acceptance was run.
+
+### 2026-11-03: Test-only command wrapper
+
+Moved the run wrapper from main.go to main_test.go, retaining its signature,
+background context and stdout behavior. Existing test calls and the production
+entry point are unchanged.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, verification passed:
+`go test ./cmd/case-watch`, `go test ./...`, `go test -race ./...`,
+`go vet ./...`, and
+`go build -o /private/tmp/case-watch-test-helper ./cmd/case-watch`, all using
+`GOCACHE=/private/tmp/case-watch-go-build`. The full suites ran with elevated
+loopback access for local HTTP fixtures. The build emitted a non-fatal module
+stat-cache write warning. Changed Go files are gofmt-clean and
+`git diff --check` passed. No live integration or deployment checks were run.
+
+### 2026-11-03: Command router and handlers
+
+Reduced execute to empty-input validation and command routing. Each command
+calls its own onRun, onProvisionKey, onRotateKey, onResumeToken, onQueue or
+onResumeRecipient handler. Handlers own argument validation and command work;
+queue and recipient resumption no longer share a conditional callback.
+Command syntax, validation errors and output are unchanged.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, the existing command tests,
+`go test ./...`, `go test -race ./...`, `go vet ./...`, and
+`go build -o /private/tmp/case-watch-command-router ./cmd/case-watch` passed
+using `GOCACHE=/private/tmp/case-watch-go-build`. Full suites used elevated
+loopback access for local HTTP fixtures. The build emitted a non-fatal module
+stat-cache write warning. The changed Go file is gofmt-clean and
+`git diff --check` passed. No live integration or deployment checks were run.
