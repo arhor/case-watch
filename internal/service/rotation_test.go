@@ -32,8 +32,8 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 			if e != nil {
 				t.Fatal(e)
 			}
-			history, _ := s.History.History(ctx, 1, a.ID)
-			queue, _ := s.Pending.Queue(ctx, 1)
+			history, _ := s.History.FindByEnrollment(ctx, 1, a.ID)
+			queue, _ := s.Pending.FindByRecipient(ctx, 1)
 			records := 0
 			// When
 			e = Rotate(ctx, s, f.k, f.key, "new", func(s string) error {
@@ -87,8 +87,8 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 					t.Fatal("old key was discarded")
 				}
 			}
-			h, _ := s.History.History(ctx, 1, a.ID)
-			q, _ := s.Pending.Queue(ctx, 1)
+			h, _ := s.History.FindByEnrollment(ctx, 1, a.ID)
+			q, _ := s.Pending.FindByRecipient(ctx, 1)
 			if !reflect.DeepEqual(h, history) || !reflect.DeepEqual(q, queue) {
 				t.Fatal("rotation changed durable delivery/history")
 			}
@@ -119,14 +119,14 @@ func TestResumeShouldPreserveLifetimeAndHistoryWhenRecoveringStoppedReservation(
 	if e != nil {
 		t.Fatal(e)
 	}
-	before, _ := s.History.History(ctx, 1, r.ID)
+	before, _ := s.History.FindByEnrollment(ctx, 1, r.ID)
 	s.Close()
 	// When
 	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error { return Resume(ctx, s, 1, false) })
 	s = f.open(t)
 	defer s.Close()
-	q, qe := s.Pending.Queue(ctx, 1)
-	after, he := s.History.History(ctx, 1, r.ID)
+	q, qe := s.Pending.FindByRecipient(ctx, 1)
+	after, he := s.History.FindByEnrollment(ctx, 1, r.ID)
 	// Then
 	if e != nil || qe != nil || he != nil || len(q) != 1 || q[0].Status == "reserved" || q[0].Status == "delivered" || q[0].CycleAttempts != 0 || q[0].LifetimeAttempts != reserved.LifetimeAttempts || !reflect.DeepEqual(before, after) {
 		t.Fatal("resume lost or acknowledged retained work")
