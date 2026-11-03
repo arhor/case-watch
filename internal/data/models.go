@@ -45,3 +45,10 @@ type RecipientState struct {
 	Pause   string
 	Blocked bool
 }
+
+// Cooldown records the last attempt start for a typed subject.
+type Cooldown struct {
+	SubjectType string
+	SubjectID   string
+	StartedAt   time.Time
+}

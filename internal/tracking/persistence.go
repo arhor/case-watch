@@ -2,6 +2,8 @@ package tracking
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"time"
 
 	"github.com/arhor/case-watch/internal/application"
@@ -13,6 +15,11 @@ import (
 type Persistence struct{ DB *data.Store }
 
 var _ Store = Persistence{}
+
+const (
+	caseCheckCooldown   = "case_check"
+	manualCheckCooldown = "manual_check"
+)
 
 func (p Persistence) Enrollment(ctx context.Context, owner int64) (data.Enrollment, error) {
 	return p.DB.Enrollments.FindByOwner(ctx, owner)
@@ -47,16 +54,26 @@ func (p Persistence) Remove(ctx context.Context, owner int64, id string) error {
 		if err := tx.History.DeleteByEnrollmentID(ctx, id); err != nil {
 			return err
 		}
-		return tx.Guards.DeleteByEnrollmentID(ctx, id)
+		return tx.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
 	})
 }
 func eligibility(ctx context.Context, tx *data.Store, owner int64, id string, manual bool) (time.Time, error) {
-	caseStart, userStart, err := tx.Guards.FindAttemptStartTimes(ctx, owner, id)
-	if err != nil {
+	if _, err := tx.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
 		return time.Time{}, err
 	}
-	if manual && userStart.After(caseStart) {
-		caseStart = userStart
+	c, err := tx.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+	if err != nil && !errors.Is(err, data.ErrNotFound) {
+		return time.Time{}, err
+	}
+	caseStart := c.StartedAt
+	if manual {
+		c, err = tx.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
+		if err != nil && !errors.Is(err, data.ErrNotFound) {
+			return time.Time{}, err
+		}
+		if c.StartedAt.After(caseStart) {
+			caseStart = c.StartedAt
+		}
 	}
 	if caseStart.IsZero() {
 		return time.Time{}, nil
@@ -64,7 +81,13 @@ func eligibility(ctx context.Context, tx *data.Store, owner int64, id string, ma
 	return caseStart.Add(time.Minute), nil
 }
 func (p Persistence) CheckEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
-	return eligibility(ctx, p.DB, owner, id, manual)
+	var next time.Time
+	err := p.DB.RunInTx(ctx, func(tx *data.Store) error {
+		var err error
+		next, err = eligibility(ctx, tx, owner, id, manual)
+		return err
+	})
+	return next, err
 }
 func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (data.CheckReservation, error) {
 	if now.IsZero() {
@@ -80,11 +103,11 @@ func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id string, m
 		if now.Before(next) {
 			return nil
 		}
-		if err = tx.Guards.RecordCaseStart(ctx, id, now); err != nil {
+		if err = tx.Cooldowns.Upsert(ctx, data.Cooldown{SubjectType: caseCheckCooldown, SubjectID: id, StartedAt: now}); err != nil {
 			return err
 		}
 		if manual {
-			if err = tx.Guards.RecordManualStart(ctx, owner, now); err != nil {
+			if err = tx.Cooldowns.Upsert(ctx, data.Cooldown{SubjectType: manualCheckCooldown, SubjectID: strconv.FormatInt(owner, 10), StartedAt: now}); err != nil {
 				return err
 			}
 		}

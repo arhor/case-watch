@@ -213,7 +213,7 @@ func TestReserveCheckShouldRollbackCaseGuardWhenManualWriteFails(t *testing.T) {
 	// Given
 	s, _, _, c := persistenceFixture(t)
 	enroll(t, s, c)
-	if _, err := s.db.Exec(`CREATE TRIGGER fail_guard BEFORE INSERT ON manual_guards BEGIN SELECT RAISE(ABORT,'synthetic'); END;`); err != nil {
+	if _, err := s.db.Exec(`CREATE TRIGGER fail_guard BEFORE INSERT ON cooldowns WHEN NEW.subject_type = 'manual_check' BEGIN SELECT RAISE(ABORT,'synthetic'); END;`); err != nil {
 		t.Fatal(err)
 	}
 	// When

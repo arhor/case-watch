@@ -1,16 +1,18 @@
 # SQLite data access
 
-`internal/data/models.go` defines persistence values. Entity repositories own SQL for enrollments, history, pending deliveries, check guards, and recipients. Application services compose these repositories and choose transaction boundaries under [ADR 0011](adr/0011_move-transaction-boundaries-to-services.md). `Store` owns the single SQLite connection, migrations, and transaction lifecycle.
+`internal/data/models.go` defines persistence values. Entity repositories own SQL for enrollments, history, pending deliveries, cooldowns, and recipients. Application services compose these repositories and choose transaction boundaries under [ADR 0011](adr/0011_move-transaction-boundaries-to-services.md). `Store` owns the single SQLite connection, migrations, and transaction lifecycle.
 
 ## Repositories and transactions
 
-The Store exposes named `Enrollments`, `History`, `Pending`, `Guards`, and `Recipients` repositories. They use a small `DBTX` interface implemented by both `*sql.DB` and `*sql.Tx`. Repository methods do not begin, commit, or roll back transactions. They validate persistence inputs, enforce identity predicates, and return sanitized errors without driver details or supplied data.
+The Store exposes named `Enrollments`, `History`, `Pending`, `Cooldowns`, and `Recipients` repositories. They use a small `DBTX` interface implemented by both `*sql.DB` and `*sql.Tx`. Repository methods do not begin, commit, or roll back transactions. They validate persistence inputs, enforce identity predicates, and return sanitized errors without driver details or supplied data.
 
 `Store.RunInTx(ctx, func(tx *data.Store) error) error` binds every repository on the callback Store to one transaction. Success commits; callback errors roll back and retain their identity. Panics roll back and propagate. Begin/commit failures return `data.ErrStorage`. Nested calls and closing a transaction Store return `data.ErrTransaction`. Only the root Store owns connection lifetime.
 
 Use only the callback Store inside a transaction. Calling the root Store can deadlock because the pool has one connection. Repository handles must not escape the callback or be used asynchronously. Independent single-statement writes can use the root repositories directly. Read/modify/write operations need a service transaction even within one entity.
 
 `tracking.Persistence` implements atomic enrollment, observation, removal, check reservations, and eligibility for the tracking coordinator. `notifications.Persistence` implements delivery reservation, completion, recovery, recipient recovery, and gate operations for the notification worker. `internal/service/maintenance.go` composes credential rewrites and operator recovery. The former `data.Transactions` and repository compositions are removed. Portal and Telegram calls occur outside database transactions; credential rotation can perform local cryptography inside its rewrite transaction.
+
+Input and enrollment-state validation belongs to Go repository methods rather than SQL `CHECK` constraints. Enrollment creation and credential updates require a valid identity, supported credential version, nonblank key ID, and ciphertext of at least 28 bytes. Creation requires a positive owner and a successful observation timestamp. Pending delivery creation requires positive history and recipient IDs. Enrollment methods maintain complete active records, clear all credential/baseline fields during soft deletion, and reject updates to deleted identities. SQLite retains required-column, primary-key, uniqueness and foreign-key constraints, plus atomic identity predicates. Direct SQL writes bypass Go validation and must preserve these invariants themselves.
 
 ## Storage foundation
 
@@ -25,6 +27,8 @@ Observation orchestration reads the active owner/identity, compares stages, upda
 Enrollment reads are owner-scoped. Enrollment inventory is trusted startup/background input: consumers authorize before decryption or work. History requires owner and identity. No SQL or driver values escape these repository APIs. Owning a row does not authorize work.
 
 ## Checks and removal
+
+`cooldowns` stores `subject_type`, `subject_id`, and `started_at` (Unix nanoseconds), keyed by `(subject_type, subject_id)`. `case_check` subjects are enrollment IDs; `manual_check` subjects are canonical decimal owner IDs. Subject references have no foreign keys: tracking validates the active owner/enrollment inside its eligibility and reservation transactions. The generic `CooldownRepository` returns `Cooldown` entities through `FindBySubjectTypeAndSubjectID` (`ErrNotFound` when absent), accepts entities through `Upsert`, and deletes idempotently by subject type and subject ID. The Go repository rejects blank keys and zero write timestamps. SQLite enforces non-null columns and composite-key uniqueness; it does not validate blank cooldown keys. Types are extensible; durations and eligibility policy belong to tracking. Removal explicitly deletes only the case cooldown and retains the owner cooldown. Existing development databases using the former guard tables must be recreated explicitly; startup does not convert or reset them.
 
 The tracking service atomically reserves case and optional manual user attempt-start guards, with eligibility at exactly 60 seconds. Failed checks consume reservations; cache reads and joins skip reservation. Eligibility reads the stored start times without writing guards. The coordinator owns in-process joining and successful-cache freshness, and prevents overlapping checks even if one lasts over 60 seconds.
 

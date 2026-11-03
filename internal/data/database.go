@@ -20,7 +20,7 @@ var (
 	ErrTransaction = errors.New("invalid transaction lifecycle operation")
 	ErrNotEligible = errors.New("attempt not eligible")
 	ErrStorage     = errors.New("storage operation failed")
-	ErrNotFound    = errors.New("enrollment not found")
+	ErrNotFound    = errors.New("record not found")
 	ErrExists      = errors.New("owner already enrolled or identity already used")
 	ErrSchema      = errors.New("unsupported database schema")
 	ErrInvalid     = errors.New("invalid storage input")
@@ -28,7 +28,6 @@ var (
 
 type HistoryRepository struct{ db DBTX }
 type PendingDeliveryRepository struct{ db DBTX }
-type CheckGuardRepository struct{ db DBTX }
 
 // NewEnrollmentID allocates an opaque identity before sealing credentials.
 func NewEnrollmentID() (string, error) {

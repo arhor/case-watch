@@ -69,7 +69,7 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, er
 }
 
 func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c application.SealedCredentials, o application.Observation) error {
-	if owner <= 0 || !validID(c.ID) || c.FormatVersion != 1 || strings.TrimSpace(c.KeyID) == "" || len(c.Payload) < 28 || !validObservation(o) {
+	if owner <= 0 || !validSealedCredentials(c) || !validObservation(o) {
 		return ErrInvalid
 	}
 	var exists bool
@@ -141,7 +141,7 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 }
 
 func (this *EnrollmentRepository) UpdateCredentials(ctx context.Context, c application.SealedCredentials) error {
-	if !validID(c.ID) || c.FormatVersion != 1 || c.KeyID == "" || len(c.Payload) == 0 {
+	if !validSealedCredentials(c) {
 		return ErrInvalid
 	}
 	return rowAffected(
@@ -158,6 +158,11 @@ func (this *EnrollmentRepository) UpdateCredentials(ctx context.Context, c appli
 }
 
 // ---- Internal implementation --------------------------------------------------------------------
+
+// Keep creation and rotation validation aligned: payload includes nonce and tag.
+func validSealedCredentials(c application.SealedCredentials) bool {
+	return validID(c.ID) && c.FormatVersion == 1 && strings.TrimSpace(c.KeyID) != "" && len(c.Payload) >= 28
+}
 
 func scanEnrollment(
 	row interface {
