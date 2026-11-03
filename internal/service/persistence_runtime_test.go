@@ -122,7 +122,7 @@ func TestRemoveShouldRetainGuardsAndFenceLateResultsWhenReenrolled(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	(notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendInvalidToken}, epoch)
+	(notifications.Persistence{DB: s.Store}).CompleteDelivery(ctx, d, application.SendOutcome{Category: application.SendRateLimited, RetryAfter: time.Hour}, epoch)
 	(notifications.Persistence{DB: s.Store}).SetBlocked(ctx, 101, true)
 	// When
 	removed := (tracking.Persistence{DB: s.Store}).Remove(ctx, 101, c.ID)
@@ -140,7 +140,7 @@ func TestRemoveShouldRetainGuardsAndFenceLateResultsWhenReenrolled(t *testing.T)
 	guard, e := (tracking.Persistence{DB: s.Store}).ReserveCheck(ctx, 101, id, true, epoch.Add(59*time.Second))
 	r, g, gateErr := (notifications.Persistence{DB: s.Store}).DeliveryGates(ctx, 101)
 	// Then
-	if removed != nil || !errors.Is(reuse, data.ErrExists) || !errors.Is(late, data.ErrNotFound) || !errors.Is(ack, data.ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.TokenPaused || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollments") != 2 {
+	if removed != nil || !errors.Is(reuse, data.ErrExists) || !errors.Is(late, data.ErrNotFound) || !errors.Is(ack, data.ErrNotFound) || e != nil || guard.Reserved || gateErr != nil || !r.Blocked || !g.RateUntil.Equal(epoch.Add(time.Hour)) || count(t, s, "history") != 0 || count(t, s, "pending") != 0 || count(t, s, "enrollments") != 2 {
 		t.Fatalf("removal guards/fence removed=%v reuse=%v late=%v ack=%v guard=%+v error=%v recipient=%+v global=%+v", removed, reuse, late, ack, guard, e, r, g)
 	}
 }

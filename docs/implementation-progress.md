@@ -303,3 +303,17 @@ The documented system `sqlite3 -bail` invocation passed against a temporary
 database; a missing recipient binding was rejected. Changed Go files are
 gofmt-clean; documentation links/fences and `git diff --check` passed.
 No live portal/Telegram or deployment acceptance checks were run.
+
+
+## 2026-11-03: Fail-fast Telegram token handling (ADR 0012)
+
+Implemented [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md), replacing only ADR 0009's token suspension policy. Startup validates the token through a context-cancellable getMe request bounded to 15 seconds before recovery, polling, delivery or scheduling. Any validation error prevents startup. Structured runtime unauthorized responses during polling, sending or credential-message deletion stop and drain the whole service, including portal checks. Correct the token environment and restart normally.
+
+Removed --resume-token, token queue metadata, application token gates and the token state API. The initial schema omits delivery_gates.token_paused; the application is not deployed and requires no upgrade path. Explicit unauthorized send rejection restores cycle/lifetime counters without acknowledging a notification. Tests cover the sixth-attempt boundary, subsequent send refusal, refusal even if outcome persistence fails, and normal retry through a fresh worker. Existing uncertain recovery, recipient and rate-limit tests remain applicable.
+
+With Node v26.13.0 selected using nvm and Go 1.27.3, final go test ./..., go test -race ./..., go vet ./..., and go build -o /tmp/case-watch-token-policy ./cmd/case-watch passed using GOCACHE=/tmp/case-watch-go-cache. Initial sandboxed full tests were blocked because existing portal HTTP fixtures could not bind a localhost port; rerunning with sandbox escalation passed. The default build cache was also sandbox-restricted, so checks used /tmp. Changed Go files are gofmt-clean; documentation links and git diff --check passed. No live Telegram/portal or deployment acceptance checks were run.
+
+
+### 2026-11-03: Initial-schema verification
+
+The maintainer confirmed the application is not deployed. Token suspension is omitted directly from the initial schema; upgrade-specific coverage is unnecessary. The ADR index retains its established `(status, date)` entry endings. With Node v26.13.0 selected through nvm and Go 1.27.3, `go test ./...`, `go test -race ./...`, `go vet ./...`, and `go build -o /tmp/case-watch-initial-schema ./cmd/case-watch` passed using `GOCACHE=/tmp/case-watch-go-cache` and sandbox escalation for existing localhost test fixtures. A fresh SQLite schema check confirmed delivery gates contain only singleton and rate_until. Markdown links/fences, ADR index format and `git diff --check` passed. No live Telegram/portal or deployment checks were performed.

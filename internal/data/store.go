@@ -56,14 +56,14 @@ func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
 	defer tx.Rollback()
 
 	txStore := &Store{
-		db:               this.db,
-		inTx: true,
-		Enrollments:      &EnrollmentRepository{db: tx},
-		History:          &HistoryRepository{db: tx},
-		Pending:          &PendingDeliveryRepository{db: tx},
-		Guards:           &CheckGuardRepository{db: tx},
-		Recipients:       &RecipientRepository{db: tx},
-		Gates:            &GlobalGateRepository{db: tx},
+		db:          this.db,
+		inTx:        true,
+		Enrollments: &EnrollmentRepository{db: tx},
+		History:     &HistoryRepository{db: tx},
+		Pending:     &PendingDeliveryRepository{db: tx},
+		Guards:      &CheckGuardRepository{db: tx},
+		Recipients:  &RecipientRepository{db: tx},
+		Gates:       &GlobalGateRepository{db: tx},
 	}
 
 	if err = fn(txStore); err != nil {

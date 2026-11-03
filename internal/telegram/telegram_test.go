@@ -437,3 +437,97 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 		t.Fatalf("confirmed removal did not clear retained work: %v %v queued=%d checks=%d", removed, err, len(queue), f.calls)
 	}
 }
+
+func TestValidateShouldCheckAcceptanceWithoutLeakingSecretsWhenTelegramResponds(t *testing.T) {
+	for _, code := range []int{200, 401, 500} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			// Given
+			f := setup(t)
+			called, bounded := false, false
+			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = strings.HasSuffix(r.URL.Path, "/getMe")
+				_, bounded = r.Context().Deadline()
+				if code == 200 {
+					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": code, "description": "synthetic-secret"})
+			}))
+			config := f.a.config
+			config.Endpoint, config.HTTPClient = server.URL, server.Client()
+			a, err := New(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// When
+			err = a.Validate(context.Background())
+			// Then
+			if !called || !bounded || (err == nil) != (code == 200) {
+				t.Fatalf("error=%v called=%t bounded=%t", err, called, bounded)
+			}
+			if err != nil && strings.Contains(err.Error(), "synthetic") {
+				t.Fatal("secret leaked")
+			}
+			logs := strings.Join(f.logs, " ")
+			if strings.Contains(logs, "synthetic") || (code == 401 && !strings.Contains(logs, "telegram_invalid_token")) || (code == 500 && !strings.Contains(logs, "telegram validation failure")) {
+				t.Fatalf("logs=%s", logs)
+			}
+		})
+	}
+}
+
+func TestValidateShouldHonorCancellationWhenStartupIsCanceled(t *testing.T) {
+	// Given
+	f := setup(t)
+	config := f.a.config
+	config.HTTPClient = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() })}
+	a, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// When
+	err = a.Validate(ctx)
+	// Then
+	if err == nil || strings.Contains(err.Error(), "synthetic") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *testing.T) {
+	for _, operation := range []string{"polling", "deletion"} {
+		t.Run(operation, func(t *testing.T) {
+			// Given
+			f := setup(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
+			}))
+			config := f.a.config
+			config.Endpoint, config.HTTPClient = server.URL, server.Client()
+			reported := false
+			config.Diagnostic = func(category string) {
+				if category == "telegram_invalid_token" {
+					reported = true
+					cancel()
+				}
+			}
+			a, err := New(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// When
+			if operation == "polling" {
+				a.Start(ctx)
+			} else {
+				a.erase(ctx, 101, 1)
+			}
+			// Then
+			if !reported || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				t.Fatal("unauthorized operation did not trigger shutdown")
+			}
+		})
+	}
+}

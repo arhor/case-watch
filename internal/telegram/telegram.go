@@ -59,7 +59,11 @@ func New(c Config) (*Adapter, error) {
 		return nil, errors.New("invalid Telegram configuration")
 	}
 	a := &Adapter{config: c, owners: make(map[int64]*state)}
-	opts := []bot.Option{bot.WithSkipGetMe(), bot.WithNotAsyncHandlers(), bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "my_chat_member"}), bot.WithErrorsHandler(func(error) { a.diagnostic("telegram polling failure") }), bot.WithDefaultHandler(a.handle)}
+	opts := []bot.Option{bot.WithSkipGetMe(), bot.WithNotAsyncHandlers(), bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "my_chat_member"}), bot.WithErrorsHandler(func(err error) {
+		if !a.tokenRejected(err) {
+			a.diagnostic("telegram polling failure")
+		}
+	}), bot.WithDefaultHandler(a.handle)}
 	if c.Endpoint != "" {
 		opts = append(opts, bot.WithServerURL(c.Endpoint))
 	}
@@ -73,6 +77,29 @@ func New(c Config) (*Adapter, error) {
 	a.bot = b
 	return a, nil
 }
+
+// Validate checks Telegram acceptance after local startup validation, before workers.
+// ADR: docs/adr/0012_fail-fast-on-invalid-telegram-token.md.
+func (a *Adapter) Validate(ctx context.Context) error {
+	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if _, err := a.bot.GetMe(bounded); err != nil {
+		if !a.tokenRejected(err) {
+			a.diagnostic("telegram validation failure")
+		}
+		return errors.New("telegram validation failed")
+	}
+	return nil
+}
+
+func (a *Adapter) tokenRejected(err error) bool {
+	if errors.Is(err, bot.ErrorUnauthorized) {
+		a.diagnostic("telegram_invalid_token")
+		return true
+	}
+	return false
+}
+
 func (a *Adapter) diagnostic(s string) {
 	if a.config.Diagnostic != nil {
 		a.config.Diagnostic(s)
@@ -150,14 +177,17 @@ func (a *Adapter) reply(ctx context.Context, id int64, text string) {
 		}
 		return
 	}
-	_, err := a.Send(ctx, id, text)
+	out, err := a.Send(ctx, id, text)
+	if out.Category == application.SendInvalidToken {
+		a.diagnostic("telegram_invalid_token")
+	}
 	if err != nil {
 		a.diagnostic("telegram reply failure")
 	}
 }
 func (a *Adapter) erase(ctx context.Context, id int64, message int) {
 	_, err := a.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: id, MessageID: message})
-	if err != nil {
+	if err != nil && !a.tokenRejected(err) {
 		a.diagnostic("telegram credential deletion failure")
 	}
 }

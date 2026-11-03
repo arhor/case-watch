@@ -47,6 +47,5 @@ type RecipientState struct {
 }
 
 type GlobalState struct {
-	TokenPaused bool
-	RateUntil   time.Time
+	RateUntil time.Time
 }

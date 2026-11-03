@@ -45,7 +45,7 @@ func (p Persistence) ReserveDelivery(ctx context.Context, recipient int64, now t
 		if err != nil {
 			return err
 		}
-		if r.Pause != "" || r.Blocked || g.TokenPaused || now.Before(g.RateUntil) {
+		if r.Pause != "" || r.Blocked || now.Before(g.RateUntil) {
 			return data.ErrNotEligible
 		}
 		d, err := tx.Pending.FindUndeliveredHeadByRecipient(ctx, recipient)
@@ -92,13 +92,15 @@ func (p Persistence) CompleteDelivery(ctx context.Context, d data.Delivery, out 
 		if err != nil {
 			return err
 		}
+		// ADR 0012: explicit rejection cannot have accepted the message.
+		if out.Category == application.SendInvalidToken {
+			return tx.Pending.ReleaseReservation(ctx, current)
+		}
 		return finishDelivery(ctx, tx, current, out, now, false)
 	})
 }
 func recordGlobal(ctx context.Context, tx *data.Store, out application.SendOutcome, now time.Time) error {
 	switch out.Category {
-	case application.SendInvalidToken:
-		return tx.Gates.SetTokenPaused(ctx, true)
 	case application.SendRateLimited:
 		return tx.Gates.ExtendRateUntil(ctx, now.Add(out.RetryAfter))
 	}

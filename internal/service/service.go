@@ -26,6 +26,7 @@ func (clock) Now() time.Time { return time.Now() }
 
 type Transport interface {
 	application.Sender
+	Validate(context.Context) error
 	Start(context.Context)
 	Close()
 }
@@ -120,6 +121,9 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		return out, e
 	}
 	tc.Diagnostic = func(category string) {
+		if category == "telegram_invalid_token" {
+			fail()
+		}
 		report(category)
 	}
 	newTransport := f.Telegram
@@ -131,9 +135,17 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 		coord.Shutdown()
 		return ErrStartup
 	}
+	if e = transport.Validate(work); e != nil {
+		transport.Close()
+		coord.Shutdown()
+		if ctx.Err() != nil {
+			return nil
+		}
+		return ErrStartup
+	}
 	worker, e = notifications.New(notifications.Config{Store: notifications.Persistence{DB: s}, Coordinator: monitored, Policy: policy, Clock: clock{}, Sender: transport, Report: func(category string) {
 		report(category)
-		if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" {
+		if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" || category == string(application.SendInvalidToken) {
 			fail()
 		}
 	}})

@@ -184,8 +184,8 @@ func TestWorkerShouldResumeFreshCycleWithoutStartWhenBlockCycleObserved(t *testi
 	}
 }
 
-func TestWorkerShouldGateAllRecipientsWhenRateOrTokenFailureOccurs(t *testing.T) {
-	for _, category := range []application.SendCategory{application.SendRateLimited, application.SendInvalidToken} {
+func TestWorkerShouldGateAllRecipientsWhenRateLimitFailureOccurs(t *testing.T) {
+	for _, category := range []application.SendCategory{application.SendRateLimited} {
 		t.Run(string(category), func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -444,7 +444,7 @@ func TestSendDirectShouldWaitForDurableGlobalGateWhenWorkerSendIsActive(t *testi
 }
 
 func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellation(t *testing.T) {
-	for _, category := range []application.SendCategory{application.SendRateLimited, application.SendInvalidToken} {
+	for _, category := range []application.SendCategory{application.SendRateLimited} {
 		t.Run(string(category), func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -476,7 +476,7 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 			_, g, e := (notifications.Persistence{DB: s}).DeliveryGates(ctx, 101)
 			q, qe := s.Pending.FindByRecipient(ctx, 101)
 			// Then
-			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" || (category == application.SendRateLimited && !g.RateUntil.Equal(epoch.Add(time.Hour))) || (category == application.SendInvalidToken && !g.TokenPaused) {
+			if directErr == nil || stepErr != nil || e != nil || qe != nil || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" || (category == application.SendRateLimited && !g.RateUntil.Equal(epoch.Add(time.Hour))) {
 				t.Fatalf("errors=%v/%v/%v/%v calls=%d gates=%+v queue=%+v", directErr, stepErr, e, qe, calls, g, q)
 			}
 		})
@@ -496,7 +496,7 @@ func TestSendDirectShouldReturnFatalFailureWhenCancelledOutcomeCannotPersist(t *
 	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
 		cancel()
-		return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+		return application.SendOutcome{Category: application.SendRateLimited}, errors.New("sanitized")
 	})})
 	if e != nil {
 		t.Fatal(e)
@@ -532,5 +532,114 @@ func TestWorkerShouldResumeOnExplicitUnblockWhenBlockUpdateWasMissed(t *testing.
 	q := queue(t, f, 101)
 	if before.LifetimeAttempts != 1 || calls != 2 || q[0].CycleAttempts != 1 || q[0].LifetimeAttempts != 2 || q[0].Status != "delivered" {
 		t.Fatalf("calls=%d before=%+v queue=%+v", calls, before, q)
+	}
+}
+
+func TestWorkerShouldPreserveBudgetAndStopSendingWhenTokenIsRejected(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	f.observe(t, 101, "C")
+	f.observe(t, 202, "B")
+	calls := 0
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+	})
+	// When
+	err := w.Step(ctx)
+	_, directErr := w.SendDirect(ctx, 202, "synthetic")
+	again := w.Step(ctx)
+	before := queue(t, f, 101)
+	restarted := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		return application.SendOutcome{Category: application.SendAccepted, MessageID: 42}, nil
+	})
+	retry := restarted.Step(ctx)
+	// Then
+	if !errors.Is(err, notifications.ErrWorker) || !errors.Is(directErr, notifications.ErrWorker) || !errors.Is(again, notifications.ErrWorker) || calls != 1 || retry != nil {
+		t.Fatalf("errors=%v/%v/%v retry=%v calls=%d", err, directErr, again, retry, calls)
+	}
+	if len(before) != 2 || before[0].CycleAttempts != 0 || before[0].LifetimeAttempts != 0 || before[0].Status != "pending" || before[1].Status != "pending" {
+		t.Fatalf("rejected attempt altered queue: %+v", before)
+	}
+	q := queue(t, f, 101)
+	if q[0].Status != "delivered" || q[0].CycleAttempts != 1 || q[0].LifetimeAttempts != 1 || q[1].Status != "pending" {
+		t.Fatalf("restart did not resume in order: %+v", q)
+	}
+}
+
+func TestSendDirectShouldStopDurableSendingWhenTokenIsRejectedDuringCancellation(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	c, cancel := context.WithCancel(ctx)
+	defer cancel()
+	calls := 0
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		cancel()
+		return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+	})
+	// When
+	_, directErr := w.SendDirect(c, 202, "synthetic")
+	stepErr := w.Step(ctx)
+	// Then
+	q := queue(t, f, 101)
+	if !errors.Is(directErr, notifications.ErrWorker) || !errors.Is(stepErr, notifications.ErrWorker) || calls != 1 || q[0].LifetimeAttempts != 0 || q[0].Status != "pending" {
+		t.Fatalf("direct=%v step=%v calls=%d queue=%+v", directErr, stepErr, calls, q)
+	}
+}
+
+func TestWorkerShouldRetainLastRetryWhenSixthAttemptRejectsToken(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	calls := 0
+	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		category := application.SendTransient
+		if calls == 6 {
+			category = application.SendInvalidToken
+		}
+		return application.SendOutcome{Category: category}, errors.New("sanitized")
+	})
+	for i := 0; i < 5; i++ {
+		step(t, w)
+		q := queue(t, f, 101)
+		f.clock.add(q[0].NextAttemptAt.Sub(f.clock.Now()))
+	}
+	// When
+	err := w.Step(ctx)
+	q := queue(t, f, 101)
+	r, _, gateErr := (notifications.Persistence{DB: f.s}).DeliveryGates(ctx, 101)
+	// Then
+	if !errors.Is(err, notifications.ErrWorker) || gateErr != nil || r.Pause != "" || q[0].Status != "pending" || q[0].CycleAttempts != 5 || q[0].LifetimeAttempts != 5 {
+		t.Fatalf("error=%v gate=%v recipient=%+v queue=%+v", err, gateErr, r, q)
+	}
+}
+
+func TestWorkerShouldRefuseFurtherSendsWhenRejectedTokenOutcomeCannotPersist(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.observe(t, 101, "B")
+	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
+	calls := 0
+	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (application.SendOutcome, error) {
+		calls++
+		return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = w.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	stepErr := w.Step(ctx)
+	_, directErr := w.SendDirect(ctx, 202, "synthetic")
+	// Then
+	q := queue(t, f, 101)
+	if !errors.Is(stepErr, notifications.ErrWorker) || !errors.Is(directErr, notifications.ErrWorker) || calls != 1 || q[0].Status != "reserved" {
+		t.Fatalf("step=%v direct=%v calls=%d queue=%+v", stepErr, directErr, calls, q)
 	}
 }

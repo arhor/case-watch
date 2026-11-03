@@ -72,9 +72,8 @@ CREATE TABLE recipients (
 );
 
 CREATE TABLE delivery_gates (
-    singleton    INTEGER PRIMARY KEY CHECK (singleton = 1),
-    token_paused INTEGER NOT NULL DEFAULT 0,
-    rate_until   INTEGER NOT NULL DEFAULT 0
+    singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
+    rate_until INTEGER NOT NULL DEFAULT 0
 );
 
 INSERT INTO delivery_gates (singleton) VALUES (1);

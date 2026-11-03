@@ -82,11 +82,18 @@ func (p portalFunc) Check(c context.Context, v application.Credentials) (applica
 }
 
 type transport struct {
-	start func(context.Context)
-	close func()
-	send  func(context.Context, int64, string) (application.SendOutcome, error)
+	validate func(context.Context) error
+	start    func(context.Context)
+	close    func()
+	send     func(context.Context, int64, string) (application.SendOutcome, error)
 }
 
+func (t *transport) Validate(c context.Context) error {
+	if t.validate != nil {
+		return t.validate(c)
+	}
+	return nil
+}
 func (t *transport) Start(c context.Context) { t.start(c) }
 func (t *transport) Close() {
 	if t.close != nil {
@@ -312,7 +319,7 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 }
 
 func TestRunShouldPersistKnownDirectGateWhenShutdownCancelsCaller(t *testing.T) {
-	for _, category := range []application.SendCategory{application.SendRateLimited, application.SendInvalidToken} {
+	for _, category := range []application.SendCategory{application.SendRateLimited} {
 		t.Run(string(category), func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -329,7 +336,7 @@ func TestRunShouldPersistKnownDirectGateWhenShutdownCancelsCaller(t *testing.T) 
 			defer s.Close()
 			_, g, readErr := (notifications.Persistence{DB: s}).DeliveryGates(context.Background(), 101)
 			// Then
-			if e != nil || readErr != nil || (category == application.SendRateLimited && g.RateUntil.Before(time.Now())) || (category == application.SendInvalidToken && !g.TokenPaused) {
+			if e != nil || readErr != nil || (category == application.SendRateLimited && g.RateUntil.Before(time.Now())) {
 				t.Fatalf("run=%v read=%v gate=%+v", e, readErr, g)
 			}
 		})
@@ -355,11 +362,82 @@ func TestRunShouldFailWhenCancelledKnownDirectOutcomeCannotPersist(t *testing.T)
 	e = Run(ctx, f.lookup, Factories{Report: func(string) {}, Telegram: func(tc telegram.Config) (Transport, error) {
 		return &transport{start: func(c context.Context) { tc.DirectSend(c, 101, "synthetic") }, send: func(context.Context, int64, string) (application.SendOutcome, error) {
 			cancel()
-			return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+			return application.SendOutcome{Category: application.SendRateLimited}, errors.New("sanitized")
 		}}, nil
 	}})
 	// Then
 	if !errors.Is(e, ErrService) {
 		t.Fatalf("result=%v", e)
+	}
+}
+
+func TestRunShouldCloseTransportWithoutStartingWorkersWhenTokenValidationFails(t *testing.T) {
+	// Given
+	f := setup(t)
+	s := f.open(t)
+	r := seed(t, s, f.k, 101)
+	p := notifications.Persistence{DB: s}
+	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r.ID, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := p.ReserveDelivery(context.Background(), 101, time.Now()); e != nil {
+		t.Fatal(e)
+	}
+	s.Close()
+	started, closed, validated := false, false, false
+	// When
+	err := Run(context.Background(), f.lookup, Factories{Telegram: func(telegram.Config) (Transport, error) {
+		return &transport{validate: func(context.Context) error { validated = true; return errors.New("synthetic-token") }, start: func(context.Context) { started = true }, close: func() { closed = true }}, nil
+	}})
+	s = f.open(t)
+	defer s.Close()
+	q, readErr := s.Pending.FindByRecipient(context.Background(), 101)
+	// Then
+	if !errors.Is(err, ErrStartup) || !validated || started || !closed || readErr != nil || len(q) != 1 || q[0].Status != "reserved" {
+		t.Fatalf("error=%v validated=%t started=%t closed=%t queue=%+v read=%v", err, validated, started, closed, q, readErr)
+	}
+}
+
+func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
+	for _, source := range []string{"polling", "direct", "durable"} {
+		t.Run(source, func(t *testing.T) {
+			// Given
+			f := setup(t)
+			if source == "durable" {
+				s := f.open(t)
+				r := seed(t, s, f.k, 101)
+				if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r.ID, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
+					t.Fatal(e)
+				}
+				s.Close()
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			closed := false
+			// When
+			err := Run(ctx, f.lookup, Factories{Report: func(string) {}, Telegram: func(tc telegram.Config) (Transport, error) {
+				return &transport{start: func(c context.Context) {
+					if source == "polling" {
+						tc.Diagnostic("telegram_invalid_token")
+					}
+					if source == "direct" {
+						tc.DirectSend(c, 101, "synthetic")
+					}
+					<-c.Done()
+				}, send: func(context.Context, int64, string) (application.SendOutcome, error) {
+					return application.SendOutcome{Category: application.SendInvalidToken}, errors.New("sanitized")
+				}, close: func() { closed = true }}, nil
+			}})
+			s := f.open(t)
+			defer s.Close()
+			q, readErr := s.Pending.FindByRecipient(context.Background(), 101)
+			// Then
+			if !errors.Is(err, ErrService) || !closed || ctx.Err() != nil || readErr != nil {
+				t.Fatalf("error=%v closed=%t deadline=%v read=%v", err, closed, ctx.Err(), readErr)
+			}
+			if source == "durable" && (len(q) != 1 || q[0].Status != "pending" || q[0].CycleAttempts != 0 || q[0].LifetimeAttempts != 0) {
+				t.Fatalf("queue=%+v", q)
+			}
+		})
 	}
 }

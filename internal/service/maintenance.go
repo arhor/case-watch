@@ -2,12 +2,10 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
-	"github.com/arhor/case-watch/internal/notifications"
 )
 
 // Maintain opens an existing database only while the service is stopped. Every
@@ -104,13 +102,6 @@ func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id
 		return ErrService
 	}
 	return nil
-}
-
-func ResumeToken(ctx context.Context, s *data.Store) error {
-	if e := (notifications.Persistence{DB: s}).RecoverDeliveries(ctx, time.Now()); e != nil {
-		return ErrService
-	}
-	return s.Gates.SetTokenPaused(ctx, false)
 }
 
 // RewriteCredentials commits every active credential rewrite together. The callback

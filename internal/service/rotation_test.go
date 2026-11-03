@@ -105,7 +105,7 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 	}
 }
 
-func TestResumeTokenShouldPreserveAttemptsAndHistoryWhenRecoveringStoppedReservation(t *testing.T) {
+func TestRecoveryShouldPreserveAttemptsAndHistoryWhenRecoveringStoppedReservation(t *testing.T) {
 	// Given
 	f := setup(t)
 	s := f.open(t)
@@ -122,7 +122,9 @@ func TestResumeTokenShouldPreserveAttemptsAndHistoryWhenRecoveringStoppedReserva
 	before, _ := s.History.FindByEnrollment(ctx, 1, r.ID)
 	s.Close()
 	// When
-	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error { return ResumeToken(ctx, s) })
+	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error {
+		return (notifications.Persistence{DB: s}).RecoverDeliveries(ctx, now)
+	})
 	s = f.open(t)
 	defer s.Close()
 	q, qe := s.Pending.FindByRecipient(ctx, 1)

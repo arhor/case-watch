@@ -19,7 +19,7 @@ import (
 	"github.com/arhor/case-watch/internal/service"
 )
 
-const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID | --resume-token DB_PATH KEY_PATH"
+const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID"
 
 func main() {
 	ctx, stop :=
@@ -52,8 +52,6 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 		return onProvisionKey(commandArgs)
 	case "--rotate-key":
 		return onRotateKey(ctx, commandArgs)
-	case "--resume-token":
-		return onResumeToken(ctx, commandArgs)
 	case "--queue":
 		return onQueue(ctx, commandArgs, output)
 	default:
@@ -113,22 +111,6 @@ func onRotateKey(ctx context.Context, args []string) error {
 	)
 }
 
-func onResumeToken(ctx context.Context, args []string) error {
-	if len(args) != 2 {
-		return errors.New(usage)
-	}
-	databasePath, keyPath := args[0], args[1]
-
-	return service.Maintain(
-		ctx,
-		databasePath,
-		keyPath,
-		func(store *data.Store, _ *credentials.Keyring, _ string) error {
-			return service.ResumeToken(ctx, store)
-		},
-	)
-}
-
 func onQueue(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) != 3 {
 		return errors.New(usage)
@@ -176,11 +158,10 @@ func printQueue(ctx context.Context, store *data.Store, recipientID int64, outpu
 	}
 	if _, err := fmt.Fprintf(
 		output,
-		"recipient=%d blocked=%t pause=%s token_paused=%t rate_until=%s pending=%d records=%d\n",
+		"recipient=%d blocked=%t pause=%s rate_until=%s pending=%d records=%d\n",
 		recipientID,
 		recipientState.Blocked,
 		safeCategory(recipientState.Pause),
-		globalState.TokenPaused,
 		globalState.RateUntil.UTC().Format(time.RFC3339),
 		pendingCount,
 		len(deliveries),

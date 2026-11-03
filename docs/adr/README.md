@@ -30,3 +30,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Choose bounded retries and ordered notification recovery](0009_choose-notification-retry-policy.md) (accepted, 2026-11-01)
 - [Adopt golang-migrate for database migrations](0010_adopt-golang-migrate.md) (proposed, 2026-11-02)
 - [Move transaction boundaries to services](0011_move-transaction-boundaries-to-services.md) (accepted, 2026-11-02)
+- [Fail fast on an invalid Telegram token](0012_fail-fast-on-invalid-telegram-token.md) (accepted, 2026-11-03)

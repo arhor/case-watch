@@ -58,6 +58,7 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 		{"--rotate-key", "database", "key"},
 		{"--rotate-key", "database", "key", "new", "extra"},
 		{"--resume-token", "database"},
+		{"--resume-token", "database", "key"},
 		{"--resume-token", "database", "key", "extra"},
 		{"--queue", "database", "key"},
 		{"--queue", "database", "key", "123", "extra"},

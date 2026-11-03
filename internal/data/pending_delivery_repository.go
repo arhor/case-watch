@@ -12,7 +12,7 @@ func (this *PendingDeliveryRepository) FindByRecipient(ctx context.Context, reci
 	if recipient <= 0 {
 		return nil, ErrInvalid
 	}
-	rows, err := this.db.QueryContext(ctx, deliverySelect + `
+	rows, err := this.db.QueryContext(ctx, deliverySelect+`
 		WHERE p.recipient_id = ?
 		ORDER BY p.sequence
 	`, recipient)
@@ -36,7 +36,7 @@ func (this *PendingDeliveryRepository) FindByRecipient(ctx context.Context, reci
 
 // FindUndeliveredHeads returns the oldest undelivered item for each recipient.
 func (this *PendingDeliveryRepository) FindUndeliveredHeads(ctx context.Context) ([]Delivery, error) {
-	rows, err := this.db.QueryContext(ctx, deliverySelect + `
+	rows, err := this.db.QueryContext(ctx, deliverySelect+`
 		WHERE p.status <> 'delivered'
 		  AND p.sequence = (
 			SELECT MIN(q.sequence)
@@ -82,7 +82,7 @@ func (this *PendingDeliveryRepository) FindUndeliveredHeadByRecipient(ctx contex
 	if recipient <= 0 {
 		return Delivery{}, ErrInvalid
 	}
-	return scanDelivery(this.db.QueryRowContext(ctx, deliverySelect + `
+	return scanDelivery(this.db.QueryRowContext(ctx, deliverySelect+`
 		WHERE p.recipient_id = ?
 		  AND p.status <> 'delivered'
 		ORDER BY p.sequence
@@ -95,7 +95,7 @@ func (this *PendingDeliveryRepository) FindReservedAttempt(ctx context.Context, 
 	if d.Sequence <= 0 || d.LifetimeAttempts <= 0 || !validID(d.EnrollmentID) {
 		return Delivery{}, ErrInvalid
 	}
-	return scanDelivery(this.db.QueryRowContext(ctx, deliverySelect + `
+	return scanDelivery(this.db.QueryRowContext(ctx, deliverySelect+`
 		WHERE p.sequence = ?
 		  AND h.enrollment_id = ?
 		  AND p.status = 'reserved'
@@ -126,7 +126,7 @@ func (this *PendingDeliveryRepository) ReserveAttempt(ctx context.Context, d Del
 
 // FindReserved returns all currently reserved deliveries.
 func (this *PendingDeliveryRepository) FindReserved(ctx context.Context) ([]Delivery, error) {
-	rows, err := this.db.QueryContext(ctx, deliverySelect + `
+	rows, err := this.db.QueryContext(ctx, deliverySelect+`
 		WHERE p.status = 'reserved'
 	`)
 	if err != nil {
@@ -173,7 +173,8 @@ func (this *PendingDeliveryRepository) FinishAttempt(ctx context.Context, d Deli
 	`, status, failure, at, messageID, d.Sequence, d.LifetimeAttempts, d.EnrollmentID))
 }
 
-// ReleaseReservation cancels a reservation only when no network attempt took place.
+// ReleaseReservation restores counters when no send occurred or Telegram explicitly
+// rejected the token (ADR 0012). Never use it for uncertain or accepted sends.
 // Callers must serialize this decision with sends and membership changes.
 // The exact attempt token prevents rollback of a later attempt or removed enrollment.
 func (this *PendingDeliveryRepository) ReleaseReservation(ctx context.Context, d Delivery) error {
@@ -220,19 +221,19 @@ func (this *PendingDeliveryRepository) ResetHeadForRetry(ctx context.Context, re
 		return ErrInvalid
 	}
 	if _, err := this.db.ExecContext(ctx, `
-		UPDATE pending
-		   SET cycle_attempts = 0,
-		       next_attempt = 0,
-		       failure = ''
-		 WHERE sequence = (
-			SELECT sequence
-			  FROM pending
-			 WHERE recipient_id = ?
-			   AND status <> 'delivered'
-			 ORDER BY sequence
-			 LIMIT 1
-		   )
-	`, recipient); err != nil {
+        UPDATE pending
+           SET cycle_attempts = 0,
+               next_attempt = 0,
+               failure = ''
+         WHERE sequence = (
+                   SELECT sequence
+                     FROM pending
+                    WHERE recipient_id = ?
+                      AND status <> 'delivered'
+                    ORDER BY sequence
+                    LIMIT 1
+               )
+    `, recipient); err != nil {
 		return ErrStorage
 	}
 	return nil
