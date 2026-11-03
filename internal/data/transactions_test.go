@@ -17,7 +17,7 @@ func writeAcrossRepositories(ctx context.Context, tx *Store) error {
 	if err := tx.Enrollments.Create(ctx, 101, c, o); err != nil {
 		return err
 	}
-	if err := tx.Guards.StartCase(ctx, c.ID, o.CheckedAt); err != nil {
+	if err := tx.Guards.RecordCaseStart(ctx, c.ID, o.CheckedAt); err != nil {
 		return err
 	}
 	sequence, err := tx.History.Append(ctx, c.ID, "A", application.Observation{Stage: "B", CheckedAt: o.CheckedAt})
@@ -43,7 +43,7 @@ func assertTransactionRows(t *testing.T, s *Store, want int) {
 			t.Fatalf("%s rows=%d, want %d", table, n, want)
 		}
 	}
-	g, err := s.Gates.State(context.Background())
+	g, err := s.Gates.GetState(context.Background())
 	if err != nil || g.TokenPaused != (want == 1) {
 		t.Fatalf("gates=%+v error=%v", g, err)
 	}
