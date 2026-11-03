@@ -19,7 +19,7 @@ import (
 	"github.com/arhor/case-watch/internal/service"
 )
 
-const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID | --resume-recipient DB_PATH KEY_PATH RECIPIENT_ID | --resume-token DB_PATH KEY_PATH"
+const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID | --resume-token DB_PATH KEY_PATH"
 
 func main() {
 	ctx, stop :=
@@ -56,8 +56,6 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 		return onResumeToken(ctx, commandArgs)
 	case "--queue":
 		return onQueue(ctx, commandArgs, output)
-	case "--resume-recipient":
-		return onResumeRecipient(ctx, commandArgs)
 	default:
 		return errors.New(usage)
 	}
@@ -126,12 +124,7 @@ func onResumeToken(ctx context.Context, args []string) error {
 		databasePath,
 		keyPath,
 		func(store *data.Store, _ *credentials.Keyring, _ string) error {
-			return service.Resume(
-				ctx,
-				store,
-				0,
-				true,
-			)
+			return service.ResumeToken(ctx, store)
 		},
 	)
 }
@@ -157,32 +150,6 @@ func onQueue(ctx context.Context, args []string, output io.Writer) error {
 				store,
 				recipientID,
 				output,
-			)
-		},
-	)
-}
-
-func onResumeRecipient(ctx context.Context, args []string) error {
-	if len(args) != 3 {
-		return errors.New(usage)
-	}
-	databasePath, keyPath, recipientIDArg := args[0], args[1], args[2]
-	recipientID, err := strconv.ParseInt(recipientIDArg, 10, 64)
-
-	if err != nil || recipientID <= 0 {
-		return errors.New("invalid recipient ID")
-	}
-
-	return service.Maintain(
-		ctx,
-		databasePath,
-		keyPath,
-		func(store *data.Store, _ *credentials.Keyring, _ string) error {
-			return service.Resume(
-				ctx,
-				store,
-				recipientID,
-				false,
 			)
 		},
 	)

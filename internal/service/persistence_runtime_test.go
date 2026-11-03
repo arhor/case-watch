@@ -81,7 +81,7 @@ func TestDeliveryShouldRetainOrderAndBudgetWhenRecoveredAfterCrash(t *testing.T)
 	}
 }
 
-func TestDeliveryShouldRequireExplicitResumeWhenCycleExhausts(t *testing.T) {
+func TestDeliveryShouldResumeWhenExplicitUnblockFollowsExhaustion(t *testing.T) {
 	// Given
 	s, _, _, c := persistenceFixture(t)
 	enroll(t, s, c)
@@ -104,7 +104,7 @@ func TestDeliveryShouldRequireExplicitResumeWhenCycleExhausts(t *testing.T) {
 	}
 	(notifications.Persistence{DB: s.Store}).SetBlocked(ctx, 101, false)
 	_, paused := (notifications.Persistence{DB: s.Store}).ReserveDelivery(ctx, 101, now)
-	resume := (notifications.Persistence{DB: s.Store}).ResumeRecipient(ctx, 101)
+	resume := (notifications.Persistence{DB: s.Store}).ResumeUnblocked(ctx, 101)
 	d, e := (notifications.Persistence{DB: s.Store}).ReserveDelivery(ctx, 101, now)
 	// Then
 	if r.Pause != "exhausted" || !errors.Is(paused, data.ErrNotEligible) || resume != nil || e != nil || d.CycleAttempts != 1 || d.LifetimeAttempts != 7 {

@@ -326,7 +326,7 @@ func TestWorkerShouldKeepDirectRepliesSeparateWhenGlobalFailureRecorded(t *testi
 	}
 }
 
-func TestWorkerShouldRetainExhaustionAndLifetimeWhenRestartAndOperatorResume(t *testing.T) {
+func TestWorkerShouldRetainExhaustionAndLifetimeWhenRestartAndUnblock(t *testing.T) {
 	// Given
 	f := setup(t)
 	f.observe(t, 101, "B")
@@ -343,7 +343,7 @@ func TestWorkerShouldRetainExhaustionAndLifetimeWhenRestartAndOperatorResume(t *
 	})
 	step(t, restarted)
 	before := queue(t, f, 101)[0]
-	e := (notifications.Persistence{DB: f.s}).ResumeRecipient(ctx, 101)
+	e := (notifications.Persistence{DB: f.s}).ResumeUnblocked(ctx, 101)
 	step(t, restarted)
 	// Then
 	q := queue(t, f, 101)

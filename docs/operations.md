@@ -16,11 +16,23 @@ Stop the service before every database maintenance command, including inspection
 | --- | --- |
 | `case-watch --provision-key KEY_PATH KEY_ID` | Explicitly create one new protected keyring; refuse overwrite. No database access. |
 | `case-watch --queue DB_PATH KEY_PATH RECIPIENT_ID` | Inspect queue counts, attempt metadata, deadlines and gates without printing credentials or notification text. |
-| `case-watch --resume-recipient DB_PATH KEY_PATH RECIPIENT_ID` | Recover uncertain reservations, then reset the oldest unsent item's cycle and recipient pause after correcting the cause. Preserve lifetime attempts and all queued transitions. |
 | `case-watch --resume-token DB_PATH KEY_PATH` | Recover uncertain reservations and clear the global token suspension after correcting the token. Preserve rate-limit deadlines and recipient pauses. |
 | `case-watch --rotate-key DB_PATH KEY_PATH NEW_ID` | Persist retained old/new keys, transactionally rewrite credentials with stable identities, verify, then activate the new key. |
 
 Recipient IDs are positive numeric Telegram user IDs. Recovery does not mark any notification delivered or erase history. Ordinary messages only resume an evidenced block pause; exhausted/permanent queues require operator recovery unless a later block/unblock cycle is observed. Restoring authorization makes retained work eligible subject to existing gates.
+
+Recipient recovery uses [scripts/resume-recipient.sql](../scripts/resume-recipient.sql) instead of an application command. After correcting the delivery failure, stop the service and run from the repository root with an existing database path and a positive numeric Telegram user ID:
+
+```sh
+sqlite3 -bail /path/to/case-watch.db \
+  -cmd '.parameter init' \
+  -cmd '.parameter set @recipient_id 123456789' \
+  < scripts/resume-recipient.sql
+```
+
+The script atomically clears that recipient's pause/blocked state and resets only the oldest undelivered notification's cycle attempts, retry deadline and failure category. It preserves lifetime attempts, delivery status, history, later queued transitions and global token/rate-limit gates. Restart the service afterward to process eligible work.
+
+The script rolls back if the recipient ID is missing/invalid or any notification in the database is still reserved. If reservations remain after an interrupted shutdown, start the service to perform normal uncertain-attempt recovery, stop it again, then rerun the script. Recovery can cause duplicate delivery for accepted-but-unrecorded sends. Use `-bail` so SQLite exits immediately on an error. Direct SQL does not acquire the application's advisory lock or verify encrypted credentials; keep the service and other maintenance processes stopped throughout. SQLite must already be installed; the database must already exist.
 
 Rotation is recoverable at each ordering boundary. Before the database commit, old ciphertext remains decryptable. After commit but before active-ID replacement, the persisted keyring already contains the new decryption key; restarting can still read every record. Retry an interrupted rotation with the same inactive `NEW_ID`. If it already became active, rotation completed; do not retire old keys automatically. Stop and correct missing keys or failed verification rather than resetting the database. A read-only key mount suffices for normal service operation; rotation requires explicit writable access to its protected directory with the service stopped.
 

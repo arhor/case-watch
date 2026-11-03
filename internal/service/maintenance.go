@@ -106,14 +106,11 @@ func Rotate(ctx context.Context, s *data.Store, k *credentials.Keyring, path, id
 	return nil
 }
 
-func Resume(ctx context.Context, s *data.Store, recipient int64, token bool) error {
+func ResumeToken(ctx context.Context, s *data.Store) error {
 	if e := (notifications.Persistence{DB: s}).RecoverDeliveries(ctx, time.Now()); e != nil {
 		return ErrService
 	}
-	if token {
-		return s.Gates.SetTokenPaused(ctx, false)
-	}
-	return (notifications.Persistence{DB: s}).ResumeRecipient(ctx, recipient)
+	return s.Gates.SetTokenPaused(ctx, false)
 }
 
 // RewriteCredentials commits every active credential rewrite together. The callback

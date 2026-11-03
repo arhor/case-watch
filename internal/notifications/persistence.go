@@ -178,9 +178,6 @@ func (p Persistence) SetBlocked(ctx context.Context, recipient int64, blocked bo
 func (p Persistence) ResumeUnblocked(ctx context.Context, recipient int64) error {
 	return p.resume(ctx, recipient, false)
 }
-func (p Persistence) ResumeRecipient(ctx context.Context, recipient int64) error {
-	return p.resume(ctx, recipient, false)
-}
 func (p Persistence) resume(ctx context.Context, recipient int64, onlyBlocked bool) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
 		r, err := tx.Recipients.GetState(ctx, recipient)

@@ -105,7 +105,7 @@ func TestRotateShouldRetainDecryptabilityAndIdentityWhenInterruptedAtEachDurable
 	}
 }
 
-func TestResumeShouldPreserveLifetimeAndHistoryWhenRecoveringStoppedReservation(t *testing.T) {
+func TestResumeTokenShouldPreserveAttemptsAndHistoryWhenRecoveringStoppedReservation(t *testing.T) {
 	// Given
 	f := setup(t)
 	s := f.open(t)
@@ -122,17 +122,17 @@ func TestResumeShouldPreserveLifetimeAndHistoryWhenRecoveringStoppedReservation(
 	before, _ := s.History.FindByEnrollment(ctx, 1, r.ID)
 	s.Close()
 	// When
-	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error { return Resume(ctx, s, 1, false) })
+	e = Maintain(ctx, f.db, f.key, func(s *data.Store, _ *credentials.Keyring, _ string) error { return ResumeToken(ctx, s) })
 	s = f.open(t)
 	defer s.Close()
 	q, qe := s.Pending.FindByRecipient(ctx, 1)
 	after, he := s.History.FindByEnrollment(ctx, 1, r.ID)
 	// Then
-	if e != nil || qe != nil || he != nil || len(q) != 1 || q[0].Status == "reserved" || q[0].Status == "delivered" || q[0].CycleAttempts != 0 || q[0].LifetimeAttempts != reserved.LifetimeAttempts || !reflect.DeepEqual(before, after) {
+	if e != nil || qe != nil || he != nil || len(q) != 1 || q[0].Status == "reserved" || q[0].Status == "delivered" || q[0].CycleAttempts != reserved.CycleAttempts || q[0].LifetimeAttempts != reserved.LifetimeAttempts || !reflect.DeepEqual(before, after) {
 		t.Fatal("resume lost or acknowledged retained work")
 	}
-	next, e := (notifications.Persistence{DB: s}).ReserveDelivery(ctx, 1, time.Now())
-	if e != nil || next.LifetimeAttempts != 2 || next.CycleAttempts != 1 {
+	next, e := (notifications.Persistence{DB: s}).ReserveDelivery(ctx, 1, time.Now().Add(time.Minute))
+	if e != nil || next.LifetimeAttempts != 2 || next.CycleAttempts != 2 {
 		t.Fatal("resume did not preserve lifetime attempt history")
 	}
 	if e = (notifications.Persistence{DB: s}).CompleteDelivery(ctx, reserved, application.SendOutcome{Category: application.SendAccepted, MessageID: 99}, time.Now()); e == nil {

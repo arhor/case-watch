@@ -279,3 +279,27 @@ non-fatal module stat-cache write warning. Changed Go files are gofmt-clean;
 maintained documentation local links, code fences and command spellings,
 and `git diff --check` passed. No Docker runtime, live portal/Telegram or
 deployment acceptance checks were run.
+
+### 2026-11-03: Recipient recovery SQL script
+
+Removed `--resume-recipient`, its handler and the operator-only recipient
+recovery API. Token maintenance now calls `ResumeToken` directly. Automatic
+Telegram unblock recovery remains in the notification worker.
+Added [resume-recipient.sql](../scripts/resume-recipient.sql) and updated the
+operations/storage guides. The transaction validates a bound recipient ID,
+rejects any outstanding reservation, clears the recipient pause/block and
+resets only the oldest undelivered notification's retry cycle. Startup remains
+responsible for uncertain-reservation recovery.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, `go test ./...`,
+`go test -race ./...`, `go vet ./...`, and
+`go build -o /private/tmp/case-watch-resume-recipient ./cmd/case-watch` passed
+using `GOCACHE=/private/tmp/case-watch-go-build`. The initial default-cache
+test invocation was blocked by sandbox permissions; the build emitted a
+non-fatal module stat-cache write warning. SQL integration tests verify retained
+history, lifetime attempts, delivered/later records and global gates, plus
+rollback for invalid IDs and reservations belonging to another recipient.
+The documented system `sqlite3 -bail` invocation passed against a temporary
+database; a missing recipient binding was rejected. Changed Go files are
+gofmt-clean; documentation links/fences and `git diff --check` passed.
+No live portal/Telegram or deployment acceptance checks were run.

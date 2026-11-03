@@ -61,7 +61,7 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 		{"--resume-token", "database", "key", "extra"},
 		{"--queue", "database", "key"},
 		{"--queue", "database", "key", "123", "extra"},
-		{"--resume-recipient", "database", "key"},
+		{"--resume-recipient", "database", "key", "123"},
 		{"--resume-recipient", "database", "key", "123", "extra"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 }
 
 func TestRunShouldRejectInvalidRecipientIDWhenRecipientCommandRequested(t *testing.T) {
-	for _, command := range []string{"--queue", "--resume-recipient"} {
+	for _, command := range []string{"--queue"} {
 		for _, recipientID := range []string{"", "abc", "0", "-1", "9223372036854775808"} {
 			t.Run(command+"/"+recipientID, func(t *testing.T) {
 				// Given
