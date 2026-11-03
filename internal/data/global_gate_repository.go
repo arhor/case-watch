@@ -17,7 +17,8 @@ func (this *GlobalGateRepository) GetState(ctx context.Context) (GlobalState, er
 	g.RateUntil = instant(rate)
 	return g, nil
 }
-func (s *GlobalGateRepository) SetTokenPaused(ctx context.Context, paused bool) error {
+
+func (this *GlobalGateRepository) SetTokenPaused(ctx context.Context, paused bool) error {
 	if _, err := this.db.ExecContext(ctx, `
 		UPDATE delivery_gates
 		   SET token_paused = ?
