@@ -64,7 +64,7 @@ func (this *PendingDeliveryRepository) FindUndeliveredHeads(ctx context.Context)
 	return out, nil
 }
 
-func (s *PendingDeliveryRepository) Create(ctx context.Context, historySequence, recipient int64) error {
+func (this *PendingDeliveryRepository) Create(ctx context.Context, historySequence, recipient int64) error {
 	if historySequence <= 0 || recipient <= 0 {
 		return ErrInvalid
 	}
@@ -76,6 +76,7 @@ func (s *PendingDeliveryRepository) Create(ctx context.Context, historySequence,
 	}
 	return nil
 }
+
 // FindUndeliveredHeadByRecipient returns the oldest undelivered item for a recipient.
 func (this *PendingDeliveryRepository) FindUndeliveredHeadByRecipient(ctx context.Context, recipient int64) (Delivery, error) {
 	if recipient <= 0 {
@@ -88,6 +89,7 @@ func (this *PendingDeliveryRepository) FindUndeliveredHeadByRecipient(ctx contex
 		LIMIT 1
 	`, recipient))
 }
+
 // FindReservedAttempt verifies the identity and attempt token of a reservation.
 func (this *PendingDeliveryRepository) FindReservedAttempt(ctx context.Context, d Delivery) (Delivery, error) {
 	if d.Sequence <= 0 || d.LifetimeAttempts <= 0 || !validID(d.EnrollmentID) {
@@ -121,6 +123,7 @@ func (this *PendingDeliveryRepository) ReserveAttempt(ctx context.Context, d Del
 		   )
 	`, now.UnixNano(), d.Sequence, d.LifetimeAttempts, string(d.EnrollmentID)))
 }
+
 // FindReserved returns all currently reserved deliveries.
 func (this *PendingDeliveryRepository) FindReserved(ctx context.Context) ([]Delivery, error) {
 	rows, err := this.db.QueryContext(ctx, deliverySelect + `
@@ -169,6 +172,7 @@ func (this *PendingDeliveryRepository) FinishAttempt(ctx context.Context, d Deli
 		   )
 	`, status, failure, at, messageID, d.Sequence, d.LifetimeAttempts, d.EnrollmentID))
 }
+
 // ReleaseReservation cancels a reservation only when no network attempt took place.
 // Callers must serialize this decision with sends and membership changes.
 // The exact attempt token prevents rollback of a later attempt or removed enrollment.
