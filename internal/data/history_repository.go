@@ -43,7 +43,7 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 	return result, nil
 }
 
-func (s *HistoryRepository) Append(ctx context.Context, id string, previous string, o application.Observation) (int64, error) {
+func (this *HistoryRepository) Append(ctx context.Context, id string, previous string, o application.Observation) (int64, error) {
 	if !validID(id) || !validObservation(o) {
 		return 0, ErrInvalid
 	}
