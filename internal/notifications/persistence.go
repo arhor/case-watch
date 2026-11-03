@@ -15,14 +15,14 @@ type Persistence struct{ DB *data.Store }
 var _ Store = Persistence{}
 
 func (p Persistence) DeliveryHeads(ctx context.Context) ([]data.Delivery, error) {
-	return p.DB.Pending.DeliveryHeads(ctx)
+	return p.DB.Pending.FindUndeliveredHeads(ctx)
 }
 func gates(ctx context.Context, s *data.Store, recipient int64) (data.RecipientState, data.GlobalState, error) {
-	r, err := s.Recipients.State(ctx, recipient)
+	r, err := s.Recipients.GetState(ctx, recipient)
 	if err != nil {
 		return r, data.GlobalState{}, err
 	}
-	g, err := s.Gates.State(ctx)
+	g, err := s.Gates.GetState(ctx)
 	return r, g, err
 }
 func (p Persistence) DeliveryGates(ctx context.Context, recipient int64) (data.RecipientState, data.GlobalState, error) {
@@ -48,14 +48,14 @@ func (p Persistence) ReserveDelivery(ctx context.Context, recipient int64, now t
 		if r.Pause != "" || r.Blocked || g.TokenPaused || now.Before(g.RateUntil) {
 			return data.ErrNotEligible
 		}
-		d, err := tx.Pending.Head(ctx, recipient)
+		d, err := tx.Pending.FindUndeliveredHeadByRecipient(ctx, recipient)
 		if err != nil {
 			return err
 		}
 		if d.Status == "reserved" || d.CycleAttempts >= 6 || now.Before(d.NextAttemptAt) {
 			return data.ErrNotEligible
 		}
-		if err = tx.Pending.Reserve(ctx, d, now); err != nil {
+		if err = tx.Pending.ReserveAttempt(ctx, d, now); err != nil {
 			return err
 		}
 		d.Status = "reserved"
@@ -88,7 +88,7 @@ func (p Persistence) CompleteDelivery(ctx context.Context, d data.Delivery, out 
 		return data.ErrInvalid
 	}
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		current, err := tx.Pending.Attempt(ctx, d)
+		current, err := tx.Pending.FindReservedAttempt(ctx, d)
 		if err != nil {
 			return err
 		}
@@ -100,7 +100,7 @@ func recordGlobal(ctx context.Context, tx *data.Store, out application.SendOutco
 	case application.SendInvalidToken:
 		return tx.Gates.SetTokenPaused(ctx, true)
 	case application.SendRateLimited:
-		return tx.Gates.ExtendRate(ctx, now.Add(out.RetryAfter))
+		return tx.Gates.ExtendRateUntil(ctx, now.Add(out.RetryAfter))
 	}
 	return nil
 }
@@ -131,7 +131,7 @@ func finishDelivery(ctx context.Context, tx *data.Store, d data.Delivery, out ap
 		out.MessageID = 0
 	}
 	if pause != "" {
-		r, err := tx.Recipients.State(ctx, d.RecipientID)
+		r, err := tx.Recipients.GetState(ctx, d.RecipientID)
 		if err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func finishDelivery(ctx context.Context, tx *data.Store, d data.Delivery, out ap
 	if uncertain {
 		failure = "uncertain"
 	}
-	return tx.Pending.Finish(ctx, d, status, failure, next, out.MessageID)
+	return tx.Pending.FinishAttempt(ctx, d, status, failure, next, out.MessageID)
 }
 
 // RecoverDeliveries is startup-only and consumes each interrupted reservation's
@@ -154,7 +154,7 @@ func (p Persistence) RecoverDeliveries(ctx context.Context, now time.Time) error
 		return data.ErrInvalid
 	}
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		work, err := tx.Pending.Reserved(ctx)
+		work, err := tx.Pending.FindReserved(ctx)
 		if err != nil {
 			return err
 		}
@@ -167,7 +167,7 @@ func (p Persistence) RecoverDeliveries(ctx context.Context, now time.Time) error
 	})
 }
 func (p Persistence) ReleaseDelivery(ctx context.Context, d data.Delivery) error {
-	return p.DB.Pending.Release(ctx, d)
+	return p.DB.Pending.ReleaseReservation(ctx, d)
 }
 func (p Persistence) SetBlocked(ctx context.Context, recipient int64, blocked bool) error {
 	if blocked {
@@ -183,14 +183,14 @@ func (p Persistence) ResumeRecipient(ctx context.Context, recipient int64) error
 }
 func (p Persistence) resume(ctx context.Context, recipient int64, onlyBlocked bool) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
-		r, err := tx.Recipients.State(ctx, recipient)
+		r, err := tx.Recipients.GetState(ctx, recipient)
 		if err != nil {
 			return err
 		}
 		if onlyBlocked && !r.Blocked {
 			return nil
 		}
-		active, err := tx.Pending.HasReservation(ctx, recipient)
+		active, err := tx.Pending.HasActiveReservation(ctx, recipient)
 		if err != nil {
 			return err
 		}
@@ -200,7 +200,7 @@ func (p Persistence) resume(ctx context.Context, recipient int64, onlyBlocked bo
 		if err = tx.Recipients.SetState(ctx, recipient, data.RecipientState{}); err != nil {
 			return err
 		}
-		return tx.Pending.ResetHead(ctx, recipient)
+		return tx.Pending.ResetHeadForRetry(ctx, recipient)
 	})
 }
 func (p Persistence) RecordGlobalOutcome(ctx context.Context, out application.SendOutcome, now time.Time) error {
