@@ -8,12 +8,12 @@ import (
 )
 
 // Starts returns persisted case and owner attempt times for an active identity.
-func (s *CheckGuardRepository) Starts(ctx context.Context, owner int64, id string) (time.Time, time.Time, error) {
+func (this *CheckGuardRepository) FindAttemptStartTimes(ctx context.Context, owner int64, id string) (time.Time, time.Time, error) {
 	if owner <= 0 || !validID(id) {
 		return time.Time{}, time.Time{}, ErrInvalid
 	}
 	var caseStart, userStart int64
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT started FROM case_guards WHERE enrollment_id=e.id),0),COALESCE((SELECT started FROM manual_guards WHERE owner_id=e.owner_id),0) FROM enrollments e WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL`, owner, id).Scan(&caseStart, &userStart)
+	err := this.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT started FROM case_guards WHERE enrollment_id=e.id),0),COALESCE((SELECT started FROM manual_guards WHERE owner_id=e.owner_id),0) FROM enrollments e WHERE e.owner_id=? AND e.id=? AND e.deleted_at IS NULL`, owner, id).Scan(&caseStart, &userStart)
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, time.Time{}, ErrNotFound
 	}
@@ -22,12 +22,12 @@ func (s *CheckGuardRepository) Starts(ctx context.Context, owner int64, id strin
 	}
 	return instant(caseStart), instant(userStart), nil
 }
-func (s *CheckGuardRepository) StartCase(ctx context.Context, id string, now time.Time) error {
+func (this *CheckGuardRepository) RecordCaseStart(ctx context.Context, id string, now time.Time) error {
 	if !validID(id) || now.IsZero() {
 		return ErrInvalid
 	}
 	return rowAffected(
-		s.db.ExecContext(ctx, `
+		this.db.ExecContext(ctx, `
 			INSERT INTO case_guards(enrollment_id,started)
 			SELECT id, ?
 			  FROM enrollments
@@ -39,20 +39,20 @@ func (s *CheckGuardRepository) StartCase(ctx context.Context, id string, now tim
 		`, now.UnixNano(), id),
 	)
 }
-func (s *CheckGuardRepository) StartManual(ctx context.Context, owner int64, now time.Time) error {
+func (this *CheckGuardRepository) RecordManualStart(ctx context.Context, owner int64, now time.Time) error {
 	if owner <= 0 || now.IsZero() {
 		return ErrInvalid
 	}
-	if _, err := s.db.ExecContext(ctx, "INSERT INTO manual_guards VALUES(?,?) ON CONFLICT(owner_id) DO UPDATE SET started=excluded.started", owner, now.UnixNano()); err != nil {
+	if _, err := this.db.ExecContext(ctx, "INSERT INTO manual_guards VALUES(?,?) ON CONFLICT(owner_id) DO UPDATE SET started=excluded.started", owner, now.UnixNano()); err != nil {
 		return ErrStorage
 	}
 	return nil
 }
-func (s *CheckGuardRepository) DeleteEnrollment(ctx context.Context, id string) error {
+func (this *CheckGuardRepository) DeleteByEnrollmentID(ctx context.Context, id string) error {
 	if !validID(id) {
 		return ErrInvalid
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM case_guards WHERE enrollment_id=?", string(id)); err != nil {
+	if _, err := this.db.ExecContext(ctx, "DELETE FROM case_guards WHERE enrollment_id=?", string(id)); err != nil {
 		return ErrStorage
 	}
 	return nil
