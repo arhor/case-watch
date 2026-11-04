@@ -52,7 +52,7 @@ func setup(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), policy: auth.New(false, []int64{101, 202}), ids: map[int64]string{}}
 	var e error
-	f.s, e = data.Open(ctx, f.path)
+	f.s, e = data.NewStore(ctx, f.path)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -218,7 +218,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 		t.Fatal(e)
 	}
 	f.s.Close()
-	f.s, e = data.Open(ctx, f.path)
+	f.s, e = data.NewStore(ctx, f.path)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -467,7 +467,7 @@ func TestSendDirectShouldGateDurableSendWhenDirectOutcomeArrivesDuringCancellati
 			close(release)
 			directErr, stepErr := <-direct, <-done
 			f.s.Close()
-			s, e := data.Open(ctx, f.path)
+			s, e := data.NewStore(ctx, f.path)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -664,7 +664,7 @@ func TestWorkerShouldForgetSharedCooldownWhenRestartedButRetainNotificationDeadl
 		t.Fatal(err)
 	}
 	var err error
-	f.s, err = data.Open(ctx, f.path)
+	f.s, err = data.NewStore(ctx, f.path)
 	if err != nil {
 		t.Fatal(err)
 	}

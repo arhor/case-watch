@@ -70,7 +70,7 @@ func setup(t *testing.T) *fixture {
 	t.Cleanup(server.Close)
 	var err error
 	f.path = filepath.Join(t.TempDir(), "state.db")
-	f.s, err = data.Open(context.Background(), f.path)
+	f.s, err = data.NewStore(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err = f.s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f.s, err = data.Open(ctx, path)
+	f.s, err = data.NewStore(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}

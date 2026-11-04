@@ -31,7 +31,7 @@ func Maintain(ctx context.Context, db, key string, fn func(*data.Store, *credent
 		return err
 	}
 
-	store, err := data.Open(ctx, db)
+	store, err := data.NewStore(ctx, db)
 	if err != nil {
 		return ErrStartup
 	}

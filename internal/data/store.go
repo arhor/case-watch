@@ -21,7 +21,11 @@ type Store struct {
 	Recipients  *RecipientRepository
 }
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(ctx context.Context, path string) (*Store, error) {
+	db, err := openDB(ctx, path)
+	if err != nil {
+		return nil, err
+	}
 	return &Store{
 		db:          db,
 		Enrollments: &EnrollmentRepository{db: db},
@@ -29,7 +33,7 @@ func NewStore(db *sql.DB) *Store {
 		Pending:     &PendingDeliveryRepository{db: db},
 		Cooldowns:   &CooldownRepository{db: db},
 		Recipients:  &RecipientRepository{db: db},
-	}
+	}, nil
 }
 
 func (this *Store) Close() error {

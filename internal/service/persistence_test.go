@@ -303,7 +303,7 @@ type persistenceStore struct {
 }
 
 func openPersistenceDatabase(ctx context.Context, path string) (*persistenceStore, error) {
-	s, err := data.Open(ctx, path)
+	s, err := data.NewStore(ctx, path)
 	if err != nil {
 		return nil, err
 	}

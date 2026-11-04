@@ -77,7 +77,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 	if e = databaseFile(db, true); e != nil {
 		return e
 	}
-	s, e := data.Open(ctx, db)
+	s, e := data.NewStore(ctx, db)
 	if e != nil {
 		return ErrStartup
 	}

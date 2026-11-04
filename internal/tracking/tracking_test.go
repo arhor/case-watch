@@ -50,7 +50,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	t.Helper()
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db")}
 	var err error
-	f.s, err = data.Open(context.Background(), f.path)
+	f.s, err = data.NewStore(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
 	f.s.Close()
-	reopened, err := data.Open(context.Background(), f.path)
+	reopened, err := data.NewStore(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,7 +647,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.s.Close()
-	reopened, err := data.Open(context.Background(), f.path)
+	reopened, err := data.NewStore(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}

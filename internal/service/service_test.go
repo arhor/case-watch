@@ -52,7 +52,7 @@ func (f *fixture) open(t *testing.T) *data.Store {
 	if e := databaseFile(f.db, true); e != nil {
 		t.Fatal(e)
 	}
-	s, e := data.Open(context.Background(), f.db)
+	s, e := data.NewStore(context.Background(), f.db)
 	if e != nil {
 		t.Fatal(e)
 	}
