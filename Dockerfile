@@ -19,6 +19,6 @@ RUN mkdir -p /runtime/data /runtime/keys /runtime/etc/ssl/certs \
 FROM scratch
 COPY --from=build /runtime/ /
 COPY --from=build /out/case-watch /case-watch
-# Europe/Warsaw rules are embedded by internal/scheduler's time/tzdata import.
+# Europe/Warsaw rules are embedded by the scheduler entry point.
 USER 10001:10001
 ENTRYPOINT ["/case-watch"]

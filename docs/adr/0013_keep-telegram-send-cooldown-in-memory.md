@@ -68,7 +68,7 @@ No new dependency, configuration option, automatic command retry or live integra
 - [Invalid-token policy](0012_fail-fast-on-invalid-telegram-token.md)
 - [SQLite persistence](0004_choose-sqlite-persistence.md)
 - [Service transaction ownership](0011_move-transaction-boundaries-to-services.md)
-- [Worker implementation](../../internal/notifications/worker.go)
+- [Worker implementation](../../internal/services/notifications/worker.go)
 - [Storage guide](../storage.md)
 
 ## More Information

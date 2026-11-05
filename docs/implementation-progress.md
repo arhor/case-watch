@@ -377,3 +377,11 @@ With Go 1.27.3, `go test ./cmd/case-watch`, `go vet ./...`, `go build -o /privat
 The remaining argument check and command dispatcher were subsequently removed. `main` now calls `service.Run` directly, and the obsolete command-package tests were deleted; service startup validation remains covered in `internal/service`.
 
 After that simplification, `go test ./cmd/case-watch`, `go vet ./...`, `go build -o /private/tmp/case-watch-direct-main ./cmd/case-watch`, and `git diff --check` passed with Node v26.13.0 selected through nvm and Go 1.27.3.
+
+### 2026-11-05: Three-layer package structure (ADR 0015)
+
+Adopted the explicit `entrypoints -> services -> repositories` structure. Telegram and Warsaw scheduling moved under `internal/entrypoints`; tracking and durable notification workflows moved under `internal/services`; SQLite repositories, migrations, portal communication and Telegram Bot API communication moved under `internal/repositories`. `internal/app` now owns construction and process lifetime, while `cmd/case-watch` only calls `app.Run`. Shared values and the few test/external collaborator interfaces moved from `internal/application` to neutral `internal/domain`.
+
+Telegram now asks the tracking service whether an enrollment exists instead of reading the enrollment repository. The scheduler obtains authorized owner IDs from the tracking service rather than inventorying SQLite directly. Transaction orchestration remains in tracking and notification services. The persistent SQLite queue experiment was preserved directly under `internal/experimental`; no production package imports it. Its initial-schema primary key and `attempts` column were corrected so fresh databases initialize and match the experiment's queries.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, fresh `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -o /private/tmp/case-watch-three-layer ./cmd/case-watch`, Markdown relative-link validation and `git diff --check` passed. Ordinary and race suites required approved loopback access for existing portal `httptest` listeners. No live Telegram/portal, Docker, deployment or target-device checks were run.

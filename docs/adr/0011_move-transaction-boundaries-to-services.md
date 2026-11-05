@@ -98,6 +98,8 @@ A separate unit-of-work or transaction manager could decouple transaction contra
 
 The maintainer approved this record on 2026-11-02, after requesting the RunInTx method name. Revisit the single Store boundary if independently owned modules or transactions spanning multiple databases become necessary.
 
+Package names and placement in this record are superseded by [ADR 0015](0015_adopt-three-layer-application-structure.md). Its transaction ownership and `Store.RunInTx` contract remain active.
+
 ### 2026-11-02: Implementation verification
 
 Implemented DBTX repositories, Store.RunInTx, tracking/notification service workflows, and service-owned credential rewrites. Workflow fault/reopen/concurrency tests now run in the service package; data tests cover transaction lifecycle and migration/connection behavior. Final full-suite tests, race tests, vet, and the native application build passed with Go 1.27.3. See the dated [implementation evidence](../implementation-progress.md). Live endpoints and deployment were not exercised.

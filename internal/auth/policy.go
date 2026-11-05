@@ -19,7 +19,7 @@ func New(allowAll bool, ids []int64) *Policy {
 }
 
 // Allows applies equally to commands, checks, and delivery. It grants no access
-// to another owner's data. Invalid numeric identities are never eligible.
+// to another owner's repositories. Invalid numeric identities are never eligible.
 func (p *Policy) Allows(id int64) bool {
 	if id <= 0 {
 		return false
@@ -48,7 +48,7 @@ func (p *Policy) Authenticate(identity Identity) (Owner, error) {
 	return Owner{id: identity.SenderID}, nil
 }
 
-// RequireOwner is also required at application/storage boundaries; routing alone
+// RequireOwner is also required in services and repositories; routing alone
 // does not enforce ownership. The zero Owner never grants access.
 func (o Owner) RequireOwner(storedOwnerID int64) error {
 	if o.id <= 0 || o.id != storedOwnerID {
