@@ -17,10 +17,12 @@ var ErrScheduler = errors.New("scheduler operation failed")
 type Inventory interface {
 	FindAll(context.Context) ([]data.Enrollment, error)
 }
+
 type Tracking interface {
 	// Scheduled shares manual coordination and returns after canceled work drains.
 	Scheduled(context.Context, int64) (application.Status, error)
 }
+
 type Config struct {
 	Inventory Inventory
 	Tracking  Tracking

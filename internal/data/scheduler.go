@@ -18,25 +18,6 @@ import (
 // Goal: try to implement a persistent job scheduler using SQLite.
 // ----------------------------------------------------------------------------
 
-const createJobsTable = `
-CREATE TABLE IF NOT EXISTS scheduled_jobs (
-    id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    kind         TEXT    NOT NULL,
-    payload      BLOB    NOT NULL,
-    run_at_ms    INTEGER NOT NULL,
-    status       TEXT    NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'failed')),
-    attempts     INTEGER NOT NULL DEFAULT 0         CHECK (attempts >= 0),
-    max_attempts INTEGER NOT NULL DEFAULT 1         CHECK (max_attempts >= 1),
-    repeat_ms    INTEGER NOT NULL DEFAULT 0         CHECK (repeat_ms >= 0),
-    last_error   TEXT,
-    created_ms   INTEGER NOT NULL
-)`
-
-const createJobsIndex = `
-CREATE INDEX IF NOT EXISTS scheduled_jobs_due
-    ON scheduled_jobs (run_at_ms, id) WHERE status = 'pending'
-`
-
 var (
 	ErrAlreadyRunning = errors.New("scheduler: already running")
 	ErrNoSuchJob      = errors.New("scheduler: job not found")
@@ -44,17 +25,28 @@ var (
 	ErrClaimLost      = errors.New("scheduler: job claim is no longer valid")
 )
 
-// Job is an execution of a scheduled task. Attempts includes the current claim.
+type Status string
+
+const (
+	StatusPending Status = "pending"
+	StatusRunning Status = "running"
+	StatusFailed  Status = "failed"
+)
+
+type int12 int
+
 type Job struct {
 	ID          int64
 	Kind        string
 	Payload     json.RawMessage
 	RunAt       time.Time
-	Status      string
-	Attempts    int
+	Status      Status
+	AllAttempts int
 	MaxAttempts int
-	RepeatEvery time.Duration // 0 for one-off jobs
+	RepeatEvery time.Duration
 	LastError   string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Handler runs outside a database transaction. It MUST be idempotent if its
@@ -86,10 +78,10 @@ type Scheduler struct {
 // for simple and predictable write serialization (see OpenSQLite).
 func New(db *sql.DB, workers int) *Scheduler {
 	if db == nil {
-		panic("scheduler: nil DB")
+		panic("scheduler: nil database connection")
 	}
 	if workers < 1 {
-		workers = 1
+		panic("scheduler: workers must be at least 1")
 	}
 	return &Scheduler{
 		db:           db,
@@ -98,16 +90,6 @@ func New(db *sql.DB, workers int) *Scheduler {
 		handlers:     make(map[string]jobHandler),
 		wake:         make(chan struct{}, 1),
 	}
-}
-
-// Init is idempotent. Run this once before Enqueue or Run.
-func (s *Scheduler) Init(ctx context.Context) error {
-	for _, stmt := range []string{createJobsTable, createJobsIndex} {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("scheduler: init schema: %w", err)
-		}
-	}
-	return nil
 }
 
 // Register adds an ordinary (at-least-once) handler.
