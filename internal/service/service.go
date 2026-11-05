@@ -11,7 +11,6 @@ import (
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/config"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/portal"
@@ -38,36 +37,16 @@ type Factories struct {
 	Telegram func(telegram.Config) (Transport, error)
 }
 
-func Verify(ctx context.Context, s *data.Store, k *credentials.Keyring) error {
-	rows, e := s.Enrollments.FindAll(ctx)
-	if e != nil {
-		return ErrStartup
-	}
-	for _, row := range rows {
-		v, e := k.Open(row.Credentials)
-		v = application.Credentials{}
-		_ = v
-		if e != nil {
-			return ErrStartup
-		}
-	}
-	return nil
-}
-
-// Run validates configuration, key separation, permissions, schema and every
-// credential before constructing transports. It holds the lock through DB close.
+// Run validates configuration, database permissions and schema before constructing
+// transports. It holds the lock through database close.
 func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (result error) {
 	c, e := config.Load(lookup)
 	if e != nil {
 		return e
 	}
-	db, key, e := Paths(c.DBPath, c.KeyFile)
+	db, e := DatabasePath(c.DBPath)
 	if e != nil {
 		return e
-	}
-	k, e := credentials.Load(key)
-	if e != nil {
-		return ErrStartup
 	}
 	lock, e := Acquire(db)
 	if e != nil {
@@ -86,9 +65,6 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 			result = ErrService
 		}
 	}()
-	if e = Verify(ctx, s, k); e != nil {
-		return e
-	}
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -97,7 +73,7 @@ func Run(ctx context.Context, lookup func(string) (string, bool), f Factories) (
 	if f.Portal != nil {
 		p = f.Portal()
 	}
-	coord := tracking.New(tracking.Persistence{DB: s}, k, p, policy, clock{})
+	coord := tracking.New(tracking.Persistence{DB: s}, p, policy, clock{})
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var worker *notifications.Worker

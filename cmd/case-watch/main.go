@@ -13,13 +13,12 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/config"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/service"
 )
 
-const usage = "usage: case-watch --run | --provision-key PATH KEY_ID | --rotate-key DB_PATH KEY_PATH NEW_ID | --queue DB_PATH KEY_PATH RECIPIENT_ID"
+const usage = "usage: case-watch --run | --queue DB_PATH RECIPIENT_ID"
 
 func main() {
 	ctx, stop :=
@@ -48,10 +47,6 @@ func execute(ctx context.Context, args []string, lookup func(string) (string, bo
 	switch command {
 	case "--run":
 		return onRun(ctx, commandArgs, lookup)
-	case "--provision-key":
-		return onProvisionKey(commandArgs)
-	case "--rotate-key":
-		return onRotateKey(ctx, commandArgs)
 	case "--queue":
 		return onQueue(ctx, commandArgs, output)
 	default:
@@ -76,46 +71,11 @@ func onRun(ctx context.Context, args []string, lookup func(string) (string, bool
 	)
 }
 
-func onProvisionKey(args []string) error {
+func onQueue(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) != 2 {
 		return errors.New(usage)
 	}
-	keyPath, keyID := args[0], args[1]
-
-	return credentials.Provision(
-		keyPath,
-		keyID,
-	)
-}
-
-func onRotateKey(ctx context.Context, args []string) error {
-	if len(args) != 3 {
-		return errors.New(usage)
-	}
-	databasePath, keyPath, newKeyID := args[0], args[1], args[2]
-
-	return service.Maintain(
-		ctx,
-		databasePath,
-		keyPath,
-		func(store *data.Store, keyring *credentials.Keyring, canonicalKeyPath string) error {
-			return service.Rotate(
-				ctx,
-				store,
-				keyring,
-				canonicalKeyPath,
-				newKeyID,
-				nil,
-			)
-		},
-	)
-}
-
-func onQueue(ctx context.Context, args []string, output io.Writer) error {
-	if len(args) != 3 {
-		return errors.New(usage)
-	}
-	databasePath, keyPath, recipientIDArg := args[0], args[1], args[2]
+	databasePath, recipientIDArg := args[0], args[1]
 	recipientID, err := strconv.ParseInt(recipientIDArg, 10, 64)
 
 	if err != nil || recipientID <= 0 {
@@ -125,8 +85,7 @@ func onQueue(ctx context.Context, args []string, output io.Writer) error {
 	return service.Maintain(
 		ctx,
 		databasePath,
-		keyPath,
-		func(store *data.Store, _ *credentials.Keyring, _ string) error {
+		func(store *data.Store) error {
 			return printQueue(
 				ctx,
 				store,

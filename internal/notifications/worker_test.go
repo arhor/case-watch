@@ -10,7 +10,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/tracking"
@@ -57,21 +56,13 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	k, e := credentials.Parse([]byte(`{"version":1,"active_key_id":"test","keys":{"test":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}}`))
-	if e != nil {
-		t.Fatal(e)
-	}
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, k, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.policy, f.clock)
 	for _, o := range []int64{101, 202} {
 		id, e := data.NewEnrollmentID()
 		if e != nil {
 			t.Fatal(e)
 		}
-		sealed, e := k.Seal(id, application.Credentials{Number: "synthetic", Password: "synthetic"})
-		if e != nil {
-			t.Fatal(e)
-		}
-		if e = (tracking.Persistence{DB: f.s}).Enroll(ctx, o, sealed, application.Observation{Stage: "A", CheckedAt: epoch}); e != nil {
+		if e = (tracking.Persistence{DB: f.s}).Enroll(ctx, o, id, application.Credentials{Number: "synthetic", Password: "synthetic"}, application.Observation{Stage: "A", CheckedAt: epoch}); e != nil {
 			t.Fatal(e)
 		}
 		f.ids[o] = id
@@ -223,7 +214,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 		t.Fatal(e)
 	}
 	calls := 0
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, nil, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.policy, f.clock)
 	// When
 	w := f.worker(t, func(context.Context, int64, string) (application.SendOutcome, error) {
 		calls++

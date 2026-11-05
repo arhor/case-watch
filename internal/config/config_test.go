@@ -6,7 +6,7 @@ import (
 )
 
 func validEnv() map[string]string {
-	return map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123456789:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": "/data/case-watch.db", "CASE_WATCH_KEY_FILE": "/keys/keyring.json", "CASE_WATCH_ALLOWED_USER_IDS": "123, 456,123"}
+	return map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123456789:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": "/data/case-watch.db", "CASE_WATCH_ALLOWED_USER_IDS": "123, 456,123"}
 }
 func lookup(env map[string]string) func(string) (string, bool) {
 	return func(k string) (string, bool) { v, ok := env[k]; return v, ok }
@@ -26,7 +26,7 @@ func TestLoadShouldDefaultToRestrictedAndDeduplicateWhenBooleanMissing(t *testin
 func TestLoadShouldRejectInvalidConfigurationWhenValuesMalformed(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
 		{"CASE_WATCH_TELEGRAM_BOT_TOKEN", "secret-token"}, {"CASE_WATCH_TELEGRAM_BOT_TOKEN", "123:" + strings.Repeat("a", 34)},
-		{"CASE_WATCH_DB_PATH", " "}, {"CASE_WATCH_KEY_FILE", ""}, {"CASE_WATCH_KEY_FILE", "secret\x00path"},
+		{"CASE_WATCH_DB_PATH", " "}, {"CASE_WATCH_DB_PATH", "secret\x00path"},
 		{"CASE_WATCH_ALLOW_ALL_USERS", "TRUE"}, {"CASE_WATCH_ALLOW_ALL_USERS", "1"}, {"CASE_WATCH_ALLOW_ALL_USERS", ""},
 		{"CASE_WATCH_ALLOWED_USER_IDS", ""}, {"CASE_WATCH_ALLOWED_USER_IDS", "0"}, {"CASE_WATCH_ALLOWED_USER_IDS", "-1"}, {"CASE_WATCH_ALLOWED_USER_IDS", "+1"},
 		{"CASE_WATCH_ALLOWED_USER_IDS", "9223372036854775808"}, {"CASE_WATCH_ALLOWED_USER_IDS", "123,,456"}, {"CASE_WATCH_ALLOWED_USER_IDS", "123,"}, {"CASE_WATCH_ALLOWED_USER_IDS", "secret-id"},

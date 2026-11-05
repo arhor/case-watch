@@ -20,7 +20,7 @@ func (m monitoredTracking) checkError(ctx context.Context, e error) {
 	if ctx.Err() != nil {
 		return
 	}
-	if errors.Is(e, tracking.ErrStorage) || errors.Is(e, tracking.ErrCredentials) {
+	if errors.Is(e, tracking.ErrStorage) {
 		m.fail()
 	}
 }

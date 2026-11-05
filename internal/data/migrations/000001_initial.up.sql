@@ -1,9 +1,8 @@
 CREATE TABLE enrollments (
     id                 TEXT    PRIMARY KEY,
     owner_id           INTEGER NOT NULL,
-    credential_version INTEGER,
-    key_id             TEXT,
-    payload            BLOB,
+    case_number        TEXT,
+    password           TEXT,
     stage              TEXT,
     checked_at         TEXT,
     deleted_at         TEXT

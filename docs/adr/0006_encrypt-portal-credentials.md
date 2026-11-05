@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by [Defer credential encryption during WIP](0014_defer-credential-encryption-during-wip.md)
 date: 2026-11-01
 decision-makers: Repository maintainer
 ---

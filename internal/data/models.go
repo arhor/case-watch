@@ -7,8 +7,9 @@ import (
 )
 
 type Enrollment struct {
+	ID          string
 	OwnerID     int64
-	Credentials application.SealedCredentials
+	Credentials application.Credentials
 	Observation application.Observation
 }
 

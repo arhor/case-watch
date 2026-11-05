@@ -41,7 +41,7 @@ type Job struct {
 	Payload     json.RawMessage
 	RunAt       time.Time
 	Status      Status
-	AllAttempts int
+	Attempts    int
 	MaxAttempts int
 	RepeatEvery time.Duration
 	LastError   string

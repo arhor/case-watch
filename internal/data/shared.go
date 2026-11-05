@@ -28,7 +28,7 @@ type PendingDeliveryRepository struct {
 	db DBTX
 }
 
-// NewEnrollmentID allocates an opaque identity before sealing credentials.
+// NewEnrollmentID allocates an opaque identity used to fence late work.
 func NewEnrollmentID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

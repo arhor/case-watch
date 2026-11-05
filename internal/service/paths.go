@@ -33,9 +33,9 @@ const (
 	groupOtherPermissions = os.FileMode(0o077)
 )
 
-// Paths resolves trusted parent directories before any database or network work.
+// DatabasePath resolves the trusted parent directory before database or network work.
 // Existing final symlinks and shared database hardlinks are rejected.
-func Paths(db, key string) (string, string, error) {
+func DatabasePath(db string) (string, error) {
 	resolve := func(p string) (string, error) {
 		a, e := filepath.Abs(p)
 		if e != nil {
@@ -49,59 +49,23 @@ func Paths(db, key string) (string, string, error) {
 	}
 	d, e := resolve(db)
 	if e != nil {
-		return "", "", e
-	}
-	k, e := resolve(key)
-	if e != nil {
-		return "", "", e
-	}
-	within := func(parent, p string) bool {
-		r, e := filepath.Rel(parent, p)
-		return e == nil && r != ".." && !filepath.IsAbs(r) && (r == "." || len(r) < 3 || r[:3] != "../")
-	}
-	if within(filepath.Dir(d), k) {
-		return "", "", ErrStartup
-	}
-	// A key beneath a checkout is forbidden even when launched elsewhere.
-	for p := filepath.Dir(k); ; p = filepath.Dir(p) {
-		if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
-			return "", "", ErrStartup
-		}
-		if filepath.Dir(p) == p {
-			break
-		}
-	}
-	cwd, e := os.Getwd()
-	if e != nil {
-		return "", "", ErrStartup
-	}
-	for p := cwd; ; p = filepath.Dir(p) {
-		if _, e := os.Stat(filepath.Join(p, ".git")); e == nil {
-			real, e := filepath.EvalSymlinks(p)
-			if e != nil || within(real, k) {
-				return "", "", ErrStartup
-			}
-			break
-		}
-		if filepath.Dir(p) == p {
-			break
-		}
+		return "", e
 	}
 	info, e := os.Stat(filepath.Dir(d))
 	if e != nil || !info.IsDir() || info.Mode().Perm()&groupOtherPermissions != 0 {
-		return "", "", ErrStartup
+		return "", ErrStartup
 	}
 	if info, e := os.Lstat(d); e == nil {
 		if !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
-			return "", "", ErrStartup
+			return "", ErrStartup
 		}
 		if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
-			return "", "", ErrStartup
+			return "", ErrStartup
 		}
 	} else if !os.IsNotExist(e) {
-		return "", "", ErrStartup
+		return "", ErrStartup
 	}
-	return d, k, nil
+	return d, nil
 }
 
 type Lock struct{ f *os.File }

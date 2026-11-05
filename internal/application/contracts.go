@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// Credentials are transient plaintext. Never log, persist, or include them in errors.
+// Credentials are plaintext. They are persisted only on the enrollment record
+// during WIP development; never log or include them in errors or notifications.
 // Dropping references does not guarantee secure erasure of Go memory.
 type Credentials struct {
 	Number   string
@@ -48,7 +49,7 @@ type Status struct {
 
 // Tracking is the authenticated owner-facing use case boundary. Enrollment is
 // called only after the transport's ephemeral, separate-message draft is complete.
-// Enroll refuses replacement and commits encrypted credentials plus baseline
+// Enroll refuses replacement and commits portal credentials plus baseline
 // atomically. Confirmation is sent separately after success.
 // Remove is called only after explicit, unexpired owner confirmation. It cancels
 // and drains checks/sends and rejects late results before returning success.
@@ -56,15 +57,6 @@ type Tracking interface {
 	Enroll(context.Context, int64, Credentials) (Observation, error)
 	Status(context.Context, int64) (Status, error)
 	Remove(context.Context, int64) error
-}
-
-// SealedCredentials contains only authenticated ciphertext and format metadata.
-// Credential ID is also the immutable destination identity used for AAD binding.
-type SealedCredentials struct {
-	ID            string
-	FormatVersion int
-	KeyID         string
-	Payload       []byte
 }
 
 type SendCategory string

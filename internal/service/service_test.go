@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/application"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/telegram"
@@ -19,31 +18,19 @@ import (
 )
 
 type fixture struct {
-	db, key string
-	k       *credentials.Keyring
-	env     map[string]string
+	db  string
+	env map[string]string
 }
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
 	root := t.TempDir()
 	data := filepath.Join(root, "data")
-	keys := filepath.Join(root, "keys")
-	for _, d := range []string{data, keys} {
-		if e := os.Mkdir(d, 0700); e != nil {
-			t.Fatal(e)
-		}
-	}
-	f := &fixture{db: filepath.Join(data, "state.db"), key: filepath.Join(keys, "ring")}
-	if e := credentials.Provision(f.key, "old"); e != nil {
+	if e := os.Mkdir(data, 0700); e != nil {
 		t.Fatal(e)
 	}
-	var e error
-	f.k, e = credentials.Load(f.key)
-	if e != nil {
-		t.Fatal(e)
-	}
-	f.env = map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": f.db, "CASE_WATCH_KEY_FILE": f.key, "CASE_WATCH_ALLOW_ALL_USERS": "true"}
+	f := &fixture{db: filepath.Join(data, "state.db")}
+	f.env = map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": f.db, "CASE_WATCH_ALLOW_ALL_USERS": "true"}
 	return f
 }
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }
@@ -58,20 +45,16 @@ func (f *fixture) open(t *testing.T) *data.Store {
 	}
 	return s
 }
-func seed(t *testing.T, s *data.Store, k *credentials.Keyring, owner int64) application.SealedCredentials {
+func seed(t *testing.T, s *data.Store, owner int64) string {
 	t.Helper()
 	id, e := data.NewEnrollmentID()
 	if e != nil {
 		t.Fatal(e)
 	}
-	r, e := k.Seal(id, application.Credentials{Number: "synthetic-number", Password: "synthetic-password"})
-	if e != nil {
+	if e = (tracking.Persistence{DB: s}).Enroll(context.Background(), owner, id, application.Credentials{Number: "synthetic-number", Password: "synthetic-password"}, application.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
 		t.Fatal(e)
 	}
-	if e = (tracking.Persistence{DB: s}).Enroll(context.Background(), owner, r, application.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
-		t.Fatal(e)
-	}
-	return r
+	return id
 }
 
 type portalFunc func(context.Context, application.Credentials) (application.Observation, error)
@@ -126,24 +109,13 @@ func result(t *testing.T, ch <-chan error) error {
 
 func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testing.T) {
 	// Given
-	for _, kind := range []string{"config", "missing_key", "undecryptable"} {
+	for _, kind := range []string{"config"} {
 		t.Run(kind, func(t *testing.T) {
 			f := setup(t)
 			calls := 0
 			switch kind {
 			case "config":
 				f.env["CASE_WATCH_TELEGRAM_BOT_TOKEN"] = "secret"
-			case "missing_key":
-				os.Remove(f.key)
-			case "undecryptable":
-				s := f.open(t)
-				r := seed(t, s, f.k, 1)
-				s.Close()
-				os.Remove(f.key)
-				if e := credentials.Provision(f.key, "other"); e != nil {
-					t.Fatal(e)
-				}
-				_ = r
 			}
 			// When
 			e := Run(context.Background(), f.lookup, Factories{Portal: func() application.Portal { calls++; return nil }, Telegram: func(telegram.Config) (Transport, error) { calls++; return nil, nil }})
@@ -151,35 +123,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			if e == nil || calls != 0 || strings.Contains(e.Error(), "secret") {
 				t.Fatal("startup did not stop before transports")
 			}
-			if kind == "undecryptable" {
-				s := f.open(t)
-				defer s.Close()
-				rows, e := s.Enrollments.FindAll(context.Background())
-				if e != nil || len(rows) != 1 {
-					t.Fatal("undecryptable state was reset")
-				}
-			}
 		})
-	}
-}
-
-func TestPathsShouldRejectKeyInsideDataOrRepositoryWhenAliasesResolve(t *testing.T) {
-	// Given
-	f := setup(t)
-	alias := filepath.Join(t.TempDir(), "alias")
-	if e := os.Symlink(filepath.Dir(f.db), alias); e != nil {
-		t.Fatal(e)
-	}
-	cwd, e := os.Getwd()
-	if e != nil {
-		t.Fatal(e)
-	}
-	// When
-	_, _, inside := Paths(f.db, filepath.Join(alias, "ring"))
-	_, _, repo := Paths(f.db, filepath.Join(cwd, "ring"))
-	// Then
-	if inside == nil || repo == nil {
-		t.Fatal("key separation bypassed")
 	}
 }
 
@@ -199,7 +143,7 @@ func TestRunShouldExcludeOtherServicesAndMaintenanceWhenDatabaseLocked(t *testin
 	callback := false
 	// When
 	second := Run(context.Background(), f.lookup, Factories{})
-	maintenance := Maintain(context.Background(), f.db, f.key, func(*data.Store, *credentials.Keyring, string) error { callback = true; return nil })
+	maintenance := Maintain(context.Background(), f.db, func(*data.Store) error { callback = true; return nil })
 	cancel()
 	stopped := result(t, done)
 	// Then
@@ -216,7 +160,7 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 	// Given
 	f := setup(t)
 	s := f.open(t)
-	seed(t, s, f.k, 1)
+	seed(t, s, 1)
 	s.Close()
 	entered := make(chan struct{})
 	cancelled := make(chan struct{})
@@ -270,9 +214,9 @@ func TestRunShouldRecoverUncertainReservationsBeforePollingWhenStarted(t *testin
 	// Given
 	f := setup(t)
 	s := f.open(t)
-	r := seed(t, s, f.k, 1)
+	r := seed(t, s, 1)
 	now := time.Now()
-	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 1, r.ID, application.Observation{Stage: "B", CheckedAt: now}); e != nil {
+	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 1, r, application.Observation{Stage: "B", CheckedAt: now}); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := (notifications.Persistence{DB: s}).ReserveDelivery(context.Background(), 1, now); e != nil {
@@ -339,9 +283,9 @@ func TestRunShouldCloseTransportWithoutStartingWorkersWhenTokenValidationFails(t
 	// Given
 	f := setup(t)
 	s := f.open(t)
-	r := seed(t, s, f.k, 101)
+	r := seed(t, s, 101)
 	p := notifications.Persistence{DB: s}
-	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r.ID, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
+	if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := p.ReserveDelivery(context.Background(), 101, time.Now()); e != nil {
@@ -369,8 +313,8 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 			f := setup(t)
 			if source == "durable" {
 				s := f.open(t)
-				r := seed(t, s, f.k, 101)
-				if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r.ID, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
+				r := seed(t, s, 101)
+				if e := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, r, application.Observation{Stage: "B", CheckedAt: time.Now()}); e != nil {
 					t.Fatal(e)
 				}
 				s.Close()

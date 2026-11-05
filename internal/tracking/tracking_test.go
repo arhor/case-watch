@@ -2,7 +2,6 @@ package tracking_test
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/scheduler"
@@ -40,7 +38,6 @@ func (f portalFunc) Check(ctx context.Context, p application.Credentials) (appli
 type fixture struct {
 	c     *tracking.Coordinator
 	s     *data.Store
-	k     *credentials.Keyring
 	clock *clock
 	path  string
 	calls atomic.Int32
@@ -55,10 +52,6 @@ func setup(t *testing.T, p portalFunc) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	f.k, err = credentials.Parse([]byte(`{"version":1,"active_key_id":"test","keys":{"test":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
 	wrapped := portalFunc(func(ctx context.Context, creds application.Credentials) (application.Observation, error) {
 		f.calls.Add(1)
 		if p != nil {
@@ -66,7 +59,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 		}
 		return application.Observation{Stage: "A"}, nil
 	})
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, f.k, wrapped, auth.New(false, []int64{101, 202}), f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, wrapped, auth.New(false, []int64{101, 202}), f.clock)
 	return f
 }
 func (f *fixture) enroll(t *testing.T, owner int64) string {
@@ -78,7 +71,7 @@ func (f *fixture) enroll(t *testing.T, owner int64) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return e.Credentials.ID
+	return e.ID
 }
 func obs(t *testing.T, s application.Status, stage string, checked time.Time) {
 	t.Helper()
@@ -99,7 +92,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	f.clock.set(epoch.Add(time.Minute))
 	at, e2 := f.c.Status(context.Background(), 101)
 	e, _ := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	deadline, e3 := (tracking.Persistence{DB: f.s}).CheckEligibility(context.Background(), 101, e.Credentials.ID, true)
+	deadline, e3 := (tracking.Persistence{DB: f.s}).CheckEligibility(context.Background(), 101, e.ID, true)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("freshness: recent=%+v at=%+v calls=%d errors=%v/%v/%v", recent, at, f.calls.Load(), e1, e2, e3)
@@ -128,7 +121,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 		t.Fatal(err)
 	}
 	f.s = reopened
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, f.k, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
 		f.calls.Add(1)
 		return application.Observation{}, errors.New("secret")
 	}), auth.New(false, []int64{101}), f.clock)
@@ -286,32 +279,24 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	queue, qerr := f.s.Pending.FindByRecipient(context.Background(), 101)
 	// Then
-	if !errors.Is(err, data.ErrExists) || read != nil || qerr != nil || e.Credentials.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
+	if !errors.Is(err, data.ErrExists) || read != nil || qerr != nil || e.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
 		t.Fatalf("replacement: %v/%v/%v calls=%d queue=%d", err, read, qerr, f.calls.Load(), len(queue))
 	}
-	recovered, err := f.k.Open(e.Credentials)
-	if err != nil || recovered != plain {
+	if e.Credentials != plain {
 		t.Fatal("enrollment credentials missing")
 	}
 }
 
-type brokenVault struct{ tracking.Vault }
-
-func (v brokenVault) Seal(string, application.Credentials) (application.SealedCredentials, error) {
-	return application.SealedCredentials{}, errors.New("private encryption detail")
-}
-
 type failingStore struct{ tracking.Store }
 
-func (s failingStore) Enroll(context.Context, int64, application.SealedCredentials, application.Observation) error {
+func (s failingStore) Enroll(context.Context, int64, string, application.Credentials, application.Observation) error {
 	return errors.New("private storage detail")
 }
 func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.T) {
-	for _, kind := range []string{"portal", "encryption", "storage", "cancellation", "validation"} {
+	for _, kind := range []string{"portal", "storage", "cancellation", "validation"} {
 		t.Run(kind, func(t *testing.T) {
 			// Given
 			f := setup(t, nil)
-			var v tracking.Vault = f.k
 			var s tracking.Store = tracking.Persistence{DB: f.s}
 			ctx := context.Background()
 			input := plain
@@ -323,8 +308,6 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 				p = func(context.Context, application.Credentials) (application.Observation, error) {
 					return application.Observation{}, errors.New("private remote detail")
 				}
-			case "encryption":
-				v = brokenVault{v}
 			case "storage":
 				s = failingStore{s}
 			case "cancellation":
@@ -334,7 +317,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			case "validation":
 				input.Password = ""
 			}
-			c := tracking.New(s, v, p, auth.New(false, []int64{101}), f.clock)
+			c := tracking.New(s, p, auth.New(false, []int64{101}), f.clock)
 			// When
 			_, err := c.Enroll(ctx, 101, input)
 			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
@@ -405,7 +388,7 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	f.clock.set(epoch.Add(119 * time.Second))
 	cached, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || !errors.Is(busySend, tracking.ErrRemoving) || beforeErr != nil || before.Credentials.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || !errors.Is(sendErr, context.Canceled) || removeErr != nil || !errors.Is(missing, data.ErrNotFound) || newID == id || !errors.Is(lateObservation, data.ErrNotFound) || !errors.Is(oldSend, data.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
+	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || !errors.Is(busySend, tracking.ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || !errors.Is(sendErr, context.Canceled) || removeErr != nil || !errors.Is(missing, data.ErrNotFound) || newID == id || !errors.Is(lateObservation, data.ErrNotFound) || !errors.Is(oldSend, data.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("removal results: late=%v send=%v remove=%v missing=%v lateObservation=%v oldSend=%v status=%+v err=%v", late.err, sendErr, removeErr, missing, lateObservation, oldSend, cached, statusErr)
 	}
 	obs(t, cached, "A", epoch.Add(time.Minute))
@@ -510,51 +493,34 @@ func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
 	}
 }
 
-type rejectingVault struct{ tracking.Vault }
-
-func (v rejectingVault) Open(application.SealedCredentials) (application.Credentials, error) {
-	return application.Credentials{}, errors.New("private authentication details")
-}
-
 type rejectingObserve struct{ tracking.Store }
 
 func (s rejectingObserve) Observe(context.Context, int64, string, application.Observation) error {
 	return errors.New("private database details")
 }
-func TestStatusShouldPreserveOldCacheWhenCredentialAuthenticationOrObservationCommitFails(t *testing.T) {
-	for _, kind := range []string{"authentication", "observation"} {
-		t.Run(kind, func(t *testing.T) {
-			// Given
-			f := setup(t, nil)
-			id := f.enroll(t, 101)
-			var v tracking.Vault = f.k
-			var s tracking.Store = tracking.Persistence{DB: f.s}
-			var calls atomic.Int32
-			if kind == "authentication" {
-				v = rejectingVault{v}
-			} else {
-				s = rejectingObserve{s}
-			}
-			c := tracking.New(s, v, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
-				calls.Add(1)
-				return application.Observation{Stage: "B"}, nil
-			}), auth.New(false, []int64{101}), f.clock)
-			f.clock.set(epoch.Add(time.Minute))
-			// When
-			status, err := c.Status(context.Background(), 101)
-			e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-			history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
-			// Then
-			expected := tracking.ErrCredentials
-			if kind == "observation" {
-				expected = tracking.ErrStorage
-			}
-			if !errors.Is(err, expected) || readErr != nil || historyErr != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || (kind == "authentication" && calls.Load() != 0) {
-				t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
-			}
-			obs(t, status, "A", epoch)
-		})
-	}
+func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
+	t.Run("observation", func(t *testing.T) {
+		// Given
+		f := setup(t, nil)
+		id := f.enroll(t, 101)
+		var s tracking.Store = tracking.Persistence{DB: f.s}
+		var calls atomic.Int32
+		s = rejectingObserve{s}
+		c := tracking.New(s, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
+			calls.Add(1)
+			return application.Observation{Stage: "B"}, nil
+		}), auth.New(false, []int64{101}), f.clock)
+		f.clock.set(epoch.Add(time.Minute))
+		// When
+		status, err := c.Status(context.Background(), 101)
+		e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
+		history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
+		// Then
+		if !errors.Is(err, tracking.ErrStorage) || readErr != nil || historyErr != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
+			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
+		}
+		obs(t, status, "A", epoch)
+	})
 }
 
 type mutablePolicy struct{ allowed atomic.Bool }
@@ -567,7 +533,7 @@ func TestScheduledShouldRecheckAuthorizationBeforeCommitWhenEligibilityChangesDu
 	policy := &mutablePolicy{}
 	policy.allowed.Store(true)
 	entered, release := make(chan struct{}), make(chan struct{})
-	c := tracking.New(tracking.Persistence{DB: f.s}, f.k, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
+	c := tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
 		close(entered)
 		<-release
 		return application.Observation{Stage: "B"}, nil
@@ -637,7 +603,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(workErr, context.Canceled) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.Credentials.ID != id || statusErr != nil || status.Observation == nil {
+	if !errors.Is(workErr, context.Canceled) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.Observation == nil {
 		t.Fatalf("canceled removal: work=%v remove=%v read=%v status=%v", workErr, removeErr, readErr, statusErr)
 	}
 }
@@ -652,7 +618,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 		t.Fatal(err)
 	}
 	f.s = reopened
-	c := tracking.New(tracking.Persistence{DB: f.s}, f.k, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
+	c := tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, application.Credentials) (application.Observation, error) {
 		t.Error("recent baseline triggered portal work")
 		return application.Observation{}, nil
 	}), auth.New(false, []int64{101}), f.clock)

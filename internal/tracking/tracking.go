@@ -15,30 +15,24 @@ import (
 )
 
 var (
-	ErrClosed      = errors.New("tracking coordinator stopped")
-	ErrDenied      = errors.New("access denied")
-	ErrBusy        = errors.New("owner work in progress")
-	ErrRemoving    = errors.New("removal in progress")
-	ErrCheck       = errors.New("portal check failed")
-	ErrCredentials = errors.New("credential operation failed")
-	ErrStorage     = errors.New("tracking storage operation failed")
-	ErrInvalid     = errors.New("invalid enrollment input")
+	ErrClosed   = errors.New("tracking coordinator stopped")
+	ErrDenied   = errors.New("access denied")
+	ErrBusy     = errors.New("owner work in progress")
+	ErrRemoving = errors.New("removal in progress")
+	ErrCheck    = errors.New("portal check failed")
+	ErrStorage  = errors.New("tracking storage operation failed")
+	ErrInvalid  = errors.New("invalid enrollment input")
 )
 
 // Store contains the atomic tracking workflows implemented by Persistence.
 type Store interface {
-	Enroll(context.Context, int64, application.SealedCredentials, application.Observation) error
+	Enroll(context.Context, int64, string, application.Credentials, application.Observation) error
 	Observe(context.Context, int64, string, application.Observation) error
 	Enrollment(context.Context, int64) (data.Enrollment, error)
 	ReserveCheck(context.Context, int64, string, bool, time.Time) (data.CheckReservation, error)
 	Remove(context.Context, int64, string) error
 	CheckEligibility(context.Context, int64, string, bool) (time.Time, error)
 }
-type Vault interface {
-	Seal(string, application.Credentials) (application.SealedCredentials, error)
-	Open(application.SealedCredentials) (application.Credentials, error)
-}
-
 type flight struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
@@ -63,7 +57,6 @@ type Coordinator struct {
 	closed bool
 	owners map[int64]*ownerState
 	store  Store
-	vault  Vault
 	portal application.Portal
 	policy application.Policy
 	clock  application.Clock
@@ -71,8 +64,8 @@ type Coordinator struct {
 
 var _ application.Tracking = (*Coordinator)(nil)
 
-func New(store Store, vault Vault, portal application.Portal, policy application.Policy, clock application.Clock) *Coordinator {
-	return &Coordinator{owners: make(map[int64]*ownerState), store: store, vault: vault, portal: portal, policy: policy, clock: clock}
+func New(store Store, portal application.Portal, policy application.Policy, clock application.Clock) *Coordinator {
+	return &Coordinator{owners: make(map[int64]*ownerState), store: store, portal: portal, policy: policy, clock: clock}
 }
 func (c *Coordinator) allowed(owner int64) bool { return owner > 0 && c.policy.Allows(owner) }
 func (c *Coordinator) state(owner int64) *ownerState {
@@ -170,11 +163,6 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials appli
 	if err != nil {
 		return application.Observation{}, err
 	}
-	sealed, err := c.vault.Seal(id, credentials)
-	credentials = application.Credentials{}
-	if err != nil {
-		return application.Observation{}, ErrCredentials
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if s.removing {
@@ -186,7 +174,7 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials appli
 	if !c.allowed(owner) {
 		return application.Observation{}, ErrDenied
 	}
-	if err = c.store.Enroll(work, owner, sealed, o); err != nil {
+	if err = c.store.Enroll(work, owner, id, credentials, o); err != nil {
 		return application.Observation{}, safeStore(err)
 	}
 	return o, nil
@@ -244,12 +232,12 @@ func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool
 	now := c.clock.Now()
 	status := cached(e.Observation)
 	if now.Before(e.Observation.CheckedAt.Add(time.Minute)) {
-		status.NextEligibleAt, err = c.store.CheckEligibility(ctx, owner, e.Credentials.ID, manual)
+		status.NextEligibleAt, err = c.store.CheckEligibility(ctx, owner, e.ID, manual)
 		status.NextEligibleAt = later(status.NextEligibleAt, e.Observation.CheckedAt.Add(time.Minute))
 		c.mu.Unlock()
 		return status, safeStore(err)
 	}
-	reservation, err := c.store.ReserveCheck(ctx, owner, e.Credentials.ID, manual, now)
+	reservation, err := c.store.ReserveCheck(ctx, owner, e.ID, manual, now)
 	if err != nil {
 		c.mu.Unlock()
 		return status, safeStore(err)
@@ -305,15 +293,10 @@ func copyStatus(s application.Status) application.Status {
 	return s
 }
 func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f *flight, e data.Enrollment) {
-	var credentials application.Credentials
+	credentials := e.Credentials
 	var err error
 	if !c.allowed(owner) {
 		err = ErrDenied
-	} else {
-		credentials, err = c.vault.Open(e.Credentials)
-		if err != nil {
-			err = ErrCredentials
-		}
 	}
 	var o application.Observation
 	if err == nil {
@@ -334,7 +317,7 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 	} else if !c.allowed(owner) {
 		err = ErrDenied
 	} else if err == nil {
-		err = safeStore(c.store.Observe(ctx, owner, e.Credentials.ID, o))
+		err = safeStore(c.store.Observe(ctx, owner, e.ID, o))
 		if err == nil {
 			next := f.status.NextEligibleAt
 			f.status = cached(o)
@@ -378,7 +361,7 @@ func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, 
 			c.mu.Unlock()
 			return safeStore(err)
 		}
-		if e.OwnerID != owner || e.Credentials.ID != id {
+		if e.OwnerID != owner || e.ID != id {
 			c.mu.Unlock()
 			return data.ErrNotFound
 		}
@@ -454,7 +437,7 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	if e.OwnerID != owner {
 		return ErrDenied
 	}
-	return safeStore(c.store.Remove(ctx, owner, e.Credentials.ID))
+	return safeStore(c.store.Remove(ctx, owner, e.ID))
 }
 
 // Shutdown permanently closes admission, cancels every owner activity and drains

@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/arhor/case-watch/internal/credentials"
 )
 
 func TestRunShouldRejectInvalidConfigWhenServiceRequested(t *testing.T) {
@@ -25,7 +22,7 @@ func TestRunShouldRejectInvalidConfigWhenServiceRequested(t *testing.T) {
 
 func TestRunShouldRejectStartupWhenRequiredPathsUnavailable(t *testing.T) {
 	// Given
-	env := map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": "/data/db", "CASE_WATCH_KEY_FILE": "/keys/keyring", "CASE_WATCH_ALLOW_ALL_USERS": "true"}
+	env := map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": "/data/db", "CASE_WATCH_ALLOW_ALL_USERS": "true"}
 	// When
 	err := run([]string{"--run"}, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
 	// Then
@@ -60,8 +57,8 @@ func TestRunShouldRejectInvalidArgumentsWithoutReadingEnvironmentWhenSyntaxInval
 		{"--resume-token", "database"},
 		{"--resume-token", "database", "key"},
 		{"--resume-token", "database", "key", "extra"},
-		{"--queue", "database", "key"},
-		{"--queue", "database", "key", "123", "extra"},
+		{"--queue", "database"},
+		{"--queue", "database", "123", "extra"},
 		{"--resume-recipient", "database", "key", "123"},
 		{"--resume-recipient", "database", "key", "123", "extra"},
 	} {
@@ -89,7 +86,7 @@ func TestRunShouldRejectInvalidRecipientIDWhenRecipientCommandRequested(t *testi
 		for _, recipientID := range []string{"", "abc", "0", "-1", "9223372036854775808"} {
 			t.Run(command+"/"+recipientID, func(t *testing.T) {
 				// Given
-				args := []string{command, "database", "key", recipientID}
+				args := []string{command, "database", recipientID}
 				lookupEnv := func(string) (string, bool) {
 					t.Fatal("recipient validation must not read the environment")
 					return "", false
@@ -104,23 +101,6 @@ func TestRunShouldRejectInvalidRecipientIDWhenRecipientCommandRequested(t *testi
 				}
 			})
 		}
-	}
-}
-
-func TestRunShouldProvisionWithoutEnvironmentWhenOperatorRequestsKey(t *testing.T) {
-	// Given
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "keyring")
-	calls := 0
-	// When
-	err := run([]string{"--provision-key", path, "initial"}, func(string) (string, bool) { calls++; return "", false })
-	k, loadErr := credentials.Load(path)
-	// Then
-	if err != nil || loadErr != nil || k == nil || calls != 0 {
-		t.Fatal("explicit provisioning failed")
 	}
 }
 

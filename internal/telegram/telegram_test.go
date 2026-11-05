@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/application"
 	"github.com/arhor/case-watch/internal/auth"
-	"github.com/arhor/case-watch/internal/credentials"
 	"github.com/arhor/case-watch/internal/data"
 	"github.com/arhor/case-watch/internal/notifications"
 	"github.com/arhor/case-watch/internal/tracking"
@@ -42,7 +40,6 @@ type fixture struct {
 	deletes int
 	calls   int
 	stage   string
-	keys    *credentials.Keyring
 	path    string
 	logs    []string
 }
@@ -75,13 +72,8 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	keys, err := credentials.Parse([]byte(`{"version":1,"active_key_id":"test","keys":{"test":"` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `"}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.keys = keys
 	policy := auth.New(true, nil)
-	coordinator := tracking.New(tracking.Persistence{DB: f.s}, keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
+	coordinator := tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, application.Credentials) (application.Observation, error) {
 		f.calls++
 		stage := f.stage
 		if stage == "" {
@@ -122,7 +114,7 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	e, err := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	history, herr := f.s.History.FindByEnrollment(context.Background(), 101, e.Credentials.ID)
+	history, herr := f.s.History.FindByEnrollment(context.Background(), 101, e.ID)
 	f.message(101, "/status")
 	f.message(202, "/remove")
 	f.message(202, "REMOVE")
@@ -385,7 +377,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.s.History.FindByEnrollment(ctx, 101, e.Credentials.ID)
+	history, err := f.s.History.FindByEnrollment(ctx, 101, e.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +393,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator = tracking.New(tracking.Persistence{DB: f.s}, f.keys, portal(func(context.Context, application.Credentials) (application.Observation, error) {
+	coordinator = tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, application.Credentials) (application.Observation, error) {
 		t.Error("restart/cache/removal unexpectedly checked portal")
 		return application.Observation{}, errors.New("unexpected check")
 	}), f.a.config.Policy, f.clock)

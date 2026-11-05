@@ -11,15 +11,13 @@ import (
 type Config struct {
 	TelegramBotToken string
 	DBPath           string
-	KeyFile          string
 	AllowAllUsers    bool
 	AllowedUserIDs   []int64
 }
 
 var tokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]{35}$`)
 
-// Load validates syntax only. Lifecycle startup must separately validate the key
-// file, database, and stored ciphertext before enabling any network work.
+// Load validates syntax only. Lifecycle startup separately validates the database.
 // Errors contain variable names only, never their supplied values.
 func Load(lookup func(string) (string, bool)) (Config, error) {
 	var c Config
@@ -29,11 +27,8 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, errors.New("CASE_WATCH_TELEGRAM_BOT_TOKEN: invalid or missing token syntax")
 	}
 	c.DBPath = get("CASE_WATCH_DB_PATH")
-	c.KeyFile = get("CASE_WATCH_KEY_FILE")
-	for _, field := range []struct{ name, value string }{{"CASE_WATCH_DB_PATH", c.DBPath}, {"CASE_WATCH_KEY_FILE", c.KeyFile}} {
-		if strings.TrimSpace(field.value) == "" || strings.ContainsAny(field.value, "\x00\r\n") {
-			return Config{}, errors.New(field.name + ": invalid or missing path")
-		}
+	if strings.TrimSpace(c.DBPath) == "" || strings.ContainsAny(c.DBPath, "\x00\r\n") {
+		return Config{}, errors.New("CASE_WATCH_DB_PATH: invalid or missing path")
 	}
 	if raw, present := lookup("CASE_WATCH_ALLOW_ALL_USERS"); present {
 		switch strings.TrimSpace(raw) {

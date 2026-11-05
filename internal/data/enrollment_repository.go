@@ -20,7 +20,7 @@ func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) 
 	}
 	return scanEnrollment(
 		this.db.QueryRowContext(ctx, `
-			SELECT id, owner_id, credential_version, key_id, payload, stage, checked_at
+			SELECT id, owner_id, case_number, password, stage, checked_at
 			  FROM enrollments
 			 WHERE deleted_at IS NULL
 			   AND owner_id = ?
@@ -37,7 +37,7 @@ func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int6
 	if err != nil {
 		return Enrollment{}, err
 	}
-	if e.Credentials.ID != id {
+	if e.ID != id {
 		return Enrollment{}, ErrNotFound
 	}
 	return e, nil
@@ -45,7 +45,7 @@ func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int6
 
 func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, error) {
 	rows, err := this.db.QueryContext(ctx, `
-		SELECT id, owner_id, credential_version, key_id, payload, stage, checked_at
+		SELECT id, owner_id, case_number, password, stage, checked_at
 		FROM enrollments
 		WHERE deleted_at IS NULL
 		ORDER BY owner_id
@@ -68,8 +68,8 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, er
 	return result, nil
 }
 
-func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c application.SealedCredentials, o application.Observation) error {
-	if owner <= 0 || !validSealedCredentials(c) || !validObservation(o) {
+func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id string, c application.Credentials, o application.Observation) error {
+	if owner <= 0 || !validID(id) || strings.TrimSpace(c.Number) == "" || strings.TrimSpace(c.Password) == "" || !validObservation(o) {
 		return ErrInvalid
 	}
 	var exists bool
@@ -84,7 +84,7 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c app
 			  FROM enrollments
 			 WHERE id = ?
 		)
-	`, owner, string(c.ID)).Scan(&exists) != nil {
+	`, owner, id).Scan(&exists) != nil {
 		return ErrStorage
 	}
 	if exists {
@@ -92,10 +92,10 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, c app
 	}
 	_, err := this.db.ExecContext(ctx, `
 		INSERT INTO enrollments (
-			id, owner_id, credential_version, key_id, payload, stage, checked_at
+			id, owner_id, case_number, password, stage, checked_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, string(c.ID), owner, c.FormatVersion, c.KeyID, c.Payload, o.Stage, stamp(o.CheckedAt))
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, id, owner, c.Number, c.Password, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return ErrStorage
 	}
@@ -127,9 +127,8 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 		this.db.ExecContext(ctx, `
 			UPDATE enrollments
 			   SET deleted_at = ?
-			     , credential_version = NULL
-				 , key_id = NULL
-				 , payload = NULL
+			     , case_number = NULL
+				 , password = NULL
 				 , stage = NULL
 				 , checked_at = NULL
 			 WHERE owner_id = ?
@@ -140,29 +139,7 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 	)
 }
 
-func (this *EnrollmentRepository) UpdateCredentials(ctx context.Context, c application.SealedCredentials) error {
-	if !validSealedCredentials(c) {
-		return ErrInvalid
-	}
-	return rowAffected(
-		this.db.ExecContext(ctx, `
-			UPDATE enrollments
-			   SET credential_version = ?
-			     , key_id = ?
-			     , payload = ?
-			 WHERE id = ?
-			   AND deleted_at IS NULL
-			`, c.FormatVersion, c.KeyID, c.Payload, c.ID,
-		),
-	)
-}
-
 // ---- Internal implementation --------------------------------------------------------------------
-
-// Keep creation and rotation validation aligned: payload includes nonce and tag.
-func validSealedCredentials(c application.SealedCredentials) bool {
-	return validID(c.ID) && c.FormatVersion == 1 && strings.TrimSpace(c.KeyID) != "" && len(c.Payload) >= 28
-}
 
 func scanEnrollment(
 	row interface {
@@ -170,15 +147,14 @@ func scanEnrollment(
 	},
 ) (Enrollment, error) {
 	var e Enrollment
-	var id, checked string
-	err := row.Scan(&id, &e.OwnerID, &e.Credentials.FormatVersion, &e.Credentials.KeyID, &e.Credentials.Payload, &e.Observation.Stage, &checked)
+	var checked string
+	err := row.Scan(&e.ID, &e.OwnerID, &e.Credentials.Number, &e.Credentials.Password, &e.Observation.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
 	}
 	if err != nil {
 		return Enrollment{}, ErrStorage
 	}
-	e.Credentials.ID = id
 	e.Observation.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
 		return Enrollment{}, ErrStorage

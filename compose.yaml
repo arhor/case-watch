@@ -10,17 +10,10 @@ services:
       CASE_WATCH_ALLOWED_USER_IDS: ${CASE_WATCH_ALLOWED_USER_IDS:-}
       CASE_WATCH_ALLOW_ALL_USERS: ${CASE_WATCH_ALLOW_ALL_USERS:-false}
       CASE_WATCH_DB_PATH: /data/case-watch.db
-      CASE_WATCH_KEY_FILE: /keys/keyring.json
     volumes:
       - type: volume
         source: data
         target: /data
-      - type: bind
-        source: ${CASE_WATCH_HOST_KEY_FILE:?Set an absolute existing key-file path}
-        target: /keys/keyring.json
-        read_only: true
-        bind:
-          create_host_path: false
 volumes:
   data:
     name: case-watch-data

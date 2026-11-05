@@ -24,8 +24,8 @@ const (
 func (p Persistence) Enrollment(ctx context.Context, owner int64) (data.Enrollment, error) {
 	return p.DB.Enrollments.FindByOwner(ctx, owner)
 }
-func (p Persistence) Enroll(ctx context.Context, owner int64, c application.SealedCredentials, o application.Observation) error {
-	return p.DB.RunInTx(ctx, func(tx *data.Store) error { return tx.Enrollments.Create(ctx, owner, c, o) })
+func (p Persistence) Enroll(ctx context.Context, owner int64, id string, c application.Credentials, o application.Observation) error {
+	return p.DB.RunInTx(ctx, func(tx *data.Store) error { return tx.Enrollments.Create(ctx, owner, id, c, o) })
 }
 func (p Persistence) Observe(ctx context.Context, owner int64, id string, o application.Observation) error {
 	return p.DB.RunInTx(ctx, func(tx *data.Store) error {
