@@ -9,6 +9,8 @@ import (
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
 	"github.com/arhor/case-watch/internal/domain"
+
+	"github.com/robfig/cron/v3"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
@@ -29,41 +31,29 @@ type Config struct {
 	Report func(string)
 }
 type Scheduler struct {
-	c       Config
-	zone    *time.Location
-	running sync.Mutex
+	c        Config
+	schedule cron.Schedule
+	running  sync.Mutex
 }
 
 func New(c Config) (*Scheduler, error) {
 	if c.Tracking == nil || c.Clock == nil {
 		return nil, ErrScheduler
 	}
-	zone, err := time.LoadLocation("Europe/Warsaw")
+	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
 	if err != nil {
 		return nil, ErrScheduler
 	}
 	if c.Wait == nil {
 		c.Wait = wait
 	}
-	return &Scheduler{c: c, zone: zone}, nil
+	return &Scheduler{c: c, schedule: schedule}, nil
 }
 
 // Next returns the first strictly future Warsaw slot. Startup at a slot never
 // replays that slot; holidays use the same weekday rules as every other date.
 func (s *Scheduler) Next(after time.Time) time.Time {
-	local := after.In(s.zone)
-	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, s.zone)
-	for {
-		if day.Weekday() != time.Saturday && day.Weekday() != time.Sunday {
-			for _, hour := range [...]int{8, 10, 12, 14, 16, 18} {
-				slot := time.Date(day.Year(), day.Month(), day.Day(), hour, 0, 0, 0, s.zone)
-				if slot.After(after) {
-					return slot
-				}
-			}
-		}
-		day = day.AddDate(0, 0, 1)
-	}
+	return s.schedule.Next(after)
 }
 
 func wait(ctx context.Context, deadline time.Time) error {
