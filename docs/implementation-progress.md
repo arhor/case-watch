@@ -361,3 +361,19 @@ With Node v26.13.0 selected via nvm and Go 1.27.3, go test ./..., go test -race 
 The maintainer confirmed that Case Watch is an undeployed WIP application with no existing databases and chose to defer credential encryption until a concrete requirement exists. ADR 0014 supersedes ADR 0006. The initial schema now stores case number and password directly on enrollments; opaque enrollment identities remain for removal fencing. Removed the encryption/keyring package, sealed-credential model, startup authentication, key configuration and mount, provisioning, rotation and their tests. Queue inspection now requires only database path and recipient ID. Telegram draft expiry, best-effort credential-message deletion, owner scoping and sanitized diagnostics remain.
 
 With Node v26.13.0 selected through nvm and Go 1.27.3, `go test ./...`, `go test -race ./...`, `go vet ./...`, and `go build -o /private/tmp/case-watch-plaintext ./cmd/case-watch` passed using `GOCACHE=/private/tmp/case-watch-go-cache`. The initial sandboxed test run could not bind existing localhost HTTP fixtures; the escalated rerun passed. Maintained configuration, storage, Telegram, operations and deployment guides describe plaintext WIP storage. No live Telegram/portal, Docker, deployment or target-device acceptance checks were run.
+
+### 2026-11-05: Remove queue inspection command
+
+Removed the `--queue` CLI command, its queue formatting and inspection code, and the application-level maintenance database opener that existed only for that command. The executable now accepts only `--run`. Recipient recovery remains an explicit stopped-service SQL procedure; durable notification queueing used by normal delivery is unchanged.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, `go test ./cmd/case-watch`, `go vet ./...`, `go build -o /private/tmp/case-watch-no-queue ./cmd/case-watch`, and `git diff --check` passed. The required full `go test ./...` stopped on the existing invalid experimental `scheduled_jobs` declaration (`INTEGER NOT PRIMARY KEY AUTOINCREMENT`) in the initial schema, before the race suite could run. That unrelated scheduler/schema work was left unchanged for the planned architecture cleanup.
+
+### 2026-11-05: Remove the run argument
+
+Removed the redundant `--run` argument after it became the executable's only command. Running `case-watch` starts the service. The container entrypoint now invokes the executable without a default argument.
+
+With Go 1.27.3, `go test ./cmd/case-watch`, `go vet ./...`, `go build -o /private/tmp/case-watch-no-command ./cmd/case-watch`, and `git diff --check` passed. Full repository tests remain blocked by the unrelated existing malformed experimental `scheduled_jobs` schema recorded above; no live service, container, Telegram or portal checks were run.
+
+The remaining argument check and command dispatcher were subsequently removed. `main` now calls `service.Run` directly, and the obsolete command-package tests were deleted; service startup validation remains covered in `internal/service`.
+
+After that simplification, `go test ./cmd/case-watch`, `go vet ./...`, `go build -o /private/tmp/case-watch-direct-main ./cmd/case-watch`, and `git diff --check` passed with Node v26.13.0 selected through nvm and Go 1.27.3.

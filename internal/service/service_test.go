@@ -127,7 +127,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 	}
 }
 
-func TestRunShouldExcludeOtherServicesAndMaintenanceWhenDatabaseLocked(t *testing.T) {
+func TestRunShouldExcludeOtherServicesWhenDatabaseLocked(t *testing.T) {
 	// Given
 	f := setup(t)
 	started := make(chan struct{})
@@ -140,15 +140,13 @@ func TestRunShouldExcludeOtherServicesAndMaintenanceWhenDatabaseLocked(t *testin
 		}})
 	}()
 	wait(t, started)
-	callback := false
 	// When
 	second := Run(context.Background(), f.lookup, Factories{})
-	maintenance := Maintain(context.Background(), f.db, func(*data.Store) error { callback = true; return nil })
 	cancel()
 	stopped := result(t, done)
 	// Then
-	if !errors.Is(second, ErrLocked) || !errors.Is(maintenance, ErrLocked) || callback || stopped != nil {
-		t.Fatalf("exclusive process lock failed: %v %v %v", second, maintenance, stopped)
+	if !errors.Is(second, ErrLocked) || stopped != nil {
+		t.Fatalf("exclusive process lock failed: %v %v", second, stopped)
 	}
 	s := f.open(t)
 	if e := s.Close(); e != nil {

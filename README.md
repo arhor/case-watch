@@ -15,7 +15,7 @@ go build -o case-watch ./cmd/case-watch
 Configure the Telegram bot token, database path, and access policy using environment variables. See [the example configuration](.env.example) and [configuration guide](docs/configuration.md).
 
 ```sh
-./case-watch --run
+./case-watch
 ```
 
 The application reads environment variables directly; it does not load `.env` files. Portal credentials are currently stored as plaintext in the protected SQLite database while the application remains work in progress. See [operator commands](docs/operations.md) for details.

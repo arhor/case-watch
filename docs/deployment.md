@@ -38,16 +38,6 @@ docker compose up -d --no-deps --force-recreate case-watch
 
 Keep the exact volume name. Do not run old and new pollers concurrently. Startup rejects incompatible schema and invalid configuration; correct the cause instead of deleting data automatically.
 
-## Stopped-service maintenance
-
-Stop the service before queue inspection:
-
-```sh
-docker compose stop case-watch
-docker compose run --rm --no-deps case-watch --queue /data/case-watch.db RECIPIENT_ID
-docker compose start case-watch
-```
-
 Recipient recovery continues to use the stopped-service SQL procedure documented in [operations](operations.md).
 
 ## Accepted loss and validation
