@@ -1,6 +1,6 @@
 # Service and operator commands
 
-Use Go 1.27.3. From the repository root, build with `go build -o case-watch ./cmd/case-watch`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Run it with `case-watch`; it has no command-line interface.
+Use Go 1.27.3. From the repository root, build with `go build -o case-watch .`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Run it with `case-watch`; it has no command-line interface.
 
 Startup validates environment syntax, restricted database permissions and the database schema before constructing network integrations. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 

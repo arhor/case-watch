@@ -392,3 +392,9 @@ With Node v26.13.0 selected through nvm and Go 1.27.3, fresh `go test ./...`, `g
 Replaced the handwritten Warsaw weekday/hour traversal in `internal/entrypoints/scheduler` with `github.com/robfig/cron/v3` v3.0.1 and the ADR 0007 expression `CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5`. The entry point retains sequential execution, missed-minute suppression, completion-based selection of the next slot, cancellation/draining, and the injectable clock/wait used by deterministic tests. The experimental persistent queue and its schema remain unchanged under ADR 0015. The operations guide documents the implementation.
 
 With Node v26.13.0 selected via nvm and Go 1.27.3, focused scheduler/tracking tests, `go test -timeout 60s ./...`, `go test -race -timeout 90s ./...`, `go vet ./...`, and `go build -o /tmp/case-watch-cron ./cmd/case-watch` passed. Scheduling coverage includes Warsaw summer/winter offsets, both DST weekends, all daily slots, weekends, public holidays, foreign input offsets, exact and subsecond boundaries, year rollover, skipped slots, overlap rejection and cancellation/draining. Formatting, changed-document relative links and `git diff HEAD --check` passed. Verification used offline fixtures and localhost HTTP servers; no live service or deployment acceptance was performed.
+
+## 2026-11-07 — Root process entry point
+
+Moved `cmd/case-watch/main.go` unchanged to root `main.go`. Updated Docker build inputs, CI, build instructions and agent verification commands; ADR 0015 has a dated location amendment.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, `go test -timeout 60s ./...`, `go test -race -timeout 90s ./...`, `go vet ./...`, `go build -o /tmp/case-watch-root .`, and `git diff --check` passed. Go checks used the prepared workspace module/build caches and approved sandbox escalation for existing localhost HTTP fixtures. No live service or Docker acceptance checks were performed.

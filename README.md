@@ -7,7 +7,7 @@ Case Watch is a Telegram bot for monitoring administrative case statuses. It che
 Requires Go 1.27.3.
 
 ```sh
-go build -o case-watch ./cmd/case-watch
+go build -o case-watch .
 ```
 
 ## Run
