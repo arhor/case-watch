@@ -12,7 +12,7 @@ type runner interface {
 	Run(context.Context) error
 }
 
-type intake interface {
+type telegramBot interface {
 	runner
 	Close()
 }
@@ -25,17 +25,17 @@ type delivery interface {
 // runtime owns acquired resources and the lifetime of constructed components.
 // It is private and is never passed to application services.
 type runtime struct {
-	work      context.Context
-	cancel    context.CancelFunc
-	fatal     chan struct{}
-	failOnce  sync.Once
-	store     *repositories.Store
-	lock      *databaseLock
-	tracking  *tracking.Coordinator
-	client    telegramClient
-	intake    intake
-	worker    delivery
-	scheduler runner
+	work        context.Context
+	cancel      context.CancelFunc
+	fatal       chan struct{}
+	failOnce    sync.Once
+	store       *repositories.Store
+	lock        *databaseLock
+	tracking    *tracking.Coordinator
+	client      telegramClient
+	telegramBot telegramBot
+	worker      delivery
+	scheduler   runner
 }
 
 func newRuntime(ctx context.Context) *runtime {
@@ -70,7 +70,7 @@ func (r *runtime) run() error {
 			}
 		}()
 	}
-	start(r.intake)
+	start(r.telegramBot)
 	start(r.worker)
 	start(r.scheduler)
 	<-r.work.Done()
@@ -87,8 +87,8 @@ func (r *runtime) close() error {
 	if r.tracking != nil {
 		r.tracking.Shutdown()
 	}
-	if r.intake != nil {
-		r.intake.Close()
+	if r.telegramBot != nil {
+		r.telegramBot.Close()
 	}
 	var result error
 	if r.store != nil {

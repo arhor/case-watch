@@ -32,7 +32,7 @@ func (p portal) Check(c context.Context, v domain.Credentials) (domain.Observati
 }
 
 type fixture struct {
-	a       *Adapter
+	a       *Bot
 	s       *repositories.Store
 	clock   *fakeClock
 	mu      sync.Mutex
@@ -81,7 +81,7 @@ func setup(t *testing.T) *fixture {
 		}
 		return domain.Observation{Stage: stage}, nil
 	}), policy, f.clock)
-	f.a = f.adapter(t, server, Config{Policy: policy, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
+	f.a = f.bot(t, server, Config{Policy: policy, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	return f
 }
 func (f *fixture) message(id int64, text string) {
@@ -245,7 +245,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.adapter(t, server, Config{Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, Config{Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -274,7 +274,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 		w.WriteHeader(429)
 		w.Write([]byte(`{"ok":false,"error_code":429,"description":"synthetic","parameters":{"retry_after":60}}`))
 	}))
-	a := f.adapter(t, server, f.a.config)
+	a := f.bot(t, server, f.a.config)
 	// When
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 101, "synthetic")
@@ -284,7 +284,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 	}
 }
 
-func TestNewShouldRejectMissingCollaboratorsWhenIntakeIsConstructed(t *testing.T) {
+func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 	for _, missing := range []string{"client", "policy", "tracking", "clock", "membership", "direct send"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
@@ -415,7 +415,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	}
 }
 
-func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *testing.T) {
+func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *testing.T) {
 	for _, operation := range []string{"polling", "deletion"} {
 		t.Run(operation, func(t *testing.T) {
 			// Given
@@ -433,7 +433,7 @@ func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t 
 					cancel()
 				}
 			}
-			a := f.adapter(t, server, config)
+			a := f.bot(t, server, config)
 			// When
 			if operation == "polling" {
 				a.Run(ctx)
@@ -448,9 +448,9 @@ func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t 
 	}
 }
 
-// adapter mirrors the production client/worker/intake construction order while
+// bot mirrors the production client/worker/intake construction order while
 // supplying only synthetic HTTP exchanges and a deterministic clock.
-func (f *fixture) adapter(t *testing.T, server *fakeServer, c Config) *Adapter {
+func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
 	client, err := telegramrepository.New(telegramrepository.Config{
 		Token: "123:synthetic-token", Endpoint: server.URL,

@@ -14,16 +14,16 @@ type loopFunc func(context.Context) error
 
 func (f loopFunc) Run(ctx context.Context) error { return f(ctx) }
 
-type testIntake struct{ loopFunc }
+type testTelegramBot struct{ loopFunc }
 
-func (testIntake) Close() {}
+func (testTelegramBot) Close() {}
 
 type testDelivery struct{ loopFunc }
 
 func (testDelivery) Start(context.Context) error { return nil }
 
 func TestRuntimeShouldCancelAndJoinSiblingsWhenAnyComponentReturnsUnexpectedly(t *testing.T) {
-	for _, source := range []string{"intake", "delivery", "scheduler"} {
+	for _, source := range []string{"telegramBot", "delivery", "scheduler"} {
 		for _, outcome := range []string{"nil", "error", "canceled"} {
 			t.Run(source+"/"+outcome, func(t *testing.T) {
 				// Given
@@ -48,7 +48,7 @@ func TestRuntimeShouldCancelAndJoinSiblingsWhenAnyComponentReturnsUnexpectedly(t
 						return ctx.Err()
 					}
 				}
-				r.intake = testIntake{loop("intake")}
+				r.telegramBot = testTelegramBot{loop("telegramBot")}
 				r.worker = testDelivery{loop("delivery")}
 				r.scheduler = loop("scheduler")
 				// When
@@ -71,7 +71,7 @@ func TestRuntimeShouldReturnFailureWhenFatalSignalPrecedesRun(t *testing.T) {
 	defer r.close()
 	r.tracking = tracking.New(nil, nil, nil, nil)
 	loop := loopFunc(func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
-	r.intake = testIntake{loop}
+	r.telegramBot = testTelegramBot{loop}
 	r.worker = testDelivery{loop}
 	r.scheduler = loop
 	r.fail()

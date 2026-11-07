@@ -437,3 +437,18 @@ signal cleanup is skipped on error exit; application cleanup completes before
 Run returns. Go ordinary and race tests passed from cache, and vet, the native
 root build and whitespace checks passed with Go 1.27.3 and Node v26.13.0 selected
 through nvm. No live endpoints were contacted.
+
+### 2026-11-07: Telegram bot naming
+
+Renamed the private application intake interface and runtime field to
+`telegramBot`, and the Telegram entry-point type from `telegram.Adapter` to
+`telegram.Bot`. Updated wiring, test references and the maintained Telegram
+guide. The library's `bot.Bot` remains in the separate repository package, so
+there is no naming conflict. Runtime behavior is unchanged.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, focused application and
+Telegram tests, `go test -timeout 60s ./...`, `go test -race -timeout 90s ./...`,
+`go vet ./...`, `go build -o /tmp/case-watch .`, changed-document relative links
+and `git diff --check` passed. Full ordinary and race tests required approved
+socket access for existing localhost portal HTTP fixtures. No live Telegram or
+portal endpoints were contacted.
