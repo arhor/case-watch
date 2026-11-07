@@ -91,3 +91,7 @@ The maintainer confirmed the structure after removing encryption and the former 
 ### 2026-11-05: Implementation verification
 
 Implemented the package moves, service-owned enrollment/scheduling queries, Telegram Bot API repository, direct `app.Run` startup and experimental queue isolation. Full ordinary and race-enabled tests, vet, the native application build, structural import checks, Markdown links and whitespace checks passed with Go 1.27.3. Existing localhost-only portal fixtures required sandbox escalation; no live endpoints were contacted.
+
+## 2026-11-07 entry point location amendment
+
+The minimal process entry point now lives in root `main.go` instead of `cmd/case-watch/main.go`. Build it from the repository root with `go build -o case-watch .`. It continues to call `app.Run`; the dependency direction and layer responsibilities are unchanged.

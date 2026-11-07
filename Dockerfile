@@ -6,9 +6,9 @@ WORKDIR /src
 RUN apk add --no-cache ca-certificates
 COPY go.mod go.sum ./
 RUN go mod download
-COPY cmd/case-watch/ ./cmd/case-watch/
+COPY main.go ./
 COPY internal/ ./internal/
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' -o /out/case-watch ./cmd/case-watch
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' -o /out/case-watch .
 RUN mkdir -p /runtime/data /runtime/keys /runtime/etc/ssl/certs \
     && chmod 0700 /runtime/data /runtime/keys \
     && chown 10001:10001 /runtime/data /runtime/keys \
