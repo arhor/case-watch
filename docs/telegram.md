@@ -1,21 +1,22 @@
-# Telegram adapter handoff
+# Telegram bot handoff
 
 `internal/application` constructs one `internal/repositories/telegram.Client`
 using ADR 0003's library v1.27.0 without network requests (`WithSkipGetMe`). It
 injects the client into the notification worker as its raw sender and into
-`internal/entrypoints/telegram.New` for polling and credential-message deletion.
+`internal/entrypoints/telegram.New` to construct a `telegram.Bot` for polling
+and credential-message deletion.
 After local configuration and database validation, the application calls the
 client's `Validate(ctx)` before recovery or runtime loops start. Validation uses
 a context-cancellable `getMe` request bounded to 15 seconds. Any error prevents
 startup; only structured unauthorized errors are classified as token rejection.
-Use one poller per token. Intake's `Run(ctx)` supplies its handler to
+Use one poller per token. The bot's `Run(ctx)` supplies its handler to
 `Client.Poll`, which registers it before library polling and rejects a second
 polling lifetime. Cancellation drains library intake and enrollment goroutines
 and clears drafts. Wait for Run before closing services and repositories.
 `Close` is also available for offline/manual use after stopping intake; do not
 call it concurrently with starting new intake.
 
-Intake Config requires the polling/deletion client, shared auth policy, tracking
+The bot's `Config` requires the polling/deletion client, shared auth policy, tracking
 service, clock, direct-reply callback and membership callback. Tracking provides
 enrollment existence checks; intake receives no repository reader. Optional
 HTTP client/endpoint settings belong to the repository client's Config. The
@@ -33,4 +34,4 @@ Library intake runs in update order. Enrollment runs asynchronously so `/cancel`
 
 Offline tests inject an in-memory HTTP transport through the real library. They never contact Telegram or the portal. Service startup, persistent delivery and maintenance are implemented and tested separately; live bot validation and target-device behavior remain unverified.
 
-Delivery integration: `Config.DirectSend(ctx, owner, text)` applies only to direct command replies and is wired to `notifications.Worker.SendDirect`. It serializes gate admission, the send and in-memory cooldown updates with durable sends. Known rate-limit outcomes update the shared in-memory deadline even if intake is canceled. Positive retry_after is honored; otherwise the cooldown is 30 seconds. Restart clears the shared cooldown, while queued notification retry deadlines remain durable. Invalid-token send outcomes stop the worker and service. Structured unauthorized errors during polling or credential-message deletion emit `telegram_invalid_token`, which the application treats as fatal. Raw `Client.Send` remains the one-attempt transport primitive, preventing recursion. Intake exposes no Send method or raw-send fallback. Direct replies never acknowledge notification rows. Application wiring maps `Membership` fields to ordinary `notifications.Event` and calls `Worker.Membership`; explicit unblock evidence can resume a cycle even if the earlier block update was missed, while an ordinary interaction only clears a known block. Events interrupted by removal/cancellation remain queued for the next worker step. Start delivery recovery before incoming polling. Recovery depends on observed evidence and is not guaranteed after arbitrary downtime.
+Delivery integration: `Config.DirectSend(ctx, owner, text)` applies only to direct command replies and is wired to `notifications.Worker.SendDirect`. It serializes gate admission, the send and in-memory cooldown updates with durable sends. Known rate-limit outcomes update the shared in-memory deadline even if intake is canceled. Positive retry_after is honored; otherwise the cooldown is 30 seconds. Restart clears the shared cooldown, while queued notification retry deadlines remain durable. Invalid-token send outcomes stop the worker and service. Structured unauthorized errors during polling or credential-message deletion emit `telegram_invalid_token`, which the application treats as fatal. Raw `Client.Send` remains the one-attempt transport primitive, preventing recursion. The bot exposes no Send method or raw-send fallback. Direct replies never acknowledge notification rows. Application wiring maps `Membership` fields to ordinary `notifications.Event` and calls `Worker.Membership`; explicit unblock evidence can resume a cycle even if the earlier block update was missed, while an ordinary interaction only clears a known block. Events interrupted by removal/cancellation remain queued for the next worker step. Start delivery recovery before incoming polling. Recovery depends on observed evidence and is not guaranteed after arbitrary downtime.

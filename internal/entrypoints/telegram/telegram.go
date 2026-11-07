@@ -51,7 +51,7 @@ type state struct {
 	deadline, removal time.Time
 	cancel            context.CancelFunc
 }
-type Adapter struct {
+type Bot struct {
 	client Client
 	config Config
 	mu     sync.Mutex
@@ -59,14 +59,14 @@ type Adapter struct {
 	wg     sync.WaitGroup
 }
 
-func New(c Config) (*Adapter, error) {
+func New(c Config) (*Bot, error) {
 	if c.Client == nil || c.Policy == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil || c.Membership == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	return &Adapter{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
+	return &Bot{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
 }
 
-func (a *Adapter) diagnostic(s string) {
+func (a *Bot) diagnostic(s string) {
 	if a.config.Diagnostic != nil {
 		a.config.Diagnostic(s)
 	}
@@ -74,7 +74,7 @@ func (a *Adapter) diagnostic(s string) {
 
 // Run must only be called after token validation and delivery recovery.
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
-func (a *Adapter) Run(ctx context.Context) error {
+func (a *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan struct{})
@@ -99,7 +99,7 @@ func (a *Adapter) Run(ctx context.Context) error {
 }
 
 // Sweep drops expired plaintext drafts even when no further update arrives.
-func (a *Adapter) Sweep() {
+func (a *Bot) Sweep() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := a.config.Clock.Now()
@@ -115,7 +115,7 @@ func (a *Adapter) Sweep() {
 		s.mu.Unlock()
 	}
 }
-func (a *Adapter) Close() {
+func (a *Bot) Close() {
 	a.mu.Lock()
 	for _, s := range a.owners {
 		s.mu.Lock()
@@ -130,7 +130,7 @@ func (a *Adapter) Close() {
 	a.mu.Unlock()
 	a.wg.Wait()
 }
-func (a *Adapter) owner(id int64) *state {
+func (a *Bot) owner(id int64) *state {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := a.owners[id]
@@ -140,24 +140,24 @@ func (a *Adapter) owner(id int64) *state {
 	}
 	return s
 }
-func (a *Adapter) reply(ctx context.Context, id int64, text string) {
+func (a *Bot) reply(ctx context.Context, id int64, text string) {
 	if _, err := a.config.DirectSend(ctx, id, text); err != nil {
 		a.diagnostic("telegram reply failure")
 	}
 }
-func (a *Adapter) erase(ctx context.Context, id int64, message int) {
+func (a *Bot) erase(ctx context.Context, id int64, message int) {
 	err := a.client.DeleteMessage(ctx, id, message)
 	if err != nil && !errors.Is(err, telegramrepository.ErrInvalidToken) {
 		a.diagnostic("telegram credential deletion failure")
 	}
 }
-func (a *Adapter) exists(ctx context.Context, id int64) (bool, error) {
+func (a *Bot) exists(ctx context.Context, id int64) (bool, error) {
 	return a.config.Tracking.HasEnrollment(ctx, id)
 }
 
 const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
 
-func (a *Adapter) handle(ctx context.Context, u *models.Update) {
+func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	if m := u.MyChatMember; m != nil {
 		owner, err := a.config.Policy.Authenticate(auth.Identity{SenderID: m.From.ID, ChatID: m.Chat.ID, ChatType: string(m.Chat.Type), SenderIsBot: m.From.IsBot})
 		if err != nil {

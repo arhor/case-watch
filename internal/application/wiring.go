@@ -86,7 +86,7 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 		return errStartup
 	}
 	r.worker = worker
-	adapter, err := telegram.New(telegram.Config{
+	telegramBot, err := telegram.New(telegram.Config{
 		Client: r.client, Policy: policy, Tracking: monitored, Clock: clock,
 		Diagnostic: report,
 		Membership: func(ctx context.Context, m telegram.Membership) {
@@ -103,7 +103,7 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 	if err != nil {
 		return errStartup
 	}
-	r.intake = adapter
+	r.telegramBot = telegramBot
 	r.scheduler, err = scheduler.New(scheduler.Config{
 		Tracking: monitored, Clock: clock,
 		Report: func(category string) {

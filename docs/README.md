@@ -14,7 +14,7 @@ Use the [root README](../README.md) for the project overview, build and deployme
 | Document | Read for |
 | --- | --- |
 | [Storage](storage.md) | Schema, transactions, ownership, attempt reservations and delivery state. |
-| [Telegram](telegram.md) | Adapter lifecycle, command intake and delivery integration. |
+| [Telegram](telegram.md) | Bot lifecycle, command intake and delivery integration. |
 | [Portal client](portal-client.md) | RPC integration, request limits and error handling. |
 
 ## Configuration and operations
