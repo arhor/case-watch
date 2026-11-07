@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
+	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/services/notifications"
 	"github.com/arhor/case-watch/internal/services/tracking"
 	"github.com/go-telegram/bot/models"
@@ -81,14 +81,11 @@ func setup(t *testing.T) *fixture {
 		}
 		return domain.Observation{Stage: stage}, nil
 	}), policy, f.clock)
-	f.a, err = New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: policy, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.a = f.adapter(t, server, Config{Policy: policy, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	return f
 }
 func (f *fixture) message(id int64, text string) {
-	f.a.handle(context.Background(), nil, &models.Update{Message: &models.Message{ID: 7, From: &models.User{ID: id}, Chat: models.Chat{ID: id, Type: models.ChatTypePrivate}, Text: text}})
+	f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: &models.User{ID: id}, Chat: models.Chat{ID: id, Type: models.ChatTypePrivate}, Text: text}})
 	if text == "synthetic-password" {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
@@ -160,36 +157,6 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	// Then
 	if !errors.Is(expired, repositories.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
 		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)
-	}
-}
-func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t *testing.T) {
-	// Given
-	for _, tc := range []struct {
-		code        int
-		description string
-		category    domain.SendCategory
-	}{{401, "synthetic-token", domain.SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", domain.SendBlocked}, {403, "Forbidden: other reason", domain.SendPermanent}, {429, "synthetic-password", domain.SendRateLimited}, {500, "synthetic-password", domain.SendTransient}} {
-		t.Run(string(tc.category)+tc.description, func(t *testing.T) {
-			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": tc.code, "description": tc.description, "parameters": map[string]int{"retry_after": 9}})
-			}))
-			defer server.Close()
-			f := setup(t)
-
-			a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock})
-			if err != nil {
-				t.Fatal(err)
-			}
-			// When
-			outcome, sendErr := a.Send(context.Background(), 101, "synthetic-body")
-			// Then
-			if sendErr == nil || outcome.Category != tc.category || strings.Contains(sendErr.Error(), "synthetic") {
-				t.Fatalf("classification: %+v %v", outcome, sendErr)
-			}
-			if tc.code == 429 && outcome.RetryAfter != 9*time.Second {
-				t.Fatal("retry deadline lost")
-			}
-		})
 	}
 }
 
@@ -278,13 +245,10 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
-	if err != nil {
-		t.Fatal(err)
-	}
+	a := f.adapter(t, server, Config{Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
-	go func() { a.Start(ctx); close(done) }()
+	go func() { a.Run(ctx); close(done) }()
 	<-replied
 	<-failed
 	log := <-logs
@@ -310,21 +274,43 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 		w.WriteHeader(429)
 		w.Write([]byte(`{"ok":false,"error_code":429,"description":"synthetic","parameters":{"retry_after":60}}`))
 	}))
-	a, e := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock})
-	if e != nil {
-		t.Fatal(e)
-	}
-	worker, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.a.config.Tracking.(notifications.Coordinator), Policy: f.a.config.Policy, Clock: f.clock, Sender: a})
-	if e != nil {
-		t.Fatal(e)
-	}
-	a.config.DirectSend = worker.SendDirect
+	a := f.adapter(t, server, f.a.config)
 	// When
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 101, "synthetic")
 	// Then
 	if calls != 1 {
 		t.Fatalf("calls=%d", calls)
+	}
+}
+
+func TestNewShouldRejectMissingCollaboratorsWhenIntakeIsConstructed(t *testing.T) {
+	for _, missing := range []string{"client", "policy", "tracking", "clock", "membership", "direct send"} {
+		t.Run(missing, func(t *testing.T) {
+			// Given
+			f := setup(t)
+			c := f.a.config
+			switch missing {
+			case "client":
+				c.Client = nil
+			case "policy":
+				c.Policy = nil
+			case "tracking":
+				c.Tracking = nil
+			case "clock":
+				c.Clock = nil
+			case "membership":
+				c.Membership = nil
+			case "direct send":
+				c.DirectSend = nil
+			}
+			// When
+			a, err := New(c)
+			// Then
+			if a != nil || err == nil {
+				t.Fatalf("accepted missing %s", missing)
+			}
+		})
 	}
 }
 
@@ -429,63 +415,6 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	}
 }
 
-func TestValidateShouldCheckAcceptanceWithoutLeakingSecretsWhenTelegramResponds(t *testing.T) {
-	for _, code := range []int{200, 401, 500} {
-		t.Run(http.StatusText(code), func(t *testing.T) {
-			// Given
-			f := setup(t)
-			called, bounded := false, false
-			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				called = strings.HasSuffix(r.URL.Path, "/getMe")
-				_, bounded = r.Context().Deadline()
-				if code == 200 {
-					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
-					return
-				}
-				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": code, "description": "synthetic-secret"})
-			}))
-			config := f.a.config
-			config.Endpoint, config.HTTPClient = server.URL, server.Client()
-			a, err := New(config)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// When
-			err = a.Validate(context.Background())
-			// Then
-			if !called || !bounded || (err == nil) != (code == 200) {
-				t.Fatalf("error=%v called=%t bounded=%t", err, called, bounded)
-			}
-			if err != nil && strings.Contains(err.Error(), "synthetic") {
-				t.Fatal("secret leaked")
-			}
-			logs := strings.Join(f.logs, " ")
-			if strings.Contains(logs, "synthetic") || (code == 401 && !strings.Contains(logs, "telegram_invalid_token")) || (code == 500 && !strings.Contains(logs, "telegram validation failure")) {
-				t.Fatalf("logs=%s", logs)
-			}
-		})
-	}
-}
-
-func TestValidateShouldHonorCancellationWhenStartupIsCanceled(t *testing.T) {
-	// Given
-	f := setup(t)
-	config := f.a.config
-	config.HTTPClient = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() })}
-	a, err := New(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	// When
-	err = a.Validate(ctx)
-	// Then
-	if err == nil || strings.Contains(err.Error(), "synthetic") {
-		t.Fatalf("error=%v", err)
-	}
-}
-
 func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *testing.T) {
 	for _, operation := range []string{"polling", "deletion"} {
 		t.Run(operation, func(t *testing.T) {
@@ -497,7 +426,6 @@ func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t 
 				w.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 			}))
 			config := f.a.config
-			config.Endpoint, config.HTTPClient = server.URL, server.Client()
 			reported := false
 			config.Diagnostic = func(category string) {
 				if category == "telegram_invalid_token" {
@@ -505,13 +433,10 @@ func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t 
 					cancel()
 				}
 			}
-			a, err := New(config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			a := f.adapter(t, server, config)
 			// When
 			if operation == "polling" {
-				a.Start(ctx)
+				a.Run(ctx)
 			} else {
 				a.erase(ctx, 101, 1)
 			}
@@ -521,4 +446,36 @@ func TestAdapterShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t 
 			}
 		})
 	}
+}
+
+// adapter mirrors the production client/worker/intake construction order while
+// supplying only synthetic HTTP exchanges and a deterministic clock.
+func (f *fixture) adapter(t *testing.T, server *fakeServer, c Config) *Adapter {
+	t.Helper()
+	client, err := telegramrepository.New(telegramrepository.Config{
+		Token: "123:synthetic-token", Endpoint: server.URL,
+		HTTPClient: server.Client(), Diagnostic: c.Diagnostic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := notifications.New(notifications.Config{
+		Store:       notifications.Persistence{DB: f.s},
+		Coordinator: c.Tracking.(notifications.Coordinator),
+		Policy:      c.Policy, Clock: c.Clock, Sender: client,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Client = client
+	c.DirectSend = worker.SendDirect
+	c.Membership = func(ctx context.Context, m Membership) {
+		worker.Membership(ctx, notifications.Event{Owner: m.Owner, Blocked: m.Blocked, Unblocked: m.Unblocked, Interaction: m.Interaction})
+	}
+	a, err := New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	return a
 }

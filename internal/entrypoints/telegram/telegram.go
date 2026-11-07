@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/services/tracking"
-	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -30,10 +28,16 @@ type Membership struct {
 	Owner                           int64
 	Blocked, Unblocked, Interaction bool
 }
+
+// Client supplies update polling and credential-message deletion. Raw outbound
+// sends belong to the notification worker, not command intake.
+type Client interface {
+	Poll(context.Context, func(context.Context, *models.Update)) error
+	DeleteMessage(context.Context, int64, int) error
+}
+
 type Config struct {
-	Token      string
-	Endpoint   string
-	HTTPClient *http.Client
+	Client     Client
 	Policy     *auth.Policy
 	Tracking   Tracking
 	Clock      domain.Clock
@@ -48,7 +52,7 @@ type state struct {
 	cancel            context.CancelFunc
 }
 type Adapter struct {
-	client *telegramrepository.Client
+	client Client
 	config Config
 	mu     sync.Mutex
 	owners map[int64]*state
@@ -56,22 +60,10 @@ type Adapter struct {
 }
 
 func New(c Config) (*Adapter, error) {
-	if c.Policy == nil || c.Tracking == nil || c.Clock == nil {
+	if c.Client == nil || c.Policy == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil || c.Membership == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	a := &Adapter{config: c, owners: make(map[int64]*state)}
-	client, err := telegramrepository.New(telegramrepository.Config{Token: c.Token, Endpoint: c.Endpoint, HTTPClient: c.HTTPClient, Handler: a.handle, Diagnostic: c.Diagnostic})
-	if err != nil {
-		return nil, err
-	}
-	a.client = client
-	return a, nil
-}
-
-// Validate checks Telegram acceptance after local startup validation, before workers.
-// ADR: docs/adr/0012_fail-fast-on-invalid-telegram-token.md.
-func (a *Adapter) Validate(ctx context.Context) error {
-	return a.client.Validate(ctx)
+	return &Adapter{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
 }
 
 func (a *Adapter) diagnostic(s string) {
@@ -80,9 +72,11 @@ func (a *Adapter) diagnostic(s string) {
 	}
 }
 
-// Start must only be called after lifecycle validation of keys and database.
+// Run must only be called after token validation and delivery recovery.
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
-func (a *Adapter) Start(ctx context.Context) {
+func (a *Adapter) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -97,9 +91,11 @@ func (a *Adapter) Start(ctx context.Context) {
 			}
 		}
 	}()
-	a.client.Start(ctx)
+	err := a.client.Poll(ctx, a.handle)
+	cancel()
 	<-done
 	a.Close()
+	return err
 }
 
 // Sweep drops expired plaintext drafts even when no further update arrives.
@@ -145,17 +141,7 @@ func (a *Adapter) owner(id int64) *state {
 	return s
 }
 func (a *Adapter) reply(ctx context.Context, id int64, text string) {
-	if a.config.DirectSend != nil {
-		if _, err := a.config.DirectSend(ctx, id, text); err != nil {
-			a.diagnostic("telegram reply failure")
-		}
-		return
-	}
-	out, err := a.Send(ctx, id, text)
-	if out.Category == domain.SendInvalidToken {
-		a.diagnostic("telegram_invalid_token")
-	}
-	if err != nil {
+	if _, err := a.config.DirectSend(ctx, id, text); err != nil {
 		a.diagnostic("telegram reply failure")
 	}
 }
@@ -171,7 +157,7 @@ func (a *Adapter) exists(ctx context.Context, id int64) (bool, error) {
 
 const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
 
-func (a *Adapter) handle(ctx context.Context, _ *bot.Bot, u *models.Update) {
+func (a *Adapter) handle(ctx context.Context, u *models.Update) {
 	if m := u.MyChatMember; m != nil {
 		owner, err := a.config.Policy.Authenticate(auth.Identity{SenderID: m.From.ID, ChatID: m.Chat.ID, ChatType: string(m.Chat.Type), SenderIsBot: m.From.IsBot})
 		if err != nil {
@@ -179,7 +165,7 @@ func (a *Adapter) handle(ctx context.Context, _ *bot.Bot, u *models.Update) {
 		}
 		blocked := m.NewChatMember.Type == models.ChatMemberTypeBanned
 		unblocked := m.OldChatMember.Type == models.ChatMemberTypeBanned && m.NewChatMember.Type == models.ChatMemberTypeMember
-		if a.config.Membership != nil && (blocked || unblocked) {
+		if blocked || unblocked {
 			a.config.Membership(ctx, Membership{Owner: owner.ID(), Blocked: blocked, Unblocked: unblocked})
 		}
 		return
@@ -193,9 +179,7 @@ func (a *Adapter) handle(ctx context.Context, _ *bot.Bot, u *models.Update) {
 		return
 	}
 	id := owner.ID()
-	if a.config.Membership != nil {
-		a.config.Membership(ctx, Membership{Owner: id, Interaction: true})
-	}
+	a.config.Membership(ctx, Membership{Owner: id, Interaction: true})
 	s := a.owner(id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -369,9 +353,4 @@ func formatStatus(s domain.Status, err error) string {
 		text += "\nNext check eligible: " + s.NextEligibleAt.UTC().Format(time.RFC3339)
 	}
 	return text
-}
-
-// Send makes one API call. No direct reply or durable-send retries occur here.
-func (a *Adapter) Send(ctx context.Context, id int64, text string) (domain.SendOutcome, error) {
-	return a.client.Send(ctx, id, text)
 }

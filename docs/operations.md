@@ -2,6 +2,11 @@
 
 Use Go 1.27.3. From the repository root, build with `go build -o case-watch .`. Set the variables in [configuration](configuration.md) locally; examples contain synthetic values only. The service does not load `.env` automatically. Run it with `case-watch`; it has no command-line interface.
 
+The root entry point calls `application.Run(ctx)`. `internal/application` owns
+configuration, explicit dependency wiring, startup validation, runtime supervision
+and cleanup; its test overrides and lifecycle helpers are private. See
+[ADR 0016](adr/0016_encapsulate-application-bootstrap.md).
+
 Startup validates environment syntax, restricted database permissions and the database schema before constructing network integrations. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 
 After local validation, startup validates the Telegram token with a bounded `getMe` request. Any validation failure prevents workers from starting. Startup then recovers uncertain notification reservations and starts one Telegram long poller, the notification worker and the Warsaw scheduler. All share the same coordinator and authorization policy. No scheduler catch-up occurs at startup. Direct replies honor the shared in-memory send cooldown and never acknowledge queued change notifications. Diagnostic messages contain fixed operational categories, without credentials, tokens, stage text or message bodies.

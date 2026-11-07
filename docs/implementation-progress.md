@@ -398,3 +398,32 @@ With Node v26.13.0 selected via nvm and Go 1.27.3, focused scheduler/tracking te
 Moved `cmd/case-watch/main.go` unchanged to root `main.go`. Updated Docker build inputs, CI, build instructions and agent verification commands; ADR 0015 has a dated location amendment.
 
 With Node v26.13.0 selected through nvm and Go 1.27.3, `go test -timeout 60s ./...`, `go test -race -timeout 90s ./...`, `go vet ./...`, `go build -o /tmp/case-watch-root .`, and `git diff --check` passed. Go checks used the prepared workspace module/build caches and approved sandbox escalation for existing localhost HTTP fixtures. No live service or Docker acceptance checks were performed.
+
+### 2026-11-07: Encapsulated application bootstrap (ADR 0016)
+
+Moved the executable to repository-root main.go and renamed internal/app to
+internal/application. Main calls application.Run(ctx). Dependency construction
+and injection live in private wiring code; private runtime code owns supervision,
+failure propagation and cleanup. Test factories, storage path/lock helpers,
+clock and tracking monitor are unexported. The single raw Telegram client is
+constructed before the notification worker and intake, eliminating callbacks
+capturing an uninitialized worker. Replies require Worker.SendDirect, membership
+callbacks are required, and polling binds the update handler at runtime and
+rejects another polling lifetime. Service transaction ownership is unchanged.
+
+Updated CI, Dockerfile, Docker context filtering, build commands, operational
+guides and architecture decisions. Corrected the old migration-directory rule
+in .dockerignore so embedded SQL enters the image build context.
+
+With Node v26.13.0 selected through nvm and Go 1.27.3, full ordinary and race
+tests, vet, the native root build and a static Linux ARM64 cross-build passed.
+Offline integration tests verify startup ordering, partial startup cleanup,
+fatal cancellation, detached tracking drain, acknowledgment persistence before
+storage close, shared reply gating and ordered message/membership dispatch.
+Localhost portal tests required approved socket access outside the sandbox.
+Markdown relative links, formatting, production dependency boundaries and Docker
+build-context inputs were checked. A local image build passed using a temporary
+Dockerfile with build-only secret mounts for the cloud proxy CA; the unmodified
+build recipe could not download modules through that proxy without its CA.
+No application was deployed, and no live Telegram/portal or target-device
+acceptance was performed. See ADR 0016 for verification details.

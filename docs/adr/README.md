@@ -34,3 +34,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Keep the Telegram send cooldown in memory](0013_keep-telegram-send-cooldown-in-memory.md) (accepted, 2026-11-03)
 - [Defer credential encryption during WIP](0014_defer-credential-encryption-during-wip.md) (accepted, 2026-11-05)
 - [Adopt a three-layer application structure](0015_adopt-three-layer-application-structure.md) (accepted, 2026-11-05)
+- [Encapsulate construction and lifecycle in application.Run](0016_encapsulate-application-bootstrap.md) (accepted, 2026-11-07)
