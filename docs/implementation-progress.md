@@ -427,3 +427,13 @@ Dockerfile with build-only secret mounts for the cloud proxy CA; the unmodified
 build recipe could not download modules through that proxy without its CA.
 No application was deployed, and no live Telegram/portal or target-device
 acceptance was performed. See ADR 0016 for verification details.
+
+### 2026-11-07: Preserve main.go layout and deferred signal cleanup
+
+Restored the maintainer's original multiline signal-context setup and
+`defer stop()`. The entry-point diff now contains only the application import
+and the call to `application.Run(ctx)`. Updated ADR 0016 to clarify that deferred
+signal cleanup is skipped on error exit; application cleanup completes before
+Run returns. Go ordinary and race tests passed from cache, and vet, the native
+root build and whitespace checks passed with Go 1.27.3 and Node v26.13.0 selected
+through nvm. No live endpoints were contacted.

@@ -196,9 +196,11 @@ or infrastructure change is needed.
 ### Main
 
 Keep context/signals and exit reporting in main. Its application interaction is
-simply `application.Run(ctx)`. Ensure signal cleanup runs before os.Exit, since
-os.Exit bypasses deferred functions. Main imports no services, repositories,
-entry points or bootstrap test types.
+simply `application.Run(ctx)`. Preserve the existing layout and deferred signal
+cleanup. os.Exit bypasses that defer on failure, which is acceptable because the
+process is terminating; application resources have already been cleaned up before
+Run returns. Main imports no services, repositories, entry points or bootstrap
+test types.
 
 ## Implementation sequence
 
