@@ -10,7 +10,7 @@ CREATE TABLE enrollments (
 
 CREATE UNIQUE INDEX active_enrollment_owner
     ON enrollments (owner_id)
-    WHERE deleted_at IS NULL;
+ WHERE deleted_at IS NULL;
 
 CREATE TABLE history (
     sequence       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,23 +55,3 @@ AFTER INSERT ON pending
 BEGIN
     INSERT OR IGNORE INTO recipients (recipient_id) VALUES (NEW.recipient_id);
 END;
-
---------------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS scheduled_jobs (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind         TEXT    NOT NULL,
-    payload      BLOB    NOT NULL,
-    run_at_ms    INTEGER NOT NULL,
-    status       TEXT    NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'failed')),
-    attempts     INTEGER NOT NULL DEFAULT 0         CHECK (attempts >= 0),
-    max_attempts INTEGER NOT NULL DEFAULT 1         CHECK (max_attempts >= 1),
-    repeat_ms    INTEGER NOT NULL DEFAULT 0         CHECK (repeat_ms >= 0),
-    last_error   TEXT,
-    created_ms   INTEGER NOT NULL,
-    updated_ms   INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS scheduled_jobs_due
-    ON scheduled_jobs (run_at_ms, id)
- WHERE status = 'pending';
