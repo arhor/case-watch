@@ -133,3 +133,9 @@ The maintainer confirmed the weekday/public-holiday interpretation and reuse of 
 `scheduler.Next/Run` and embedded `time/tzdata` implement the six Warsaw weekday slots, holidays, DST, missed-slot skipping and sequential execution. `tracking.Coordinator` and storage reservations share in-flight checks and persistent start guards, distinguish completion-based cache freshness, preserve failed-cache provenance, and atomically enqueue both manual and scheduled changes. Tests cover exact boundaries, cross-restart guards, cancellation/joins, failed attempts, late wakes and slow-run overlap. The current product has one selected case per owner; the persisted owner guard is independent of enrollment identity and survives removal/re-enrollment. No live or target-device schedule validation is claimed.
 
 Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.
+
+### 2026-11-07: User authorization removed
+
+[ADR 0017](0017_remove-user-authorization.md) removes user eligibility checks and
+authorization suppression. Scheduling, cooldowns, retry ordering, blocked-recipient
+gates, ownership and retained pending work continue to follow this record.

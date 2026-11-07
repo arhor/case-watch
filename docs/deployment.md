@@ -12,11 +12,11 @@ docker buildx build --platform linux/arm64 --load -t case-watch:2026-11-05 .
 
 Use an explicit version tag or immutable registry digest; do not use `latest`. The image runs as UID/GID 10001 and mounts the named `case-watch-data` volume at `/data`. Keep that volume private and never share it with a second poller.
 
-Set the image, Telegram token and allowed users in the operator shell or a protected environment file outside the repository. Compose configuration output can reveal supplied secrets.
+Set the image and Telegram token in the operator shell or a protected environment file outside the repository. Compose configuration output can reveal supplied secrets.
 
 ```sh
 export CASE_WATCH_IMAGE=case-watch:2026-11-05
-# Set CASE_WATCH_TELEGRAM_BOT_TOKEN and CASE_WATCH_ALLOWED_USER_IDS privately.
+# Set CASE_WATCH_TELEGRAM_BOT_TOKEN privately.
 docker compose up -d
 ```
 

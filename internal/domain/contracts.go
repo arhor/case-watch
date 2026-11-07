@@ -26,12 +26,6 @@ type Portal interface {
 	Check(context.Context, Credentials) (Observation, error)
 }
 
-// Policy is shared by interactive commands and background workers.
-// The transport must first establish an ordinary private chat and valid sender.
-type Policy interface {
-	Allows(userID int64) bool
-}
-
 // Clock lets coordinators and delivery workers use deterministic time in tests.
 type Clock interface {
 	Now() time.Time
@@ -46,7 +40,7 @@ type Status struct {
 	NextEligibleAt time.Time
 }
 
-// Tracking is the authenticated owner-facing use case boundary. Enrollment is
+// Tracking is the owner-facing use case boundary. Enrollment is
 // called only after the transport's ephemeral, separate-message draft is complete.
 // Enroll refuses replacement and commits portal credentials plus baseline
 // atomically. Confirmation is sent separately after success.

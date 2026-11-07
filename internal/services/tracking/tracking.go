@@ -39,7 +39,7 @@ type Store interface {
 // HasEnrollment lets interactive entry points ask a business-level question
 // without reading an enrollment repository directly.
 func (c *Coordinator) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
-	if !c.allowed(owner) {
+	if owner <= 0 {
 		return false, ErrDenied
 	}
 	_, err := c.store.Enrollment(ctx, owner)
@@ -52,7 +52,7 @@ func (c *Coordinator) HasEnrollment(ctx context.Context, owner int64) (bool, err
 	return true, nil
 }
 
-// ScheduledOwners returns the authorized owners eligible for scheduler
+// ScheduledOwners returns the enrolled owners available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
 func (c *Coordinator) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	items, err := c.store.Enrollments(ctx)
@@ -61,7 +61,7 @@ func (c *Coordinator) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	}
 	owners := make([]int64, 0, len(items))
 	for _, item := range items {
-		if c.allowed(item.OwnerID) {
+		if item.OwnerID > 0 {
 			owners = append(owners, item.OwnerID)
 		}
 	}
@@ -93,16 +93,14 @@ type Coordinator struct {
 	owners map[int64]*ownerState
 	store  Store
 	portal domain.Portal
-	policy domain.Policy
 	clock  domain.Clock
 }
 
 var _ domain.Tracking = (*Coordinator)(nil)
 
-func New(store Store, portal domain.Portal, policy domain.Policy, clock domain.Clock) *Coordinator {
-	return &Coordinator{owners: make(map[int64]*ownerState), store: store, portal: portal, policy: policy, clock: clock}
+func New(store Store, portal domain.Portal, clock domain.Clock) *Coordinator {
+	return &Coordinator{owners: make(map[int64]*ownerState), store: store, portal: portal, clock: clock}
 }
-func (c *Coordinator) allowed(owner int64) bool { return owner > 0 && c.policy.Allows(owner) }
 func (c *Coordinator) state(owner int64) *ownerState {
 	s := c.owners[owner]
 	if s == nil {
@@ -153,7 +151,7 @@ func (c *Coordinator) baseline(ctx context.Context, credentials domain.Credentia
 
 func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
 	defer func() { credentials = domain.Credentials{} }()
-	if !c.allowed(owner) {
+	if owner <= 0 {
 		return domain.Observation{}, ErrDenied
 	}
 	if ctx.Err() != nil {
@@ -206,9 +204,6 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domai
 	if work.Err() != nil {
 		return domain.Observation{}, work.Err()
 	}
-	if !c.allowed(owner) {
-		return domain.Observation{}, ErrDenied
-	}
 	if err = c.store.Enroll(work, owner, id, credentials, o); err != nil {
 		return domain.Observation{}, safeStore(err)
 	}
@@ -225,12 +220,11 @@ func (c *Coordinator) Status(ctx context.Context, owner int64) (domain.Status, e
 // Scheduled checks share in-flight results and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-// The scheduler must authorize its inventory too.
 func (c *Coordinator) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
 	return c.check(ctx, owner, false, true)
 }
 func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool) (domain.Status, error) {
-	if !c.allowed(owner) {
+	if owner <= 0 {
 		return domain.Status{}, ErrDenied
 	}
 	if ctx.Err() != nil {
@@ -329,18 +323,7 @@ func copyStatus(s domain.Status) domain.Status {
 }
 func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f *flight, e repositories.Enrollment) {
 	credentials := e.Credentials
-	var err error
-	if !c.allowed(owner) {
-		err = ErrDenied
-	}
-	var o domain.Observation
-	if err == nil {
-		if !c.allowed(owner) {
-			err = ErrDenied
-		} else {
-			o, err = c.baseline(ctx, credentials)
-		}
-	}
+	o, err := c.baseline(ctx, credentials)
 	credentials = domain.Credentials{}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -349,8 +332,6 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 		err = ErrRemoving
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
-	} else if !c.allowed(owner) {
-		err = ErrDenied
 	} else if err == nil {
 		err = safeStore(c.store.Observe(ctx, owner, e.ID, o))
 		if err == nil {
@@ -374,7 +355,7 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 // has drained. It must
 // not call back into RunOwnerWork or Remove. Never put SQL/Telegram types here.
 func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, fn func(context.Context) error) error {
-	if !c.allowed(owner) {
+	if owner <= 0 {
 		return ErrDenied
 	}
 	if ctx.Err() != nil {
@@ -415,9 +396,6 @@ func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, 
 	if work.Err() != nil {
 		return work.Err()
 	}
-	if !c.allowed(owner) {
-		return ErrDenied
-	}
 	return fn(work)
 }
 
@@ -425,7 +403,7 @@ func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, 
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the enrollment and reopens work.
 func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
-	if !c.allowed(owner) {
+	if owner <= 0 {
 		return ErrDenied
 	}
 	if ctx.Err() != nil {
@@ -461,9 +439,6 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	defer c.mu.Unlock()
 	if ctx.Err() != nil {
 		return ctx.Err()
-	}
-	if !c.allowed(owner) {
-		return ErrDenied
 	}
 	e, err := c.store.Enrollment(ctx, owner)
 	if err != nil {

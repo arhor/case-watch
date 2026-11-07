@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/entrypoints/scheduler"
@@ -42,13 +41,12 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 		return errStartup
 	}
 
-	policy := auth.New(c.AllowAllUsers, c.AllowedUserIDs)
 	clock := clock{}
 	p := domain.Portal(portal.NewClient(portal.Options{Now: clock.Now}))
 	if d.portal != nil {
 		p = d.portal()
 	}
-	r.tracking = tracking.New(tracking.Persistence{DB: r.store}, p, policy, clock)
+	r.tracking = tracking.New(tracking.Persistence{DB: r.store}, p, clock)
 	monitored := monitoredTracking{r.tracking, r.fail}
 	report := d.report
 	if report == nil {
@@ -74,7 +72,7 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 	}
 	worker, err := notifications.New(notifications.Config{
 		Store:       notifications.Persistence{DB: r.store},
-		Coordinator: monitored, Policy: policy, Clock: clock, Sender: r.client,
+		Coordinator: monitored, Clock: clock, Sender: r.client,
 		Report: func(category string) {
 			report(category)
 			if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" || category == string(domain.SendInvalidToken) {
@@ -87,7 +85,7 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 	}
 	r.worker = worker
 	telegramBot, err := telegram.New(telegram.Config{
-		Client: r.client, Policy: policy, Tracking: monitored, Clock: clock,
+		Client: r.client, Tracking: monitored, Clock: clock,
 		Diagnostic: report,
 		Membership: func(ctx context.Context, m telegram.Membership) {
 			worker.Membership(ctx, notifications.Event{Owner: m.Owner, Blocked: m.Blocked, Unblocked: m.Unblocked, Interaction: m.Interaction})

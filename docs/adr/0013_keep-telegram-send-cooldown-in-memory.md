@@ -76,3 +76,9 @@ No new dependency, configuration option, automatic command retry or live integra
 ### 2026-11-03: Implementation verification
 
 Implemented the worker-owned cooldown and removed the global repository, state model, Store fields and initial-schema table. Offline fixtures verify shared admission, exact expiry, fallback delay, cancellation, failed outcome persistence, restart reset, durable notification retry state, recipient recovery and fresh schema shape. Full Go 1.27.3 tests, race tests, vet and application build passed with Node v26.13.0 selected through nvm. Markdown links/fences, reciprocal supersession references, ADR index and git diff --check passed. ADR 0009's historical contents were preserved apart from lifecycle metadata and the replacement link. See [verification evidence](../implementation-progress.md). No live Telegram/portal or deployment acceptance was performed.
+
+### 2026-11-07: User authorization removed
+
+[ADR 0017](0017_remove-user-authorization.md) removes user eligibility checks and
+authorization suppression. Scheduling, cooldowns, retry ordering, blocked-recipient
+gates, ownership and retained pending work continue to follow this record.

@@ -35,3 +35,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Defer credential encryption during WIP](0014_defer-credential-encryption-during-wip.md) (accepted, 2026-11-05)
 - [Adopt a three-layer application structure](0015_adopt-three-layer-application-structure.md) (accepted, 2026-11-05)
 - [Encapsulate construction and lifecycle in application.Run](0016_encapsulate-application-bootstrap.md) (accepted, 2026-11-07)
+- [Remove user authorization](0017_remove-user-authorization.md) (accepted, 2026-11-07; replaces ADR 0005 startup eligibility)

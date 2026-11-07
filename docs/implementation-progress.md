@@ -452,3 +452,34 @@ Telegram tests, `go test -timeout 60s ./...`, `go test -race -timeout 90s ./...`
 and `git diff --check` passed. Full ordinary and race tests required approved
 socket access for existing localhost portal HTTP fixtures. No live Telegram or
 portal endpoints were contacted.
+
+## 2026-11-07: Remove user authorization
+
+Updated the checkout to origin/master (`894d779`) before implementing
+[ADR 0017](adr/0017_remove-user-authorization.md). Removed `internal/auth`, the
+shared eligibility interface, allowlist/access-mode configuration and eligibility
+checks from Telegram intake, tracking, scheduling inventory and notification
+delivery. All ordinary private-chat users can enroll and manage their own case;
+transport sender validation, owner scoping, enrollment identity fencing, portal
+login and bot-token validation remain. Existing access environment values are
+ignored. No schema change or data deletion is required. Previously excluded
+owners and their pending work become eligible subject to existing work/delivery
+gates. Updated maintained configuration, product, operations and deployment docs.
+
+Verification with Go 1.27.3:
+
+- Focused configuration, tracking, notifications, Telegram and application tests passed.
+- `go test -timeout 60s ./...` passed.
+- `go test -race -timeout 90s ./...` passed.
+- `go vet ./...` passed.
+- `go build -o /tmp/case-watch .` passed.
+- `docker compose config --quiet` passed with a synthetic image/token and no user access variables.
+- Relative links in changed Markdown files resolve; `git diff --check` passed.
+
+Initial sandboxed full tests could not open the localhost sockets used by existing
+portal fixtures. Both full suites passed outside the sandbox with synthetic
+fixtures. New regression coverage exercises configuration without access policy,
+private sender validation for messages/membership, arbitrary-owner enrollment,
+scheduled refresh and delivery, plus preserved ownership isolation. No live
+portal/Telegram calls, database migration, deployment or target-device checks
+were performed.

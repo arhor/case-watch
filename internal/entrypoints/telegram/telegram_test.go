@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
@@ -72,7 +71,6 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	policy := auth.New(true, nil)
 	coordinator := tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls++
 		stage := f.stage
@@ -80,8 +78,8 @@ func setup(t *testing.T) *fixture {
 			stage = "Etap <A>"
 		}
 		return domain.Observation{Stage: stage}, nil
-	}), policy, f.clock)
-	f.a = f.bot(t, server, Config{Policy: policy, Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
+	}), f.clock)
+	f.a = f.bot(t, server, Config{Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	return f
 }
 func (f *fixture) message(id int64, text string) {
@@ -107,18 +105,18 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	// Given
 	f := setup(t)
 	// When
-	f.message(101, "/enroll")
-	f.message(101, "synthetic-number")
-	f.message(101, "synthetic-password")
-	e, err := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	history, herr := f.s.History.FindByEnrollment(context.Background(), 101, e.ID)
-	f.message(101, "/status")
+	f.message(303, "/enroll")
+	f.message(303, "synthetic-number")
+	f.message(303, "synthetic-password")
+	e, err := f.s.Enrollments.FindByOwner(context.Background(), 303)
+	history, herr := f.s.History.FindByEnrollment(context.Background(), 303, e.ID)
+	f.message(303, "/status")
 	f.message(202, "/remove")
 	f.message(202, "REMOVE")
-	_, still := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	f.message(101, "/remove")
-	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	_, still := f.s.Enrollments.FindByOwner(context.Background(), 303)
+	f.message(303, "/remove")
+	f.message(303, "REMOVE")
+	_, removed := f.s.Enrollments.FindByOwner(context.Background(), 303)
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, repositories.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
@@ -245,7 +243,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.bot(t, server, Config{Policy: f.a.config.Policy, Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, Config{Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -285,7 +283,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
-	for _, missing := range []string{"client", "policy", "tracking", "clock", "membership", "direct send"} {
+	for _, missing := range []string{"client", "tracking", "clock", "membership", "direct send"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -293,8 +291,6 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 			switch missing {
 			case "client":
 				c.Client = nil
-			case "policy":
-				c.Policy = nil
 			case "tracking":
 				c.Tracking = nil
 			case "clock":
@@ -337,7 +333,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	coordinator := f.a.config.Tracking.(*tracking.Coordinator)
 	sender := &scriptedSender{}
 	newWorker := func() *notifications.Worker {
-		w, err := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: coordinator, Policy: f.a.config.Policy, Clock: f.clock, Sender: sender})
+		w, err := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: coordinator, Clock: f.clock, Sender: sender})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -383,7 +379,7 @@ func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestart
 	coordinator = tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		t.Error("restart/cache/removal unexpectedly checked portal")
 		return domain.Observation{}, errors.New("unexpected check")
-	}), f.a.config.Policy, f.clock)
+	}), f.clock)
 	f.a.config.Tracking = coordinator
 	w = newWorker()
 	if err = w.Step(ctx); err != nil {
@@ -462,7 +458,7 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	worker, err := notifications.New(notifications.Config{
 		Store:       notifications.Persistence{DB: f.s},
 		Coordinator: c.Tracking.(notifications.Coordinator),
-		Policy:      c.Policy, Clock: c.Clock, Sender: client,
+		Clock:       c.Clock, Sender: client,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -478,4 +474,36 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	}
 	t.Cleanup(a.Close)
 	return a
+}
+
+func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sender *models.User
+		chat   models.Chat
+	}{
+		{"missing sender", nil, models.Chat{ID: 303, Type: models.ChatTypePrivate}},
+		{"bot sender", &models.User{ID: 303, IsBot: true}, models.Chat{ID: 303, Type: models.ChatTypePrivate}},
+		{"zero sender", &models.User{}, models.Chat{Type: models.ChatTypePrivate}},
+		{"negative sender", &models.User{ID: -303}, models.Chat{ID: -303, Type: models.ChatTypePrivate}},
+		{"mismatched chat", &models.User{ID: 303}, models.Chat{ID: 404, Type: models.ChatTypePrivate}},
+		{"group", &models.User{ID: 303}, models.Chat{ID: 303, Type: models.ChatTypeGroup}},
+		{"channel", &models.User{ID: 303}, models.Chat{ID: 303, Type: models.ChatTypeChannel}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Given
+			f := setup(t)
+			events := 0
+			f.a.config.Membership = func(context.Context, Membership) { events++ }
+			// When
+			f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: tc.sender, Chat: tc.chat, Text: "/enroll"}})
+			if tc.sender != nil {
+				f.a.handle(context.Background(), &models.Update{MyChatMember: &models.ChatMemberUpdated{From: *tc.sender, Chat: tc.chat, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
+			}
+			// Then
+			if events != 0 || len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {
+				t.Fatalf("invalid transport metadata processed: events=%d replies=%v", events, f.replies)
+			}
+		})
+	}
 }

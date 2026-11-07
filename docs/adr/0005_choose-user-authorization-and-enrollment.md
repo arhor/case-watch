@@ -124,3 +124,11 @@ The maintainer's implementation plan defines [the product contract](../product-c
 `internal/config`, `internal/auth`, Telegram authentication, owner-scoped storage and shared tracking/scheduler/worker policy implement the current one-case-per-owner contract. Tests cover malformed defaults/IDs, identity and ownership isolation, authorization before access, and suppression without attempt consumption or deletion. Restart loads the new immutable startup policy; restored eligibility permits retained work subject to persisted gates. The composite shared-association verification item stays unchecked: this implementation has no multiple-owner shared-case association model, so it cannot demonstrate that future behavior. See the single-case product-contract amendment and audit matrix.
 
 Checklist evidence maps to the reviewed implementation and offline tests in [the independent audit](../implementation-audit.md) and exact command results in [implementation progress](../implementation-progress.md). Unchecked composite items retain their pending, conditional or explicitly deferred clauses; acceptance of this ADR is not a claim of live, Docker or Pi validation.
+
+### 2026-11-07: User authorization removed
+
+[ADR 0017](0017_remove-user-authorization.md) replaces this record's startup
+allowlist, shared eligibility policy and authorization suppression requirements.
+All ordinary private-chat users may now enroll and manage their own case.
+Private sender validation, owner isolation and enrollment/removal behavior
+remain in effect. Earlier implementation evidence above is historical.

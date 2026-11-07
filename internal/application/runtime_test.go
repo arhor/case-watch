@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/services/tracking"
 )
 
@@ -29,7 +28,7 @@ func TestRuntimeShouldCancelAndJoinSiblingsWhenAnyComponentReturnsUnexpectedly(t
 				// Given
 				r := newRuntime(context.Background())
 				defer r.close()
-				r.tracking = tracking.New(nil, nil, auth.New(true, nil), nil)
+				r.tracking = tracking.New(nil, nil, nil)
 				var joined atomic.Int32
 				loop := func(name string) loopFunc {
 					return func(ctx context.Context) error {
@@ -69,7 +68,7 @@ func TestRuntimeShouldReturnFailureWhenFatalSignalPrecedesRun(t *testing.T) {
 	// Given
 	r := newRuntime(context.Background())
 	defer r.close()
-	r.tracking = tracking.New(nil, nil, nil, nil)
+	r.tracking = tracking.New(nil, nil, nil)
 	loop := loopFunc(func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
 	r.telegramBot = testTelegramBot{loop}
 	r.worker = testDelivery{loop}
