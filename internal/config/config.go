@@ -4,15 +4,12 @@ package config
 import (
 	"errors"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
 type Config struct {
 	TelegramBotToken string
 	DBPath           string
-	AllowAllUsers    bool
-	AllowedUserIDs   []int64
 }
 
 var tokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]{35}$`)
@@ -29,36 +26,6 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	c.DBPath = get("CASE_WATCH_DB_PATH")
 	if strings.TrimSpace(c.DBPath) == "" || strings.ContainsAny(c.DBPath, "\x00\r\n") {
 		return Config{}, errors.New("CASE_WATCH_DB_PATH: invalid or missing path")
-	}
-	if raw, present := lookup("CASE_WATCH_ALLOW_ALL_USERS"); present {
-		switch strings.TrimSpace(raw) {
-		case "true":
-			c.AllowAllUsers = true
-		case "false":
-		default:
-			return Config{}, errors.New("CASE_WATCH_ALLOW_ALL_USERS: expected true or false")
-		}
-	}
-	raw := strings.TrimSpace(get("CASE_WATCH_ALLOWED_USER_IDS"))
-	seen := map[int64]bool{}
-	if raw != "" {
-		for _, entry := range strings.Split(raw, ",") {
-			entry = strings.TrimSpace(entry)
-			if entry == "" || strings.IndexFunc(entry, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-				return Config{}, errors.New("CASE_WATCH_ALLOWED_USER_IDS: invalid user ID list")
-			}
-			id, err := strconv.ParseInt(entry, 10, 64)
-			if err != nil || id <= 0 {
-				return Config{}, errors.New("CASE_WATCH_ALLOWED_USER_IDS: invalid user ID list")
-			}
-			if !seen[id] {
-				c.AllowedUserIDs = append(c.AllowedUserIDs, id)
-				seen[id] = true
-			}
-		}
-	}
-	if !c.AllowAllUsers && len(c.AllowedUserIDs) == 0 {
-		return Config{}, errors.New("CASE_WATCH_ALLOWED_USER_IDS: restricted mode requires users")
 	}
 	return c, nil
 }

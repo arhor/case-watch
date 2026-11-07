@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/domain"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/services/tracking"
@@ -22,7 +21,7 @@ type Tracking interface {
 	HasEnrollment(context.Context, int64) (bool, error)
 }
 
-// Membership is ordinary authenticated evidence for the delivery worker. A private
+// Membership is private-chat evidence for the delivery worker. A private
 // interaction is weaker evidence than an explicit block/unblock transition.
 type Membership struct {
 	Owner                           int64
@@ -38,7 +37,6 @@ type Client interface {
 
 type Config struct {
 	Client     Client
-	Policy     *auth.Policy
 	Tracking   Tracking
 	Clock      domain.Clock
 	Diagnostic func(string)
@@ -60,7 +58,7 @@ type Bot struct {
 }
 
 func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.Policy == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil || c.Membership == nil {
+	if c.Client == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil || c.Membership == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
 	return &Bot{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
@@ -157,16 +155,24 @@ func (a *Bot) exists(ctx context.Context, id int64) (bool, error) {
 
 const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
 
+// privateOwner binds conversations to Telegram transport metadata.
+func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
+	if sender == nil || sender.IsBot || sender.ID <= 0 || chat.Type != models.ChatTypePrivate || chat.ID != sender.ID {
+		return 0, false
+	}
+	return sender.ID, true
+}
+
 func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	if m := u.MyChatMember; m != nil {
-		owner, err := a.config.Policy.Authenticate(auth.Identity{SenderID: m.From.ID, ChatID: m.Chat.ID, ChatType: string(m.Chat.Type), SenderIsBot: m.From.IsBot})
-		if err != nil {
+		owner, ok := privateOwner(&m.From, m.Chat)
+		if !ok {
 			return
 		}
 		blocked := m.NewChatMember.Type == models.ChatMemberTypeBanned
 		unblocked := m.OldChatMember.Type == models.ChatMemberTypeBanned && m.NewChatMember.Type == models.ChatMemberTypeMember
 		if blocked || unblocked {
-			a.config.Membership(ctx, Membership{Owner: owner.ID(), Blocked: blocked, Unblocked: unblocked})
+			a.config.Membership(ctx, Membership{Owner: owner, Blocked: blocked, Unblocked: unblocked})
 		}
 		return
 	}
@@ -174,11 +180,10 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	if m == nil || m.From == nil {
 		return
 	}
-	owner, err := a.config.Policy.Authenticate(auth.Identity{SenderID: m.From.ID, ChatID: m.Chat.ID, ChatType: string(m.Chat.Type), SenderIsBot: m.From.IsBot})
-	if err != nil {
+	id, ok := privateOwner(m.From, m.Chat)
+	if !ok {
 		return
 	}
-	id := owner.ID()
 	a.config.Membership(ctx, Membership{Owner: id, Interaction: true})
 	s := a.owner(id)
 	s.mu.Lock()

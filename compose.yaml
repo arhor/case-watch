@@ -7,8 +7,6 @@ services:
     stop_grace_period: 90s
     environment:
       CASE_WATCH_TELEGRAM_BOT_TOKEN: ${CASE_WATCH_TELEGRAM_BOT_TOKEN:?Set the bot token}
-      CASE_WATCH_ALLOWED_USER_IDS: ${CASE_WATCH_ALLOWED_USER_IDS:-}
-      CASE_WATCH_ALLOW_ALL_USERS: ${CASE_WATCH_ALLOW_ALL_USERS:-false}
       CASE_WATCH_DB_PATH: /data/case-watch.db
     volumes:
       - type: volume

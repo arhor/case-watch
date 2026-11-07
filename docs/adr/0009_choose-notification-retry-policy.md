@@ -157,3 +157,9 @@ Checklist evidence maps to the reviewed implementation and offline tests in [the
 ### 2026-11-03: Token policy superseded
 
 [ADR 0012](0012_fail-fast-on-invalid-telegram-token.md) replaces this record’s token-failure policy and token suspension gates with startup validation and whole-service shutdown on runtime token rejection. All other delivery policies remain accepted.
+
+### 2026-11-07: User authorization removed
+
+[ADR 0017](0017_remove-user-authorization.md) removes user eligibility checks and
+authorization suppression. Scheduling, cooldowns, retry ordering, blocked-recipient
+gates, ownership and retained pending work continue to follow this record.

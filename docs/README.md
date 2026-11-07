@@ -21,7 +21,7 @@ Use the [root README](../README.md) for the project overview, build and deployme
 
 | Document | Read for |
 | --- | --- |
-| [Configuration](configuration.md) | Environment variables, startup validation and authorization. |
+| [Configuration](configuration.md) | Environment variables, startup validation and private-chat ownership. |
 | [Credentials](credentials.md) | Current plaintext WIP storage and retained handling safeguards. |
 | [Operations](operations.md) | Service lifecycle and stopped-service maintenance commands. |
 | [Deployment](deployment.md) | Container provisioning, persistence, updates and pending runtime checks. |

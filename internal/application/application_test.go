@@ -31,7 +31,7 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(e)
 	}
 	f := &fixture{db: filepath.Join(data, "state.db")}
-	f.env = map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": f.db, "CASE_WATCH_ALLOW_ALL_USERS": "true"}
+	f.env = map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": f.db}
 	return f
 }
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }

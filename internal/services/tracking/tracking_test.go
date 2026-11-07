@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/entrypoints/scheduler"
 	"github.com/arhor/case-watch/internal/repositories"
@@ -59,7 +58,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 		}
 		return domain.Observation{Stage: "A"}, nil
 	})
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, wrapped, auth.New(false, []int64{101, 202}), f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, wrapped, f.clock)
 	return f
 }
 func (f *fixture) enroll(t *testing.T, owner int64) string {
@@ -124,7 +123,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	f.c = tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls.Add(1)
 		return domain.Observation{}, errors.New("secret")
-	}), auth.New(false, []int64{101}), f.clock)
+	}), f.clock)
 	f.clock.set(epoch.Add(119 * time.Second))
 	before, e2 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(2 * time.Minute))
@@ -248,16 +247,16 @@ func TestStatusShouldShareSingleFlightAndKeepOtherWaitersWhenOneCallerCancels(t 
 	obs(t, joined2.s, "A", epoch.Add(130*time.Second))
 }
 
-func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsUnauthorized(t *testing.T) {
+func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.T) {
 	// Given
 	f := setup(t, nil)
 	f.enroll(t, 101)
 	// When
-	_, e1 := f.c.Enroll(context.Background(), 303, plain)
-	_, e2 := f.c.Status(context.Background(), 303)
-	_, e3 := f.c.Scheduled(context.Background(), 303)
-	e4 := f.c.Remove(context.Background(), 303)
-	e5 := f.c.RunOwnerWork(context.Background(), 303, "", func(context.Context) error { t.Error("unauthorized callback"); return nil })
+	_, e1 := f.c.Enroll(context.Background(), 0, plain)
+	_, e2 := f.c.Status(context.Background(), 0)
+	_, e3 := f.c.Scheduled(context.Background(), 0)
+	e4 := f.c.Remove(context.Background(), 0)
+	e5 := f.c.RunOwnerWork(context.Background(), 0, "", func(context.Context) error { t.Error("invalid owner callback"); return nil })
 	_, other := f.c.Status(context.Background(), 202)
 	// Then
 	for _, err := range []error{e1, e2, e3, e4, e5} {
@@ -317,7 +316,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			case "validation":
 				input.Password = ""
 			}
-			c := tracking.New(s, p, auth.New(false, []int64{101}), f.clock)
+			c := tracking.New(s, p, f.clock)
 			// When
 			_, err := c.Enroll(ctx, 101, input)
 			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
@@ -509,7 +508,7 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		c := tracking.New(s, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 			calls.Add(1)
 			return domain.Observation{Stage: "B"}, nil
-		}), auth.New(false, []int64{101}), f.clock)
+		}), f.clock)
 		f.clock.set(epoch.Add(time.Minute))
 		// When
 		status, err := c.Status(context.Background(), 101)
@@ -521,36 +520,6 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		}
 		obs(t, status, "A", epoch)
 	})
-}
-
-type mutablePolicy struct{ allowed atomic.Bool }
-
-func (p *mutablePolicy) Allows(owner int64) bool { return owner == 101 && p.allowed.Load() }
-func TestScheduledShouldRecheckAuthorizationBeforeCommitWhenEligibilityChangesDuringCheck(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	f.enroll(t, 101)
-	policy := &mutablePolicy{}
-	policy.allowed.Store(true)
-	entered, release := make(chan struct{}), make(chan struct{})
-	c := tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
-		close(entered)
-		<-release
-		return domain.Observation{Stage: "B"}, nil
-	}), policy, f.clock)
-	f.clock.set(epoch.Add(time.Minute))
-	result := make(chan error, 1)
-	// When
-	go func() { _, e := c.Scheduled(context.Background(), 101); result <- e }()
-	<-entered
-	policy.allowed.Store(false)
-	close(release)
-	err := <-result
-	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	// Then
-	if !errors.Is(err, tracking.ErrDenied) || readErr != nil || e.Observation.Stage != "A" {
-		t.Fatalf("authorization withdrawal: err=%v read=%v stage=%s", err, readErr, e.Observation.Stage)
-	}
 }
 
 func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *testing.T) {
@@ -621,7 +590,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	c := tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		t.Error("recent baseline triggered portal work")
 		return domain.Observation{}, nil
-	}), auth.New(false, []int64{101}), f.clock)
+	}), f.clock)
 	f.clock.set(epoch.Add(59 * time.Second))
 	// When
 	status, statusErr := c.Scheduled(context.Background(), 101)
@@ -712,5 +681,23 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	}
 	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, tracking.ErrClosed) {
 		t.Fatal("removal admitted after shutdown")
+	}
+}
+
+func TestScheduledShouldRefreshAnyEnrolledOwnerWhenNoAccessPolicyIsConfigured(t *testing.T) {
+	// Given
+	f := setup(t, nil)
+	f.enroll(t, 303)
+	f.clock.set(epoch.Add(time.Minute))
+	// When
+	owners, inventoryErr := f.c.ScheduledOwners(context.Background())
+	status, err := f.c.Scheduled(context.Background(), 303)
+	_, otherErr := f.c.Status(context.Background(), 404)
+	// Then
+	if inventoryErr != nil || len(owners) != 1 || owners[0] != 303 || err != nil || !status.Fresh || f.calls.Load() != 2 {
+		t.Fatalf("owners=%v inventory=%v status=%+v err=%v calls=%d", owners, inventoryErr, status, err, f.calls.Load())
+	}
+	if !errors.Is(otherErr, repositories.ErrNotFound) {
+		t.Fatalf("another owner's case was accessible: %v", otherErr)
 	}
 }

@@ -12,7 +12,7 @@ go build -o case-watch .
 
 ## Run
 
-Configure the Telegram bot token, database path, and access policy using environment variables. See [the example configuration](.env.example) and [configuration guide](docs/configuration.md).
+Configure the Telegram bot token, database path using environment variables. See [the example configuration](.env.example) and [configuration guide](docs/configuration.md).
 
 ```sh
 ./case-watch

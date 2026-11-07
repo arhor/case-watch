@@ -16,12 +16,12 @@ and clears drafts. Wait for Run before closing services and repositories.
 `Close` is also available for offline/manual use after stopping intake; do not
 call it concurrently with starting new intake.
 
-The bot's `Config` requires the polling/deletion client, shared auth policy, tracking
+The bot's `Config` requires the polling/deletion client, tracking
 service, clock, direct-reply callback and membership callback. Tracking provides
 enrollment existence checks; intake receives no repository reader. Optional
 HTTP client/endpoint settings belong to the repository client's Config. The
 sanitized diagnostic callback is optional. Ordinary `Membership` values identify
-authenticated private owner evidence: explicit block/unblock and incoming
+private-chat owner evidence: explicit block/unblock and incoming
 interaction. Application wiring connects them to delivery recovery, which
 serializes membership effects with recipient sends, respects context cancellation,
 and preserves permanent/exhausted pauses without block evidence. The synchronous

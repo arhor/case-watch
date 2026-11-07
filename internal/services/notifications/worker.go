@@ -27,7 +27,7 @@ type Coordinator interface {
 	RunOwnerWork(context.Context, int64, string, func(context.Context) error) error
 }
 
-// Event is authenticated private membership evidence, independent of Telegram types.
+// Event is private-chat membership evidence, independent of Telegram types.
 type Event struct {
 	Owner                           int64
 	Blocked, Unblocked, Interaction bool
@@ -35,7 +35,6 @@ type Event struct {
 type Config struct {
 	Store       Store
 	Coordinator Coordinator
-	Policy      domain.Policy
 	Clock       domain.Clock
 	Sender      domain.Sender
 	Timeout     time.Duration
@@ -55,7 +54,7 @@ type Worker struct {
 }
 
 func New(c Config) (*Worker, error) {
-	if c.Store == nil || c.Coordinator == nil || c.Policy == nil || c.Clock == nil || c.Sender == nil {
+	if c.Store == nil || c.Coordinator == nil || c.Clock == nil || c.Sender == nil {
 		return nil, ErrWorker
 	}
 	if c.Timeout <= 0 {
@@ -92,7 +91,7 @@ func (w *Worker) Start(ctx context.Context) error {
 // Membership retains evidence before attempting it. Cancellation/removal cannot
 // lose an unblock; a later Step retries it through the same owner gate.
 func (w *Worker) Membership(ctx context.Context, e Event) {
-	if e.Owner <= 0 || (!e.Blocked && !e.Unblocked && !e.Interaction) || !w.c.Policy.Allows(e.Owner) {
+	if e.Owner <= 0 || (!e.Blocked && !e.Unblocked && !e.Interaction) {
 		return
 	}
 	w.mu.Lock()
@@ -114,9 +113,6 @@ func (w *Worker) events(ctx context.Context, owner int64) {
 		}
 		e := list[0]
 		w.mu.Unlock()
-		if !w.c.Policy.Allows(owner) {
-			return
-		}
 		err := w.c.Coordinator.RunOwnerWork(ctx, owner, "", func(c context.Context) error {
 			err := w.bounded(c, func(b context.Context) error {
 				if e.Unblocked && !e.Blocked {
@@ -163,9 +159,6 @@ func (w *Worker) Step(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if !w.c.Policy.Allows(head.RecipientID) {
-			continue
-		}
 		err := w.c.Coordinator.RunOwnerWork(ctx, head.RecipientID, head.EnrollmentID, func(c context.Context) error {
 			w.send.Lock()
 			defer w.send.Unlock()
@@ -173,9 +166,6 @@ func (w *Worker) Step(ctx context.Context) error {
 				return ErrWorker
 			}
 			if w.c.Clock.Now().Before(w.rateUntil) {
-				return nil
-			}
-			if !w.c.Policy.Allows(head.RecipientID) {
 				return nil
 			}
 			return w.bounded(c, func(b context.Context) error {
@@ -195,7 +185,7 @@ func (w *Worker) Step(ctx context.Context) error {
 					}
 					return ErrWorker
 				}
-				if !w.c.Policy.Allows(d.RecipientID) || r.Blocked || r.Pause != "" || w.c.Clock.Now().Before(w.rateUntil) || b.Err() != nil {
+				if r.Blocked || r.Pause != "" || w.c.Clock.Now().Before(w.rateUntil) || b.Err() != nil {
 					return w.release(b, d)
 				}
 				text := "Case stage changed:\n" + d.PreviousStage + " → " + d.Stage
@@ -303,7 +293,7 @@ func (w *Worker) SendDirect(ctx context.Context, owner int64, text string) (doma
 	if ctx.Err() != nil {
 		return domain.SendOutcome{}, ctx.Err()
 	}
-	if w.c.Clock.Now().Before(w.rateUntil) || !w.c.Policy.Allows(owner) {
+	if w.c.Clock.Now().Before(w.rateUntil) || owner <= 0 {
 		return domain.SendOutcome{}, nil
 	}
 	c, cancel := context.WithTimeout(ctx, w.c.Timeout)

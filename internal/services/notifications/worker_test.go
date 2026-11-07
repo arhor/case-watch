@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/auth"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	"github.com/arhor/case-watch/internal/services/notifications"
@@ -39,24 +38,23 @@ func (portal) Check(context.Context, domain.Credentials) (domain.Observation, er
 }
 
 type fixture struct {
-	s      *repositories.Store
-	c      *tracking.Coordinator
-	clock  *clock
-	policy domain.Policy
-	ids    map[int64]string
-	path   string
+	s     *repositories.Store
+	c     *tracking.Coordinator
+	clock *clock
+	ids   map[int64]string
+	path  string
 }
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), policy: auth.New(false, []int64{101, 202}), ids: map[int64]string{}}
+	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db"), ids: map[int64]string{}}
 	var e error
 	f.s, e = repositories.NewStore(ctx, f.path)
 	if e != nil {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.clock)
 	for _, o := range []int64{101, 202} {
 		id, e := repositories.NewEnrollmentID()
 		if e != nil {
@@ -77,7 +75,7 @@ func (f *fixture) observe(t *testing.T, o int64, stage string) {
 }
 func (f *fixture) worker(t *testing.T, s sender) *notifications.Worker {
 	t.Helper()
-	w, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: s})
+	w, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.c, Clock: f.clock, Sender: s})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -214,7 +212,7 @@ func TestWorkerShouldRetainAttemptAndDelayWhenRestartRecoversUncertainAcceptance
 		t.Fatal(e)
 	}
 	calls := 0
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.policy, f.clock)
+	f.c = tracking.New(tracking.Persistence{DB: f.s}, portal{}, f.clock)
 	// When
 	w := f.worker(t, func(context.Context, int64, string) (domain.SendOutcome, error) {
 		calls++
@@ -280,7 +278,7 @@ func TestWorkerShouldStopForRecoveryWhenAcceptedOutcomeCannotBePersisted(t *test
 	f.observe(t, 101, "B")
 	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	calls := 0
-	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
+	w, e := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
 		calls++
 		return domain.SendOutcome{Category: domain.SendAccepted, MessageID: 3}, nil
 	})})
@@ -339,41 +337,6 @@ func TestWorkerShouldRetainExhaustionAndLifetimeWhenRestartAndUnblock(t *testing
 	q := queue(t, f, 101)
 	if e != nil || before.LifetimeAttempts != 6 || before.CycleAttempts != 6 || q[0].LifetimeAttempts != 7 || q[0].CycleAttempts != 1 || q[0].Status != "delivered" {
 		t.Fatalf("err=%v before=%+v after=%+v", e, before, q)
-	}
-}
-
-type switchPolicy struct {
-	mu      sync.Mutex
-	allowed bool
-}
-
-func (p *switchPolicy) Allows(int64) bool { p.mu.Lock(); defer p.mu.Unlock(); return p.allowed }
-func (p *switchPolicy) set(v bool)        { p.mu.Lock(); defer p.mu.Unlock(); p.allowed = v }
-func TestWorkerShouldPreserveCountersWhenAuthorizationSuppressesDelivery(t *testing.T) {
-	// Given
-	f := setup(t)
-	f.observe(t, 101, "B")
-	p := &switchPolicy{}
-	calls := 0
-	w, e := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: f.c, Policy: p, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
-		calls++
-		return domain.SendOutcome{Category: domain.SendAccepted, MessageID: 1}, nil
-	})})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = w.Start(ctx); e != nil {
-		t.Fatal(e)
-	}
-	// When
-	step(t, w)
-	suppressed := queue(t, f, 101)[0]
-	p.set(true)
-	step(t, w)
-	// Then
-	q := queue(t, f, 101)
-	if calls != 1 || suppressed.LifetimeAttempts != 0 || q[0].Status != "delivered" {
-		t.Fatalf("calls=%d suppressed=%+v queue=%+v", calls, suppressed, q)
 	}
 }
 
@@ -587,7 +550,7 @@ func TestWorkerShouldRefuseFurtherSendsWhenRejectedTokenOutcomeCannotPersist(t *
 	f.observe(t, 101, "B")
 	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	calls := 0
-	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
+	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
 		calls++
 		return domain.SendOutcome{Category: domain.SendInvalidToken}, errors.New("sanitized")
 	})})
@@ -702,7 +665,7 @@ func TestWorkerShouldRetainCooldownWhenNotificationOutcomeCannotBePersisted(t *t
 	f.observe(t, 101, "B")
 	fs := &faultStore{Persistence: notifications.Persistence{DB: f.s}, fail: true}
 	calls := 0
-	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Policy: f.policy, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
+	w, err := notifications.New(notifications.Config{Store: fs, Coordinator: f.c, Clock: f.clock, Sender: sender(func(context.Context, int64, string) (domain.SendOutcome, error) {
 		calls++
 		return domain.SendOutcome{Category: domain.SendRateLimited, RetryAfter: time.Hour}, nil
 	})})
@@ -746,5 +709,31 @@ func TestWorkerShouldKeepSharedCooldownWhenRecipientIsResumed(t *testing.T) {
 	q := queue(t, f, 101)
 	if before != 1 || calls != 2 || q[0].Status != "delivered" || q[0].CycleAttempts != 1 || q[0].LifetimeAttempts != 2 {
 		t.Fatalf("before=%d calls=%d queue=%+v", before, calls, q)
+	}
+}
+
+func TestWorkerShouldDeliverToNewOwnerWhenNoAccessPolicyIsConfigured(t *testing.T) {
+	// Given
+	f := setup(t)
+	id, err := repositories.NewEnrollmentID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = (tracking.Persistence{DB: f.s}).Enroll(ctx, 303, id, domain.Credentials{Number: "synthetic", Password: "synthetic"}, domain.Observation{Stage: "A", CheckedAt: epoch}); err != nil {
+		t.Fatal(err)
+	}
+	f.ids[303] = id
+	f.observe(t, 303, "B")
+	var recipients []int64
+	w := f.worker(t, func(_ context.Context, owner int64, _ string) (domain.SendOutcome, error) {
+		recipients = append(recipients, owner)
+		return domain.SendOutcome{Category: domain.SendAccepted, MessageID: 1}, nil
+	})
+	// When
+	step(t, w)
+	// Then
+	q := queue(t, f, 303)
+	if len(recipients) != 1 || recipients[0] != 303 || len(q) != 1 || q[0].Status != "delivered" {
+		t.Fatalf("recipients=%v queue=%+v", recipients, q)
 	}
 }
