@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
@@ -13,17 +14,20 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-var ErrInvalidToken = errors.New("telegram token rejected")
+var (
+	ErrInvalidToken = errors.New("telegram token rejected")
+	errPolling      = errors.New("telegram polling already started or missing handler")
+)
 
 type Config struct {
 	Token      string
 	Endpoint   string
 	HTTPClient *http.Client
-	Handler    func(context.Context, *bot.Bot, *models.Update)
 	Diagnostic func(string)
 }
 
 type Client struct {
+	polling    atomic.Bool
 	bot        *bot.Bot
 	diagnostic func(string)
 }
@@ -39,7 +43,6 @@ func New(c Config) (*Client, error) {
 				client.report("telegram polling failure")
 			}
 		}),
-		bot.WithDefaultHandler(c.Handler),
 	}
 	if c.Endpoint != "" {
 		opts = append(opts, bot.WithServerURL(c.Endpoint))
@@ -82,7 +85,17 @@ func (c *Client) Validate(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) Start(ctx context.Context) { c.bot.Start(ctx) }
+// Poll binds the intake handler before starting ordered library polling. A client
+// supports one polling lifetime; raw sends and deletion use the same bot.
+func (c *Client) Poll(ctx context.Context, handle func(context.Context, *models.Update)) error {
+	if handle == nil || !c.polling.CompareAndSwap(false, true) {
+		return errPolling
+	}
+	c.bot.RegisterHandlerMatchFunc(func(*models.Update) bool { return true },
+		func(ctx context.Context, _ *bot.Bot, update *models.Update) { handle(ctx, update) })
+	c.bot.Start(ctx)
+	return ctx.Err()
+}
 
 func (c *Client) DeleteMessage(ctx context.Context, chatID int64, messageID int) error {
 	_, err := c.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: chatID, MessageID: messageID})

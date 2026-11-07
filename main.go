@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/arhor/case-watch/internal/app"
+	"github.com/arhor/case-watch/internal/application"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 
 	defer stop()
 
-	if err := app.Run(ctx, os.LookupEnv, app.Factories{}); err != nil {
+	if err := application.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

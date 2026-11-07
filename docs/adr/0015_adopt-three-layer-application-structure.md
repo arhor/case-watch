@@ -95,3 +95,15 @@ Implemented the package moves, service-owned enrollment/scheduling queries, Tele
 ## 2026-11-07 entry point location amendment
 
 The minimal process entry point now lives in root `main.go` instead of `cmd/case-watch/main.go`. Build it from the repository root with `go build -o case-watch .`. It continues to call `app.Run`; the dependency direction and layer responsibilities are unchanged.
+
+### 2026-11-07: Encapsulated application bootstrap
+
+[ADR 0016](0016_encapsulate-application-bootstrap.md) retains bootstrap ownership
+of construction and process lifetime, renames `internal/app` to
+`internal/application`, and places the minimal executable entry point at the
+repository root. Main calls `application.Run(ctx)`; configuration, wiring,
+supervision, monitoring and cleanup remain private to that package. Telegram's
+raw client is constructed independently and injected into both intake and the
+notification worker. The three application layers, service-owned transactions
+and isolated queue experiment remain unchanged. Build the root package with
+`go build -o case-watch .`.

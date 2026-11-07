@@ -1,4 +1,4 @@
-package app
+package application
 
 import (
 	"errors"
@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	ErrStartup = errors.New("service startup validation failed")
-	ErrLocked  = errors.New("database is in use; stop the service before maintenance")
-	ErrService = errors.New("service operation failed")
+	errStartup = errors.New("service startup validation failed")
+	errLocked  = errors.New("database is in use; stop the service before maintenance")
+	errService = errors.New("service operation failed")
 )
 
 const (
@@ -33,17 +33,17 @@ const (
 	groupOtherPermissions = os.FileMode(0o077)
 )
 
-// DatabasePath resolves the trusted parent directory before database or network work.
+// databasePath resolves the trusted parent directory before database or network work.
 // Existing final symlinks and shared database hardlinks are rejected.
-func DatabasePath(db string) (string, error) {
+func databasePath(db string) (string, error) {
 	resolve := func(p string) (string, error) {
 		a, e := filepath.Abs(p)
 		if e != nil {
-			return "", ErrStartup
+			return "", errStartup
 		}
 		d, e := filepath.EvalSymlinks(filepath.Dir(a))
 		if e != nil {
-			return "", ErrStartup
+			return "", errStartup
 		}
 		return filepath.Join(d, filepath.Base(a)), nil
 	}
@@ -53,49 +53,49 @@ func DatabasePath(db string) (string, error) {
 	}
 	info, e := os.Stat(filepath.Dir(d))
 	if e != nil || !info.IsDir() || info.Mode().Perm()&groupOtherPermissions != 0 {
-		return "", ErrStartup
+		return "", errStartup
 	}
 	if info, e := os.Lstat(d); e == nil {
 		if !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
-			return "", ErrStartup
+			return "", errStartup
 		}
 		if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
-			return "", ErrStartup
+			return "", errStartup
 		}
 	} else if !os.IsNotExist(e) {
-		return "", ErrStartup
+		return "", errStartup
 	}
 	return d, nil
 }
 
-type Lock struct{ f *os.File }
+type databaseLock struct{ f *os.File }
 
-// Acquire holds a persistent advisory lock file; it must never be unlinked while
+// acquire holds a persistent advisory lock file; it must never be unlinked while
 // processes may be waiting on its inode. Every service and maintenance entry uses it.
-func Acquire(db string) (*Lock, error) {
+func acquire(db string) (*databaseLock, error) {
 	fd, e := syscall.Open(db+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, uint32(ownerReadWriteMode))
 	if e != nil {
-		return nil, ErrStartup
+		return nil, errStartup
 	}
 	f := os.NewFile(uintptr(fd), "database maintenance lock")
 	info, e := f.Stat()
 	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
 		f.Close()
-		return nil, ErrStartup
+		return nil, errStartup
 	}
 	if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
 		f.Close()
-		return nil, ErrStartup
+		return nil, errStartup
 	}
 	if syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		f.Close()
-		return nil, ErrLocked
+		return nil, errLocked
 	}
-	return &Lock{f}, nil
+	return &databaseLock{f}, nil
 }
-func (l *Lock) Close() error {
+func (l *databaseLock) close() error {
 	if l.f.Close() != nil {
-		return ErrService
+		return errService
 	}
 	return nil
 }
@@ -109,7 +109,7 @@ func databaseFile(path string, create bool) error {
 
 	descriptor, err := syscall.Open(path, flags, uint32(ownerReadWriteMode))
 	if err != nil {
-		return ErrStartup
+		return errStartup
 	}
 
 	file := os.NewFile(uintptr(descriptor), "database")
@@ -117,7 +117,7 @@ func databaseFile(path string, create bool) error {
 
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != ownerReadWriteMode {
-		return ErrStartup
+		return errStartup
 	}
 	return nil
 }

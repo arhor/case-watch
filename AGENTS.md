@@ -10,6 +10,6 @@
 
 ## Making changes
 
-- Verify code changes with applicable checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and a build of `.`. For documentation-only changes, check links and formatting.
+- Verify code changes with applicable checks: `go test ./...`, `go test -race ./...`, `go vet ./...`, and a build of the root package (`go build -o /tmp/case-watch .`). For documentation-only changes, check links and formatting.
 - Keep the relevant maintained documentation synchronized with behavior changes. Append dated verification evidence without rewriting historical results.
 - Report the checks performed and any remaining limitations. Keep environment-dependent acceptance distinct from offline verification.
