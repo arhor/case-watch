@@ -11,11 +11,11 @@ import (
 )
 
 type EnrollmentRepository struct {
-	db DBTX
+	executor QueryExecutor
 }
 
-func NewEnrollmentRepository(db DBTX) *EnrollmentRepository {
-	return &EnrollmentRepository{db: db}
+func NewEnrollmentRepository(executor QueryExecutor) *EnrollmentRepository {
+	return &EnrollmentRepository{executor: executor}
 }
 
 func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) (Enrollment, error) {
@@ -23,7 +23,7 @@ func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) 
 		return Enrollment{}, ErrInvalid
 	}
 	return scanEnrollment(
-		this.db.QueryRowContext(ctx, `
+		this.executor.QueryRowContext(ctx, `
 			SELECT id, owner_id, case_number, password, stage, checked_at
 			  FROM enrollments
 			 WHERE deleted_at IS NULL
@@ -48,7 +48,7 @@ func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int6
 }
 
 func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, error) {
-	rows, err := this.db.QueryContext(ctx, `
+	rows, err := this.executor.QueryContext(ctx, `
 		SELECT id, owner_id, case_number, password, stage, checked_at
 		FROM enrollments
 		WHERE deleted_at IS NULL
@@ -77,7 +77,7 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id st
 		return ErrInvalid
 	}
 	var exists bool
-	if this.db.QueryRowContext(ctx, `
+	if this.executor.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			  FROM enrollments
@@ -94,7 +94,7 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id st
 	if exists {
 		return ErrExists
 	}
-	_, err := this.db.ExecContext(ctx, `
+	_, err := this.executor.ExecContext(ctx, `
 		INSERT INTO enrollments (
 			id, owner_id, case_number, password, stage, checked_at
 		)
@@ -111,7 +111,7 @@ func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner i
 		return ErrInvalid
 	}
 	return rowAffected(
-		this.db.ExecContext(ctx, `
+		this.executor.ExecContext(ctx, `
 			UPDATE enrollments
 			   SET stage = ?
 			     , checked_at = ?
@@ -128,7 +128,7 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 		return ErrInvalid
 	}
 	return rowAffected(
-		this.db.ExecContext(ctx, `
+		this.executor.ExecContext(ctx, `
 			UPDATE enrollments
 			   SET deleted_at = ?
 			     , case_number = NULL
