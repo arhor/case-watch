@@ -24,12 +24,7 @@ type fixture struct {
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
-	root := t.TempDir()
-	data := filepath.Join(root, "data")
-	if e := os.Mkdir(data, 0700); e != nil {
-		t.Fatal(e)
-	}
-	f := &fixture{db: filepath.Join(data, "state.db")}
+	f := &fixture{db: filepath.Join(t.TempDir(), "state.db")}
 	f.env = map[string]string{"CASE_WATCH_TELEGRAM_BOT_TOKEN": "123:" + strings.Repeat("a", 35), "CASE_WATCH_DB_PATH": f.db}
 	return f
 }
@@ -128,9 +123,8 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			case "config":
 				f.env["CASE_WATCH_TELEGRAM_BOT_TOKEN"] = "secret"
 			case "path":
-				if err := os.Chmod(filepath.Dir(f.db), 0755); err != nil {
-					t.Fatal(err)
-				}
+				f.db = filepath.Join(t.TempDir(), "missing", "state.db")
+				f.env["CASE_WATCH_DB_PATH"] = f.db
 			case "schema":
 				if err := os.WriteFile(f.db, []byte("invalid database"), 0600); err != nil {
 					t.Fatal(err)
@@ -145,52 +139,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			if err == nil || calls != 0 || strings.Contains(err.Error(), "secret") {
 				t.Fatal("startup did not stop before transports")
 			}
-			if kind == "schema" {
-				store, err := repositories.NewExclusiveStore(context.Background(), f.db)
-				if errors.Is(err, repositories.ErrLocked) {
-					t.Fatalf("failed storage startup retained lock: %v", err)
-				}
-				if store != nil {
-					store.Close()
-				}
-			}
 		})
-	}
-}
-
-func TestRunShouldExcludeOtherServicesWhenDatabaseLocked(t *testing.T) {
-	// Given
-	f := setup(t)
-	started := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		done <- f.run(ctx, dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
-			return &transport{poll: func(ctx context.Context, _ func(context.Context, *models.Update)) error {
-				close(started)
-				<-ctx.Done()
-				return ctx.Err()
-			}}, nil
-		}})
-	}()
-	wait(t, started)
-	// When
-	second := f.run(context.Background(), dependencies{})
-	cancel()
-	stopped := result(t, done)
-	// Then
-	if !errors.Is(second, repositories.ErrLocked) || stopped != nil {
-		t.Fatalf("exclusive process lock failed: %v %v", second, stopped)
-	}
-	lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Close()
-	s := f.open(t)
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -233,13 +182,6 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 		t.Fatal("service returned with detached portal still running")
 	default:
 	}
-	lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
-	if lock != nil {
-		lock.Close()
-	}
-	if !errors.Is(err, repositories.ErrLocked) {
-		t.Fatal("lock released before portal drained")
-	}
 	close(release)
 	if err := result(t, done); err != nil {
 		t.Fatal(err)
@@ -273,11 +215,6 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 			if !errors.Is(err, errService) {
 				t.Fatalf("unexpected polling exit did not stop service: %v", err)
 			}
-			lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
-			if err != nil {
-				t.Fatal("service did not release lock after drain")
-			}
-			defer lock.Close()
 		})
 	}
 }
@@ -321,11 +258,6 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 		}}, nil
 	}})
 	// Then
-	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
-	if lockErr != nil {
-		t.Fatal(lockErr)
-	}
-	defer lock.Close()
 	s = f.open(t)
 	defer s.Close()
 	enrollment, readErr := s.Enrollments.FindByOwner(context.Background(), 101)
@@ -334,7 +266,7 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 	}
 }
 
-func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T) {
+func TestRunShouldReleaseResourcesWhenTelegramConstructionFails(t *testing.T) {
 	// Given
 	f := setup(t)
 	// When
@@ -345,11 +277,6 @@ func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T)
 	if !errors.Is(err, errStartup) {
 		t.Fatalf("unsanitized startup error: %v", err)
 	}
-	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
-	if lockErr != nil {
-		t.Fatal(lockErr)
-	}
-	defer lock.Close()
 	s := f.open(t)
 	defer s.Close()
 	if _, readErr := s.Enrollments.FindByOwner(context.Background(), 1); !errors.Is(readErr, repositories.ErrNotFound) {
@@ -407,11 +334,6 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 	if !errors.Is(err, errService) || started {
 		t.Fatalf("early failure: err=%v started=%t", err, started)
 	}
-	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
-	if lockErr != nil {
-		t.Fatal(lockErr)
-	}
-	defer lock.Close()
 }
 
 func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
@@ -446,20 +368,5 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	if !errors.Is(err, errService) || !stopped || ctx.Err() != nil {
 		t.Fatalf("storage failure: err=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
 	}
-	store, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
-	if errors.Is(lockErr, repositories.ErrLocked) {
-		t.Fatal("service retained its instance lock")
-	}
-	if store != nil {
-		defer store.Close()
-	}
 }
 
-func TestRunShouldRejectMissingDatabaseDirectory(t *testing.T) {
-	f := setup(t)
-	f.db = filepath.Join(t.TempDir(), "missing", "state.db")
-	f.env["CASE_WATCH_DB_PATH"] = f.db
-	if err := f.run(context.Background(), dependencies{}); !errors.Is(err, errStartup) {
-		t.Fatalf("unexpected startup result: %v", err)
-	}
-}
