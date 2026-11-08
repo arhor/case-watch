@@ -42,9 +42,9 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, openErr = database.Open(ctx, path)
-	if openErr != nil {
-		t.Fatal(openErr)
+	db, err = database.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer db.Close()
 	storage := store.New(db)
