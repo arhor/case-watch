@@ -635,3 +635,30 @@ access was used only for existing synthetic portal fixtures. Checks used the
 temporary Go build cache. Build exited 0 with the previously recorded non-fatal
 module stat-cache warning. No live Telegram/portal or deployment acceptance was
 performed.
+
+## 2026-11-08: Consolidate the production Telegram bot
+
+Implemented [ADR 0020](adr/0020_consolidate-telegram-bot.md) from the maintainer's
+request to make production resemble the direct experimental bot. `internal/bot.Bot`
+now constructs and owns the Telegram library client, validation, polling, default
+handler, command map, deletion, serialized replies and in-memory rate limit.
+Removed the separate Client/Transport/replySender production types and the unused
+domain Sender contract. Application construction now uses one `bot.New` call.
+
+Existing enrollment, status, removal, cancellation, ownership, credential deletion,
+silent scheduling and shutdown behavior remains covered. Consolidated offline tests
+cover Bot API validation, polling, rate limits, token rejection and sanitized
+diagnostics. No dependency, environment variable, command or schema changed.
+
+Verification with Go 1.27.3 (Node 26.13.0 could not be selected because it is not
+installed in this environment):
+
+- `go test -count=1 ./...` passed with localhost permission for existing synthetic
+  portal fixtures.
+- `go vet ./...`, `go build -o /tmp/case-watch .`, structural searches and
+  `git diff --check` passed.
+- `go test -race -count=1 ./...` could not start any instrumented package:
+  ThreadSanitizer reported `unsupported VMA range`, found 47 bits while supporting
+  48. This is recorded as environment-dependent verification, not a passing race run.
+
+No live Telegram/portal calls, deployment or target-device acceptance was performed.

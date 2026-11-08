@@ -132,3 +132,10 @@ the concrete Client. Move the independent case-status HTTP client to
 `internal/services/cases/portal`. Keep application-owned construction and existing behavior;
 no forwarding packages, dependency or schema changes are needed. Bot client and
 conversation tests share their synthetic HTTP fixture helpers.
+
+### 2026-11-08: Consolidate the Telegram client and bot
+
+[ADR 0020](0020_consolidate-telegram-bot.md) replaces the separate raw client,
+Transport and reply sender with one bot-owned library client. Telegram details
+remain inside `internal/bot`; the application still owns construction and
+lifecycle, and repository boundaries are unchanged.

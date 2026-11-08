@@ -38,3 +38,4 @@ An Architecture Decision Record (ADR) captures an important architecture decisio
 - [Remove user authorization](0017_remove-user-authorization.md) (accepted, 2026-11-07; replaces ADR 0005 startup eligibility)
 - [Remove automatic notifications](0018_remove-automatic-notifications.md) (accepted, 2026-11-08; preserves scheduled tracking)
 - [Simplify application structure](0019_simplify-application-structure.md) (accepted, 2026-11-08)
+- [Consolidate the Telegram bot](0020_consolidate-telegram-bot.md) (accepted, 2026-11-08)

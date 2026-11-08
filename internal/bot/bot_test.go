@@ -81,7 +81,7 @@ func setup(t *testing.T) *fixture {
 	return f
 }
 func (f *fixture) message(id int64, text string) {
-	f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: &models.User{ID: id}, Chat: models.Chat{ID: id, Type: models.ChatTypePrivate}, Text: text}})
+	f.a.handle(context.Background(), nil, &models.Update{Message: &models.Message{ID: 7, From: &models.User{ID: id}, Chat: models.Chat{ID: id, Type: models.ChatTypePrivate}, Text: text}})
 	if text == "synthetic-password" {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
@@ -281,14 +281,12 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
-	for _, missing := range []string{"client", "case service", "clock"} {
+	for _, missing := range []string{"case service", "clock"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
 			c := f.a.config
 			switch missing {
-			case "client":
-				c.Client = nil
 			case "case service":
 				c.Cases = nil
 			case "clock":
@@ -337,18 +335,12 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 	}
 }
 
-// bot mirrors the production client/reply/intake construction order while
-// supplying only synthetic HTTP exchanges and a deterministic clock.
+// bot supplies only synthetic HTTP exchanges and a deterministic clock.
 func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
-	client, err := NewClient(ClientConfig{
-		Token: "123:synthetic-token", Endpoint: server.URL,
-		HTTPClient: server.Client(), Diagnostic: c.Diagnostic,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Client = client
+	c.Token = "123:synthetic-token"
+	c.Endpoint = server.URL
+	c.HTTPClient = server.Client()
 	a, err := New(c)
 	if err != nil {
 		t.Fatal(err)
@@ -375,9 +367,9 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 			// Given
 			f := setup(t)
 			// When
-			f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: tc.sender, Chat: tc.chat, Text: "/enroll"}})
+			f.a.handle(context.Background(), nil, &models.Update{Message: &models.Message{ID: 7, From: tc.sender, Chat: tc.chat, Text: "/enroll"}})
 			if tc.sender != nil {
-				f.a.handle(context.Background(), &models.Update{MyChatMember: &models.ChatMemberUpdated{From: *tc.sender, Chat: tc.chat, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
+				f.a.handle(context.Background(), nil, &models.Update{MyChatMember: &models.ChatMemberUpdated{From: *tc.sender, Chat: tc.chat, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
 			}
 			// Then
 			if len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {

@@ -1,21 +1,23 @@
 # Telegram bot
 
-`internal/application` constructs one `internal/bot.Client` using `bot.NewClient(bot.ClientConfig{...})`
-without network requests (`WithSkipGetMe`) and injects it into `internal/bot.New`
-along with the case service and clock. The bot accepts that client through its `Transport` interface and consumes a small local `Cases`
-interface for enrollment, status, removal and enrollment existence checks.
-It receives no repository reader or application runtime object.
+`internal/application` constructs one `internal/bot.Bot` using
+`bot.New(bot.Config{...})` with the token, case service, clock and diagnostic
+callback. Construction performs no network requests (`WithSkipGetMe`). The bot
+consumes a small local `Cases` interface for enrollment, status, removal and
+enrollment existence checks. It receives no repository reader or application
+runtime object.
 
 The application validates the token with the client's bounded `getMe` call before
 starting either the bot or scheduler. Any validation error prevents startup.
-Use one poller per token. `Bot.Run(ctx)` supplies its handler to `Client.Poll`,
-which binds the handler before polling and rejects a second polling lifetime.
+Use one poller per token. `bot.New` binds the default handler while constructing
+the library client, and `Bot.Run(ctx)` rejects a second polling lifetime.
+The default handler validates private ownership, dispatches exact commands through
+a small handler map, and routes other text through the enrollment/removal state.
 Only message updates are requested. Private sender/chat identity is validated
 before command handling or enrollment input. Membership events do no application
 work. Cancellation drains intake and enrollment work and clears drafts.
 
-The bot privately owns its reply sender in `internal/bot/replies.go`. This sender
-serializes one bounded send attempt across recipients, applying a 15-second
+The bot serializes one bounded reply attempt across recipients, applying a 15-second
 request timeout. Telegram rate limits establish an in-memory deadline using a
 positive `retry_after`, or 30 seconds otherwise. Cancellation does not lose an
 observed limit; restart clears it. Replies are never persisted or retried.
@@ -23,9 +25,8 @@ Invalid-token sends close send admission and report `telegram_invalid_token`,
 which stops the application. Polling and credential-message deletion report
 structured token rejection through the same diagnostic category.
 
-`internal/bot.Client` owns the Bot API library and transport
-configuration. It returns sanitized accepted/failed/rate-limited/invalid-token
-send outcomes. Raw errors, tokens and message text never enter diagnostics.
+`internal/bot.Bot` owns the Bot API library and transport configuration. Raw
+errors, tokens and message text never enter diagnostics.
 Messages use plain text without parse mode, preserving portal stage text.
 
 Enrollment runs asynchronously so `/cancel` can cancel its check. A further
@@ -44,4 +45,5 @@ Offline tests cover conversations, ownership, silent scheduled changes followed
 by `/status`, token rejection, bounded reply handling and cooldowns. Live
 portal/Telegram and target-device behavior remain unverified. See
 [application structure](architecture.md), [ADR 0019](adr/0019_simplify-application-structure.md)
-and [product contract](product-contract.md).
+and [ADR 0020](adr/0020_consolidate-telegram-bot.md), and the
+[product contract](product-contract.md).

@@ -26,7 +26,7 @@ type Portal interface {
 	Check(context.Context, Credentials) (Observation, error)
 }
 
-// Clock lets case services and reply senders use deterministic time in tests.
+// Clock lets case services and the bot use deterministic time in tests.
 type Clock interface {
 	Now() time.Time
 }
@@ -38,26 +38,4 @@ type Status struct {
 	Fresh          bool
 	InProgress     bool
 	NextEligibleAt time.Time
-}
-
-type SendCategory string
-
-const (
-	SendAccepted     SendCategory = "accepted"
-	SendFailed       SendCategory = "failed"
-	SendRateLimited  SendCategory = "rate_limited"
-	SendInvalidToken SendCategory = "invalid_token"
-)
-
-// SendOutcome carries sanitized classification, never raw transport errors.
-// RetryAfter is a minimum duration reported by the remote transport.
-type SendOutcome struct {
-	Category   SendCategory
-	RetryAfter time.Duration
-}
-
-// Sender makes one attempt without automatic retries.
-// Text contains no credentials and must not appear in diagnostics.
-type Sender interface {
-	Send(context.Context, int64, string) (SendOutcome, error)
 }

@@ -32,11 +32,12 @@ to overwrite each other. Check cooldowns persist in SQLite; successful cache age
 measured from completion. Portal requests run outside database transactions.
 Storage failures invoke the application's cancellation callback directly.
 
-The bot package owns its Telegram API client, conversation drafts and removal confirmation. Its private reply sender
-serializes Telegram sends and records rate limits in memory. Invalid tokens stop
-the application. Scheduled checks update cache/history silently; results are viewed
-with `/status`.
+The bot package exposes one Bot that owns its Telegram API client, polling handler,
+conversation drafts, removal confirmation, serialized replies and in-memory rate
+limits. Invalid tokens stop the application. Scheduled checks update cache/history
+silently; results are viewed with `/status`.
 
-`internal/telegram_bot.go` is a separate experiment explicitly marked “don't touch”;
-production does not import it. See [ADR 0019](adr/0019_simplify-application-structure.md)
-for the refactor decision and [product contract](product-contract.md) for behavior.
+`internal/telegram_bot.go` remains a separate experiment; production does not
+import it. Its direct construction style informed
+[ADR 0020](adr/0020_consolidate-telegram-bot.md). See the
+[product contract](product-contract.md) for behavior.

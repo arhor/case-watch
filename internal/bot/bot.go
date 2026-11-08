@@ -6,14 +6,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services/cases"
+	telegramapi "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
+
+var ErrInvalidToken = errors.New("telegram token rejected")
 
 type Cases interface {
 	Enroll(context.Context, int64, domain.Credentials) (domain.Observation, error)
@@ -22,15 +27,10 @@ type Cases interface {
 	HasEnrollment(context.Context, int64) (bool, error)
 }
 
-// Transport supplies Telegram polling, replies and credential-message deletion.
-type Transport interface {
-	domain.Sender
-	Poll(context.Context, func(context.Context, *models.Update)) error
-	DeleteMessage(context.Context, int64, int) error
-}
-
 type Config struct {
-	Client     Transport
+	Token      string
+	Endpoint   string
+	HTTPClient *http.Client
 	Cases      Cases
 	Clock      domain.Clock
 	Diagnostic func(string)
@@ -41,21 +41,58 @@ type state struct {
 	deadline, removal time.Time
 	cancel            context.CancelFunc
 }
+
+type commandHandler func(context.Context, *models.Message, *state, int64, time.Time)
+
 type Bot struct {
-	client  Transport
-	replies *replySender
-	config  Config
-	mu      sync.Mutex
-	owners  map[int64]*state
-	wg      sync.WaitGroup
+	client     *telegramapi.Bot
+	config     Config
+	mu         sync.Mutex
+	owners     map[int64]*state
+	wg         sync.WaitGroup
+	polling    atomic.Bool
+	send       sync.Mutex
+	rateUntil  time.Time
+	sendFailed bool
+	handlers   map[string]commandHandler
 }
 
 func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.Cases == nil || c.Clock == nil {
+	if c.Cases == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	sender := &replySender{client: c.Client, clock: c.Clock, diagnostic: c.Diagnostic}
-	return &Bot{client: c.Client, replies: sender, config: c, owners: make(map[int64]*state)}, nil
+	a := &Bot{config: c, owners: make(map[int64]*state)}
+	a.handlers = map[string]commandHandler{
+		"/cancel": a.onCancel,
+		"/start":  a.onHelp,
+		"/help":   a.onHelp,
+		"/enroll": a.onEnroll,
+		"/status": a.onStatus,
+		"/remove": a.onRemove,
+	}
+	options := []telegramapi.Option{
+		telegramapi.WithSkipGetMe(),
+		telegramapi.WithNotAsyncHandlers(),
+		telegramapi.WithAllowedUpdates(telegramapi.AllowedUpdates{"message"}),
+		telegramapi.WithDefaultHandler(a.handle),
+		telegramapi.WithErrorsHandler(func(err error) {
+			if !a.tokenRejected(err) {
+				a.diagnostic("telegram polling failure")
+			}
+		}),
+	}
+	if c.Endpoint != "" {
+		options = append(options, telegramapi.WithServerURL(c.Endpoint))
+	}
+	if c.HTTPClient != nil {
+		options = append(options, telegramapi.WithHTTPClient(30*time.Second, c.HTTPClient))
+	}
+	client, err := telegramapi.New(c.Token, options...)
+	if err != nil {
+		return nil, errors.New("invalid Telegram configuration")
+	}
+	a.client = client
+	return a, nil
 }
 
 func (a *Bot) diagnostic(s string) {
@@ -64,9 +101,34 @@ func (a *Bot) diagnostic(s string) {
 	}
 }
 
+func (a *Bot) tokenRejected(err error) bool {
+	if errors.Is(err, telegramapi.ErrorUnauthorized) {
+		a.diagnostic("telegram_invalid_token")
+		return true
+	}
+	return false
+}
+
+// Validate checks token acceptance before background work starts.
+func (a *Bot) Validate(ctx context.Context) error {
+	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if _, err := a.client.GetMe(bounded); err != nil {
+		if a.tokenRejected(err) {
+			return ErrInvalidToken
+		}
+		a.diagnostic("telegram validation failure")
+		return errors.New("telegram validation failed")
+	}
+	return nil
+}
+
 // Run must only be called after token validation.
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
 func (a *Bot) Run(ctx context.Context) error {
+	if !a.polling.CompareAndSwap(false, true) {
+		return errors.New("telegram polling already started")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan struct{})
@@ -83,11 +145,11 @@ func (a *Bot) Run(ctx context.Context) error {
 			}
 		}
 	}()
-	err := a.client.Poll(ctx, a.handle)
+	a.client.Start(ctx)
 	cancel()
 	<-done
 	a.Close()
-	return err
+	return ctx.Err()
 }
 
 // Sweep drops expired plaintext drafts even when no further update arrives.
@@ -133,13 +195,37 @@ func (a *Bot) owner(id int64) *state {
 	return s
 }
 func (a *Bot) reply(ctx context.Context, id int64, text string) {
-	if _, err := a.replies.Send(ctx, id, text); err != nil {
+	a.send.Lock()
+	defer a.send.Unlock()
+	if a.sendFailed || ctx.Err() != nil || a.config.Clock.Now().Before(a.rateUntil) || id <= 0 {
+		return
+	}
+	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	_, err := a.client.SendMessage(bounded, &telegramapi.SendMessageParams{ChatID: id, Text: text})
+	cancel()
+	if err == nil {
+		return
+	}
+	var rate *telegramapi.TooManyRequestsError
+	switch {
+	case errors.As(err, &rate):
+		delay := time.Duration(rate.RetryAfter) * time.Second
+		if delay <= 0 {
+			delay = 30 * time.Second
+		}
+		until := a.config.Clock.Now().Add(delay)
+		if until.After(a.rateUntil) {
+			a.rateUntil = until
+		}
+	case a.tokenRejected(err):
+		a.sendFailed = true
+	default:
 		a.diagnostic("telegram reply failure")
 	}
 }
 func (a *Bot) erase(ctx context.Context, id int64, message int) {
-	err := a.client.DeleteMessage(ctx, id, message)
-	if err != nil && !errors.Is(err, ErrInvalidToken) {
+	_, err := a.client.DeleteMessage(ctx, &telegramapi.DeleteMessageParams{ChatID: id, MessageID: message})
+	if err != nil && !a.tokenRejected(err) {
 		a.diagnostic("telegram credential deletion failure")
 	}
 }
@@ -157,7 +243,73 @@ func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
 	return sender.ID, true
 }
 
-func (a *Bot) handle(ctx context.Context, u *models.Update) {
+func (a *Bot) onCancel(ctx context.Context, _ *models.Message, s *state, id int64, _ time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	s.removal = time.Time{}
+	a.reply(ctx, id, "Conversation cancelled.")
+}
+
+func (a *Bot) onHelp(ctx context.Context, _ *models.Message, _ *state, id int64, _ time.Time) {
+	a.reply(ctx, id, help)
+}
+
+func (a *Bot) onEnroll(ctx context.Context, _ *models.Message, s *state, id int64, now time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+		a.reply(ctx, id, "Enrollment cancellation requested. Send /enroll again after it finishes.")
+		return
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	s.removal = time.Time{}
+	exists, err := a.exists(ctx, id)
+	if err != nil {
+		a.reply(ctx, id, "Unable to read tracking repositories. Try again later.")
+		return
+	}
+	if exists {
+		a.reply(ctx, id, "You already track a case. Use /remove before enrolling another.")
+		return
+	}
+	s.deadline = now.Add(10 * time.Minute)
+	a.reply(ctx, id, "Send the case number in a separate text message. Telegram is not end-to-end encrypted; copies may remain. Deletion is best effort. Use /cancel to stop.")
+}
+
+func (a *Bot) onStatus(ctx context.Context, _ *models.Message, s *state, id int64, _ time.Time) {
+	s.mu.Unlock()
+	status, err := a.config.Cases.Status(ctx, id)
+	s.mu.Lock()
+	if errors.Is(err, cases.ErrNotFound) {
+		a.reply(ctx, id, "No tracked case. Use /enroll.")
+		return
+	}
+	a.reply(ctx, id, formatStatus(status, err))
+}
+
+func (a *Bot) onRemove(ctx context.Context, _ *models.Message, s *state, id int64, now time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	exists, err := a.exists(ctx, id)
+	if err != nil {
+		a.reply(ctx, id, "Unable to read tracking repositories.")
+		return
+	}
+	if !exists {
+		a.reply(ctx, id, "No tracked case. Use /enroll.")
+		return
+	}
+	s.removal = now.Add(10 * time.Minute)
+	a.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials and history. They cannot be reconstructed. Use /cancel to stop.")
+}
+
+func (a *Bot) handle(ctx context.Context, _ *telegramapi.Bot, u *models.Update) {
 	m := u.Message
 	if m == nil || m.From == nil {
 		return
@@ -190,70 +342,11 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		a.reply(ctx, id, "Commands take no arguments. Send /enroll to restart enrollment.")
 		return
 	}
-	switch command {
-	case "/cancel":
-		if s.cancel != nil {
-			s.cancel()
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		s.removal = time.Time{}
-		a.reply(ctx, id, "Conversation cancelled.")
+	if handler, ok := a.handlers[command]; ok {
+		handler(ctx, m, s, id, now)
 		return
-	case "/start", "/help":
-		a.reply(ctx, id, help)
-		return
-	case "/enroll":
-		if s.cancel != nil {
-			s.cancel()
-			a.reply(ctx, id, "Enrollment cancellation requested. Send /enroll again after it finishes.")
-			return
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		s.removal = time.Time{}
-		exists, e := a.exists(ctx, id)
-		if e != nil {
-			a.reply(ctx, id, "Unable to read tracking repositories. Try again later.")
-			return
-		}
-		if exists {
-			a.reply(ctx, id, "You already track a case. Use /remove before enrolling another.")
-			return
-		}
-		s.deadline = now.Add(10 * time.Minute)
-		a.reply(ctx, id, "Send the case number in a separate text message. Telegram is not end-to-end encrypted; copies may remain. Deletion is best effort. Use /cancel to stop.")
-		return
-	case "/status":
-		s.mu.Unlock()
-		status, e := a.config.Cases.Status(ctx, id)
-		s.mu.Lock()
-		if errors.Is(e, cases.ErrNotFound) {
-			a.reply(ctx, id, "No tracked case. Use /enroll.")
-			return
-		}
-		a.reply(ctx, id, formatStatus(status, e))
-		return
-	case "/remove":
-		if s.cancel != nil {
-			s.cancel()
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		exists, e := a.exists(ctx, id)
-		if e != nil {
-			a.reply(ctx, id, "Unable to read tracking repositories.")
-			return
-		}
-		if !exists {
-			a.reply(ctx, id, "No tracked case. Use /enroll.")
-			return
-		}
-		s.removal = now.Add(10 * time.Minute)
-		a.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials and history. They cannot be reconstructed. Use /cancel to stop.")
-		return
-	case "":
-	default:
+	}
+	if command != "" {
 		if !s.deadline.IsZero() {
 			a.erase(ctx, id, m.ID)
 		}

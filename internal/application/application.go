@@ -23,15 +23,16 @@ type clock struct{}
 func (clock) Now() time.Time { return time.Now() }
 
 // Only external boundaries are replaceable in offline application tests.
-type telegramClient interface {
-	bot.Transport
+type telegramBot interface {
 	Validate(context.Context) error
+	Run(context.Context) error
+	Close()
 }
 type dependencies struct {
 	lookup   func(string) (string, bool)
 	report   func(string)
 	portal   func() domain.Portal
-	telegram func(bot.ClientConfig) (telegramClient, error)
+	telegram func(bot.Config) (telegramBot, error)
 }
 
 func Run(ctx context.Context) error {
@@ -85,15 +86,11 @@ func run(ctx context.Context, d dependencies) (result error) {
 	}
 	caseService := cases.New(cases.Config{DB: db, Portal: portalClient, Clock: clock, OnStorageError: fail})
 	defer caseService.Shutdown()
-	newClient := d.telegram
-	if newClient == nil {
-		newClient = func(c bot.ClientConfig) (telegramClient, error) { return bot.NewClient(c) }
+	newBot := d.telegram
+	if newBot == nil {
+		newBot = func(c bot.Config) (telegramBot, error) { return bot.New(c) }
 	}
-	client, err := newClient(bot.ClientConfig{Token: cfg.TelegramBotToken, Diagnostic: diagnostic})
-	if err != nil {
-		return errStartup
-	}
-	telegramBot, err := bot.New(bot.Config{Client: client, Cases: caseService, Clock: clock, Diagnostic: diagnostic})
+	telegramBot, err := newBot(bot.Config{Token: cfg.TelegramBotToken, Cases: caseService, Clock: clock, Diagnostic: diagnostic})
 	if err != nil {
 		return errStartup
 	}
@@ -105,7 +102,7 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if ctx.Err() != nil {
 		return nil
 	}
-	if err := client.Validate(work); err != nil {
+	if err := telegramBot.Validate(work); err != nil {
 		if ctx.Err() != nil {
 			return nil
 		}
