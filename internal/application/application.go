@@ -49,6 +49,11 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return errStartup
 	}
+	// The deployed bot stores credentials and requires a private data directory.
+	dir, err := os.Stat(filepath.Dir(path))
+	if err != nil || !dir.IsDir() || dir.Mode().Perm()&0o077 != 0 {
+		return errStartup
+	}
 	lock, err := acquireInstanceLock(path)
 	if err != nil {
 		return err
