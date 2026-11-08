@@ -8,9 +8,9 @@ import (
 	"time"
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
-	"github.com/arhor/case-watch/internal/domain"
-
 	"github.com/robfig/cron/v3"
+
+	"github.com/arhor/case-watch/internal/domain"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
@@ -30,6 +30,7 @@ type Config struct {
 	// Report receives fixed categories only, never collaborator errors.
 	Report func(string)
 }
+
 type Scheduler struct {
 	c        Config
 	schedule cron.Schedule

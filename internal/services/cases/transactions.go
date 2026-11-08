@@ -15,81 +15,83 @@ const (
 	manualCheckCooldown = "manual_check"
 )
 
-func (s *Service) saveEnrollment(ctx context.Context, owner int64, id string, c domain.Credentials, o domain.Observation) error {
-	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
-		return tx.Enrollments.Create(ctx, owner, id, c, o)
+func (this *Service) saveEnrollment(
+	ctx context.Context,
+	owner int64,
+	id string,
+	credentials domain.Credentials,
+	observation domain.Observation,
+) error {
+	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+		return store.Enrollments.Create(ctx, owner, id, credentials, observation)
 	})
 }
 
-func (s *Service) saveObservation(ctx context.Context, owner int64, id string, o domain.Observation) error {
-	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
-		e, err := tx.Enrollments.FindByIdentity(ctx, owner, id)
+func (this *Service) saveObservation(
+	ctx context.Context,
+	owner int64,
+	id string,
+	observation domain.Observation,
+) error {
+	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+		e, err := store.Enrollments.FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
 		}
-		if err = tx.Enrollments.UpdateObservation(ctx, owner, id, o); err != nil {
+		if err = store.Enrollments.UpdateObservation(ctx, owner, id, observation); err != nil {
 			return err
 		}
-		if e.Observation.Stage == o.Stage {
+		if e.Observation.Stage == observation.Stage {
 			return nil
 		}
-		return tx.History.Append(ctx, id, e.Observation.Stage, o)
+		return store.History.Append(ctx, id, e.Observation.Stage, observation)
 	})
 }
 
-func (s *Service) deleteEnrollment(ctx context.Context, owner int64, id string) error {
-	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
-		if err := tx.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
+func (this *Service) deleteEnrollment(
+	ctx context.Context,
+	owner int64,
+	id string,
+) error {
+	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+		if err := store.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
-		if err := tx.History.DeleteByEnrollmentID(ctx, id); err != nil {
+		if err := store.History.DeleteByEnrollmentID(ctx, id); err != nil {
 			return err
 		}
-		return tx.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+		return store.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
 	})
 }
 
-func eligibility(ctx context.Context, tx *repositories.Store, owner int64, id string, manual bool) (time.Time, error) {
-	if _, err := tx.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
-		return time.Time{}, err
-	}
-	c, err := tx.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
-	if err != nil && !errors.Is(err, repositories.ErrNotFound) {
-		return time.Time{}, err
-	}
-	caseStart := c.StartedAt
-	if manual {
-		c, err = tx.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
-		if err != nil && !errors.Is(err, repositories.ErrNotFound) {
-			return time.Time{}, err
-		}
-		if c.StartedAt.After(caseStart) {
-			caseStart = c.StartedAt
-		}
-	}
-	if caseStart.IsZero() {
-		return time.Time{}, nil
-	}
-	return caseStart.Add(time.Minute), nil
-}
-
-func (s *Service) checkEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
+func (this *Service) checkEligibility(
+	ctx context.Context,
+	owner int64,
+	id string,
+	manual bool,
+) (time.Time, error) {
 	var next time.Time
-	err := s.db.RunInTx(ctx, func(tx *repositories.Store) error {
+	err := this.db.RunInTx(ctx, func(store *repositories.Store) error {
 		var err error
-		next, err = eligibility(ctx, tx, owner, id, manual)
+		next, err = eligibility(ctx, store, owner, id, manual)
 		return err
 	})
 	return next, err
 }
 
-func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (repositories.CheckReservation, error) {
+func (this *Service) reserveCheck(
+	ctx context.Context,
+	owner int64,
+	id string,
+	manual bool,
+	now time.Time,
+) (repositories.CheckReservation, error) {
 	if now.IsZero() {
 		return repositories.CheckReservation{}, repositories.ErrInvalid
 	}
 	var result repositories.CheckReservation
-	err := s.db.RunInTx(ctx, func(tx *repositories.Store) error {
-		next, err := eligibility(ctx, tx, owner, id, manual)
+	err := this.db.RunInTx(ctx, func(store *repositories.Store) error {
+		next, err := eligibility(ctx, store, owner, id, manual)
 		if err != nil {
 			return err
 		}
@@ -97,7 +99,7 @@ func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manu
 		if now.Before(next) {
 			return nil
 		}
-		if err = tx.Cooldowns.Upsert(ctx,
+		if err = store.Cooldowns.Upsert(ctx,
 			repositories.Cooldown{
 				SubjectType: caseCheckCooldown,
 				SubjectID:   id,
@@ -107,7 +109,7 @@ func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manu
 			return err
 		}
 		if manual {
-			if err = tx.Cooldowns.Upsert(ctx, repositories.Cooldown{
+			if err = store.Cooldowns.Upsert(ctx, repositories.Cooldown{
 				SubjectType: manualCheckCooldown,
 				SubjectID:   strconv.FormatInt(owner, 10),
 				StartedAt:   now,
@@ -125,4 +127,34 @@ func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manu
 		return repositories.CheckReservation{}, err
 	}
 	return result, nil
+}
+
+func eligibility(
+	ctx context.Context,
+	store *repositories.Store,
+	owner int64,
+	id string,
+	manual bool,
+) (time.Time, error) {
+	if _, err := store.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
+		return time.Time{}, err
+	}
+	c, err := store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+	if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+		return time.Time{}, err
+	}
+	caseStart := c.StartedAt
+	if manual {
+		c, err = store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
+		if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+			return time.Time{}, err
+		}
+		if c.StartedAt.After(caseStart) {
+			caseStart = c.StartedAt
+		}
+	}
+	if caseStart.IsZero() {
+		return time.Time{}, nil
+	}
+	return caseStart.Add(time.Minute), nil
 }
