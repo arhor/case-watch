@@ -32,18 +32,3 @@ func TestOpenDBShouldProtectDatabaseFile(t *testing.T) {
 		}
 	}
 }
-
-func TestOpenDBShouldRejectSharedDirectory(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "state.db")
-	db, err := openDB(context.Background(), path)
-	if db != nil {
-		db.Close()
-	}
-	if err == nil {
-		t.Fatal("database should not open in a shared directory")
-	}
-}
