@@ -7,6 +7,14 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 )
 
+type HistoryRepository struct {
+	db DBTX
+}
+
+func NewHistoryRepository(db DBTX) *HistoryRepository {
+	return &HistoryRepository{db: db}
+}
+
 // FindByEnrollment returns transitions belonging to the supplied owner and identity.
 func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]Transition, error) {
 	rows, err := this.db.QueryContext(ctx, `

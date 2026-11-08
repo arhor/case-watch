@@ -13,6 +13,10 @@ type CooldownRepository struct {
 	db DBTX
 }
 
+func NewCooldownRepository(db DBTX) *CooldownRepository {
+	return &CooldownRepository{db: db}
+}
+
 func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 	ctx context.Context,
 	subjectType string,

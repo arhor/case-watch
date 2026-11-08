@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/database/store"
 )
 
 var (
@@ -43,14 +44,14 @@ type Service struct {
 	mu             sync.Mutex
 	closed         bool
 	owners         map[int64]*ownerState
-	db             *repositories.Store
+	db             *store.Store
 	onStorageError func()
 	portal         domain.Portal
 	clock          domain.Clock
 }
 
 type Config struct {
-	DB             *repositories.Store
+	DB             *store.Store
 	Portal         domain.Portal
 	Clock          domain.Clock
 	OnStorageError func()

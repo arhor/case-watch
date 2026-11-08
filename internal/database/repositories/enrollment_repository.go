@@ -14,6 +14,10 @@ type EnrollmentRepository struct {
 	db DBTX
 }
 
+func NewEnrollmentRepository(db DBTX) *EnrollmentRepository {
+	return &EnrollmentRepository{db: db}
+}
+
 func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) (Enrollment, error) {
 	if owner <= 0 {
 		return Enrollment{}, ErrInvalid

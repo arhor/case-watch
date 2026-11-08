@@ -11,16 +11,11 @@ import (
 )
 
 var (
-	ErrTransaction = errors.New("invalid transaction lifecycle operation")
 	ErrStorage     = errors.New("storage operation failed")
 	ErrNotFound    = errors.New("record not found")
 	ErrExists      = errors.New("owner already enrolled or identity already used")
 	ErrInvalid     = errors.New("invalid storage input")
 )
-
-type HistoryRepository struct {
-	db DBTX
-}
 
 // NewEnrollmentID allocates an opaque identity used to fence late work.
 func NewEnrollmentID() (string, error) {
