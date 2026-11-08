@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-11-03
 decision-makers: Repository maintainer
 supersedes: 0009_choose-notification-retry-policy.md
@@ -68,7 +68,7 @@ No new dependency, configuration option, automatic command retry or live integra
 - [Invalid-token policy](0012_fail-fast-on-invalid-telegram-token.md)
 - [SQLite persistence](0004_choose-sqlite-persistence.md)
 - [Service transaction ownership](0011_move-transaction-boundaries-to-services.md)
-- [Worker implementation](../../internal/services/notifications/worker.go)
+- [Worker removal recorded in ADR 0018](0018_remove-automatic-notifications.md)
 - [Storage guide](../storage.md)
 
 ## More Information
@@ -82,3 +82,9 @@ Implemented the worker-owned cooldown and removed the global repository, state m
 [ADR 0017](0017_remove-user-authorization.md) removes user eligibility checks and
 authorization suppression. Scheduling, cooldowns, retry ordering, blocked-recipient
 gates, ownership and retained pending work continue to follow this record.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces this record. Scheduled
+tracking retains cache/history; direct replies retain an in-memory send cooldown.
+Legacy delivery state is discarded by migration 2.

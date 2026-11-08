@@ -21,15 +21,8 @@ type Tracking interface {
 	HasEnrollment(context.Context, int64) (bool, error)
 }
 
-// Membership is private-chat evidence for the delivery worker. A private
-// interaction is weaker evidence than an explicit block/unblock transition.
-type Membership struct {
-	Owner                           int64
-	Blocked, Unblocked, Interaction bool
-}
-
 // Client supplies update polling and credential-message deletion. Raw outbound
-// sends belong to the notification worker, not command intake.
+// sends belong to the reply service.
 type Client interface {
 	Poll(context.Context, func(context.Context, *models.Update)) error
 	DeleteMessage(context.Context, int64, int) error
@@ -40,7 +33,6 @@ type Config struct {
 	Tracking   Tracking
 	Clock      domain.Clock
 	Diagnostic func(string)
-	Membership func(context.Context, Membership)
 	DirectSend func(context.Context, int64, string) (domain.SendOutcome, error)
 }
 type state struct {
@@ -58,7 +50,7 @@ type Bot struct {
 }
 
 func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil || c.Membership == nil {
+	if c.Client == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
 	return &Bot{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
@@ -70,7 +62,7 @@ func (a *Bot) diagnostic(s string) {
 	}
 }
 
-// Run must only be called after token validation and delivery recovery.
+// Run must only be called after token validation.
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
 func (a *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -153,7 +145,7 @@ func (a *Bot) exists(ctx context.Context, id int64) (bool, error) {
 	return a.config.Tracking.HasEnrollment(ctx, id)
 }
 
-const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
+const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
 
 // privateOwner binds conversations to Telegram transport metadata.
 func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
@@ -164,18 +156,6 @@ func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
 }
 
 func (a *Bot) handle(ctx context.Context, u *models.Update) {
-	if m := u.MyChatMember; m != nil {
-		owner, ok := privateOwner(&m.From, m.Chat)
-		if !ok {
-			return
-		}
-		blocked := m.NewChatMember.Type == models.ChatMemberTypeBanned
-		unblocked := m.OldChatMember.Type == models.ChatMemberTypeBanned && m.NewChatMember.Type == models.ChatMemberTypeMember
-		if blocked || unblocked {
-			a.config.Membership(ctx, Membership{Owner: owner, Blocked: blocked, Unblocked: unblocked})
-		}
-		return
-	}
 	m := u.Message
 	if m == nil || m.From == nil {
 		return
@@ -184,7 +164,6 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	if !ok {
 		return
 	}
-	a.config.Membership(ctx, Membership{Owner: id, Interaction: true})
 	s := a.owner(id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,7 +248,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 			return
 		}
 		s.removal = now.Add(10 * time.Minute)
-		a.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials, history and undelivered notifications. They cannot be reconstructed. A Telegram send already accepted cannot be recalled. Use /cancel to stop.")
+		a.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials and history. They cannot be reconstructed. Use /cancel to stop.")
 		return
 	case "":
 	default:
@@ -291,7 +270,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		if e != nil {
 			a.reply(ctx, id, "Removal failed. Use /remove to try again.")
 		} else {
-			a.reply(ctx, id, "Tracking data removed. A Telegram send already accepted cannot be recalled.")
+			a.reply(ctx, id, "Tracking data removed.")
 		}
 		return
 	}

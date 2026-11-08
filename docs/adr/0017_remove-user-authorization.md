@@ -49,3 +49,11 @@ isolation, scheduled checks and delivery for a new owner without access
 configuration. Existing removal, cooldown, retry, cancellation and lifecycle
 coverage remains in place. See the dated evidence in
 [implementation progress](../implementation-progress.md).
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces notification-specific
+requirements in this record. Scheduled and manual tracking keep cache/history
+without enqueueing outbound work. The runtime now supervises Telegram intake and
+the scheduler; direct replies retain rate limits and invalid-token shutdown.
+Migration 2 discards legacy delivery state while preserving tracking data.

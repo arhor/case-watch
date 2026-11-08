@@ -1,6 +1,6 @@
 # Case Watch
 
-Case Watch is a Telegram bot for monitoring administrative case statuses. It checks tracked cases periodically, lets users request a status update, and sends notifications when a status changes.
+Case Watch is a Telegram bot for monitoring administrative case statuses. It checks tracked cases periodically, lets users request a status update, and saves status changes in history. Scheduled checks are silent; use `/status` to view the latest status.
 
 ## Build
 

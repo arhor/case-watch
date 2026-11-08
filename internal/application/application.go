@@ -50,7 +50,7 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if ctx.Err() != nil {
 		return nil
 	}
-	// ADR 0012: validate before recovery, polling, delivery or scheduling.
+	// ADR 0012: validate before polling or scheduling.
 	if err := r.client.Validate(r.work); err != nil {
 		if ctx.Err() != nil {
 			return nil
@@ -59,12 +59,6 @@ func run(ctx context.Context, d dependencies) (result error) {
 	}
 	if r.work.Err() != nil {
 		return r.result()
-	}
-	if err := r.worker.Start(r.work); err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return errService
 	}
 	return r.run()
 }

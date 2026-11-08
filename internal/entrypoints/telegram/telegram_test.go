@@ -15,7 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/notifications"
+	"github.com/arhor/case-watch/internal/services/replies"
 	"github.com/arhor/case-watch/internal/services/tracking"
 	"github.com/go-telegram/bot/models"
 )
@@ -283,7 +283,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
-	for _, missing := range []string{"client", "tracking", "clock", "membership", "direct send"} {
+	for _, missing := range []string{"client", "tracking", "clock", "direct send"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -295,8 +295,6 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 				c.Tracking = nil
 			case "clock":
 				c.Clock = nil
-			case "membership":
-				c.Membership = nil
 			case "direct send":
 				c.DirectSend = nil
 			}
@@ -307,107 +305,6 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 				t.Fatalf("accepted missing %s", missing)
 			}
 		})
-	}
-}
-
-// scriptedSender keeps notification failures independent of command replies.
-type scriptedSender struct {
-	calls int
-}
-
-func (s *scriptedSender) Send(context.Context, int64, string) (domain.SendOutcome, error) {
-	s.calls++
-	if s.calls == 1 {
-		return domain.SendOutcome{Category: domain.SendRateLimited, RetryAfter: time.Minute}, nil
-	}
-	if s.calls == 2 {
-		return domain.SendOutcome{Category: domain.SendBlocked}, nil
-	}
-	return domain.SendOutcome{Category: domain.SendAccepted, MessageID: int64(s.calls)}, nil
-}
-
-func TestConversationShouldPreserveOrderedTransitionsAndGatesWhenDeliveryRestartsBeforeRemoval(t *testing.T) {
-	// Given
-	f := setup(t)
-	ctx := context.Background()
-	coordinator := f.a.config.Tracking.(*tracking.Coordinator)
-	sender := &scriptedSender{}
-	newWorker := func() *notifications.Worker {
-		w, err := notifications.New(notifications.Config{Store: notifications.Persistence{DB: f.s}, Coordinator: coordinator, Clock: f.clock, Sender: sender})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = w.Start(ctx); err != nil {
-			t.Fatal(err)
-		}
-		return w
-	}
-	w := newWorker()
-	// When
-	f.message(101, "/enroll")
-	f.message(101, "synthetic-number")
-	f.message(101, "synthetic-password")
-	f.clock.now = f.clock.now.Add(time.Minute)
-	f.stage = "Etap B"
-	f.message(101, "/status")
-	f.message(101, "/status") // Cached replies never acknowledge the transition.
-	f.clock.now = f.clock.now.Add(time.Minute)
-	f.stage = "Etap <A>"
-	if _, err := coordinator.Scheduled(ctx, 101); err != nil {
-		t.Fatal(err)
-	}
-	e, err := f.s.Enrollments.FindByOwner(ctx, 101)
-	if err != nil {
-		t.Fatal(err)
-	}
-	history, err := f.s.History.FindByEnrollment(ctx, 101, e.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = w.Step(ctx); err != nil {
-		t.Fatal(err)
-	} // The notification retry deadline persists.
-	path := f.path
-	coordinator.Shutdown()
-	if err = f.s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	f.s, err = repositories.NewStore(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	coordinator = tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
-		t.Error("restart/cache/removal unexpectedly checked portal")
-		return domain.Observation{}, errors.New("unexpected check")
-	}), f.clock)
-	f.a.config.Tracking = coordinator
-	w = newWorker()
-	if err = w.Step(ctx); err != nil {
-		t.Fatal(err)
-	}
-	gatedCalls := sender.calls
-	f.clock.now = f.clock.now.Add(time.Minute)
-	if err = w.Step(ctx); err != nil {
-		t.Fatal(err)
-	} // The recipient blocks.
-	w.Membership(ctx, notifications.Event{Owner: 101, Unblocked: true})
-	if err = w.Step(ctx); err != nil {
-		t.Fatal(err)
-	} // Retry oldest before newer.
-	remaining, err := f.s.Pending.FindByRecipient(ctx, 101)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.message(101, "/remove")
-	f.message(101, "REMOVE")
-	_, removed := f.s.Enrollments.FindByOwner(ctx, 101)
-	queue, err := f.s.Pending.FindByRecipient(ctx, 101)
-	// Then
-	if len(history) != 2 || gatedCalls != 1 || sender.calls != 3 || len(remaining) != 2 || remaining[0].Status != "delivered" || remaining[1].Status == "delivered" {
-		t.Fatalf("transition ordering or restart gates failed: history=%d gated=%d sends=%d queue=%+v", len(history), gatedCalls, sender.calls, remaining)
-	}
-	if err != nil || !errors.Is(removed, repositories.ErrNotFound) || len(queue) != 0 || f.calls != 3 {
-		t.Fatalf("confirmed removal did not clear retained work: %v %v queued=%d checks=%d", removed, err, len(queue), f.calls)
 	}
 }
 
@@ -444,7 +341,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 	}
 }
 
-// bot mirrors the production client/worker/intake construction order while
+// bot mirrors the production client/reply/intake construction order while
 // supplying only synthetic HTTP exchanges and a deterministic clock.
 func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
@@ -455,19 +352,14 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := notifications.New(notifications.Config{
-		Store:       notifications.Persistence{DB: f.s},
-		Coordinator: c.Tracking.(notifications.Coordinator),
-		Clock:       c.Clock, Sender: client,
+	sender, err := replies.New(replies.Config{
+		Clock: c.Clock, Sender: client,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.Client = client
-	c.DirectSend = worker.SendDirect
-	c.Membership = func(ctx context.Context, m Membership) {
-		worker.Membership(ctx, notifications.Event{Owner: m.Owner, Blocked: m.Blocked, Unblocked: m.Unblocked, Interaction: m.Interaction})
-	}
+	c.DirectSend = sender.Send
 	a, err := New(c)
 	if err != nil {
 		t.Fatal(err)
@@ -493,17 +385,37 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			// Given
 			f := setup(t)
-			events := 0
-			f.a.config.Membership = func(context.Context, Membership) { events++ }
 			// When
 			f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: tc.sender, Chat: tc.chat, Text: "/enroll"}})
 			if tc.sender != nil {
 				f.a.handle(context.Background(), &models.Update{MyChatMember: &models.ChatMemberUpdated{From: *tc.sender, Chat: tc.chat, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
 			}
 			// Then
-			if events != 0 || len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {
-				t.Fatalf("invalid transport metadata processed: events=%d replies=%v", events, f.replies)
+			if len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {
+				t.Fatalf("invalid transport metadata processed: replies=%v", f.replies)
 			}
 		})
+	}
+}
+
+func TestBotShouldReplyOnlyOnRequestWhenScheduledChecksChangeStage(t *testing.T) {
+	// Given
+	f := setup(t)
+	f.message(101, "/enroll")
+	f.message(101, "synthetic-number")
+	f.message(101, "synthetic-password")
+	before := len(f.replies)
+	coordinator := f.a.config.Tracking.(*tracking.Coordinator)
+	// When
+	f.clock.now = f.clock.now.Add(time.Minute)
+	f.stage = "Etap B"
+	status, checkErr := coordinator.Scheduled(context.Background(), 101)
+	afterCheck := len(f.replies)
+	f.message(101, "/status")
+	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, enrollment.ID)
+	// Then
+	if checkErr != nil || readErr != nil || historyErr != nil || !status.Fresh || afterCheck != before || len(f.replies) != before+1 || len(history) != 1 || history[0].Stage != "Etap B" || !strings.Contains(f.replies[len(f.replies)-1], "Cached stage: Etap B") || f.calls != 2 {
+		t.Fatalf("scheduled tracking: status=%+v replies=%v history=%+v errors=%v/%v/%v", status, f.replies, history, checkErr, readErr, historyErr)
 	}
 }

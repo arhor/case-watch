@@ -16,9 +16,7 @@ type Store struct {
 	inTx        bool
 	Enrollments *EnrollmentRepository
 	History     *HistoryRepository
-	Pending     *PendingDeliveryRepository
 	Cooldowns   *CooldownRepository
-	Recipients  *RecipientRepository
 }
 
 func NewStore(ctx context.Context, path string) (*Store, error) {
@@ -30,9 +28,7 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 		db:          db,
 		Enrollments: &EnrollmentRepository{db: db},
 		History:     &HistoryRepository{db: db},
-		Pending:     &PendingDeliveryRepository{db: db},
 		Cooldowns:   &CooldownRepository{db: db},
-		Recipients:  &RecipientRepository{db: db},
 	}, nil
 }
 
@@ -62,9 +58,7 @@ func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
 		inTx:        true,
 		Enrollments: &EnrollmentRepository{db: tx},
 		History:     &HistoryRepository{db: tx},
-		Pending:     &PendingDeliveryRepository{db: tx},
 		Cooldowns:   &CooldownRepository{db: tx},
-		Recipients:  &RecipientRepository{db: tx},
 	}
 
 	if err = fn(txStore); err != nil {

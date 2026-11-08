@@ -103,3 +103,11 @@ Package names and placement in this record are superseded by [ADR 0015](0015_ado
 ### 2026-11-02: Implementation verification
 
 Implemented DBTX repositories, Store.RunInTx, tracking/notification service workflows, and service-owned credential rewrites. Workflow fault/reopen/concurrency tests now run in the service package; data tests cover transaction lifecycle and migration/connection behavior. Final full-suite tests, race tests, vet, and the native application build passed with Go 1.27.3. See the dated [implementation evidence](../implementation-progress.md). Live endpoints and deployment were not exercised.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces notification-specific
+requirements in this record. Scheduled and manual tracking keep cache/history
+without enqueueing outbound work. The runtime now supervises Telegram intake and
+the scheduler; direct replies retain rate limits and invalid-token shutdown.
+Migration 2 discards legacy delivery state while preserving tracking data.

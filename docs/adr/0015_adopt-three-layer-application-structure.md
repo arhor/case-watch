@@ -107,3 +107,9 @@ raw client is constructed independently and injected into both intake and the
 notification worker. The three application layers, service-owned transactions
 and isolated queue experiment remain unchanged. Build the root package with
 `go build -o case-watch .`.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) removes the notification service
+and delivery repositories. `internal/services/replies` owns direct command reply
+rate limits and token-rejection admission. The three-layer boundaries remain.

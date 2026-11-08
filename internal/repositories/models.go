@@ -26,27 +26,6 @@ type CheckReservation struct {
 	NextEligibleAt time.Time
 }
 
-type Delivery struct {
-	Sequence         int64
-	RecipientID      int64
-	EnrollmentID     string
-	PreviousStage    string
-	Stage            string
-	CheckedAt        time.Time
-	Status           string
-	CycleAttempts    int
-	LifetimeAttempts int
-	NextAttemptAt    time.Time
-	ReservedAt       time.Time
-	Failure          string
-	MessageID        int64
-}
-
-type RecipientState struct {
-	Pause   string
-	Blocked bool
-}
-
 // Cooldown records the last attempt start for a typed subject.
 type Cooldown struct {
 	SubjectType string

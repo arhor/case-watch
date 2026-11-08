@@ -6,15 +6,15 @@ Use the [root README](../README.md) for the project overview, build and deployme
 
 | Document | Read for |
 | --- | --- |
-| [Product contract](product-contract.md) | Commands, enrollment, removal, checks and notification behavior. |
+| [Product contract](product-contract.md) | Commands, enrollment, removal, checks and silent scheduled tracking. |
 | [ADR index](adr/README.md) | Accepted architecture decisions, dated amendments and the decision workflow. |
 
 ## Implementation boundaries
 
 | Document | Read for |
 | --- | --- |
-| [Storage](storage.md) | Schema, transactions, ownership, attempt reservations and delivery state. |
-| [Telegram](telegram.md) | Bot lifecycle, command intake and delivery integration. |
+| [Storage](storage.md) | Schema, transactions, ownership, attempt reservations and status history. |
+| [Telegram](telegram.md) | Bot lifecycle, command intake and direct replies. |
 | [Portal client](portal-client.md) | RPC integration, request limits and error handling. |
 
 ## Configuration and operations

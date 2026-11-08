@@ -42,11 +42,7 @@ func (p Persistence) Observe(ctx context.Context, owner int64, id string, o doma
 		if e.Observation.Stage == o.Stage {
 			return nil
 		}
-		sequence, err := tx.History.Append(ctx, id, e.Observation.Stage, o)
-		if err != nil {
-			return err
-		}
-		return tx.Pending.Create(ctx, sequence, owner)
+		return tx.History.Append(ctx, id, e.Observation.Stage, o)
 	})
 }
 func (p Persistence) Remove(ctx context.Context, owner int64, id string) error {

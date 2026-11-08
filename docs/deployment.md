@@ -2,7 +2,7 @@
 
 This is an operator runbook, not evidence of a deployment. Use one Linux ARM64 container on a 64-bit host. No live portal/Telegram checks or Pi provisioning have been performed. Read [operations](operations.md) and [configuration](configuration.md) first. There is no backup/restore automation.
 
-Portal case numbers and passwords are currently plaintext in SQLite. Protect the named volume and host access accordingly. Loss of the volume loses enrollment, history and pending notifications.
+Portal case numbers and passwords are currently plaintext in SQLite. Protect the named volume and host access accordingly. Loss of the volume loses enrollment and history.
 
 Build from the repository root:
 

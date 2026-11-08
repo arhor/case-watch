@@ -158,3 +158,11 @@ Implementation affects `internal/data/migrations/000001_initial.up.sql`, enrollm
 ### 2026-11-02: Service-owned transaction boundaries
 
 Accepted [ADR 0011](0011_move-transaction-boundaries-to-services.md) replaces the earlier data-layer transaction-service coordination boundary. Entity repositories use DBTX; application services compose their operations through Store.RunInTx. SQLite, connection serialization, atomicity, ownership, soft deletion, and network-boundary requirements remain active.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces notification-specific
+requirements in this record. Scheduled and manual tracking keep cache/history
+without enqueueing outbound work. The runtime now supervises Telegram intake and
+the scheduler; direct replies retain rate limits and invalid-token shutdown.
+Migration 2 discards legacy delivery state while preserving tracking data.

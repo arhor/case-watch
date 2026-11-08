@@ -1,5 +1,5 @@
 // Package tracking coordinates the owner-facing use cases in ADRs 0004–0007
-// and the explicit removal amendment to ADR 0009. Network I/O never spans a
+// and ADR 0018 removal of notifications. Network I/O never spans a
 // storage transaction. One Coordinator must be shared by every runtime caller.
 package tracking
 
@@ -76,16 +76,10 @@ type flight struct {
 	waiters    int
 	enrollment bool
 }
-type activity struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-}
 type ownerState struct {
 	flight      *flight
 	removing    bool
 	removalDone chan struct{}
-	activities  map[*activity]struct{}
-	serial      chan struct{}
 }
 type Coordinator struct {
 	mu     sync.Mutex
@@ -104,7 +98,7 @@ func New(store Store, portal domain.Portal, clock domain.Clock) *Coordinator {
 func (c *Coordinator) state(owner int64) *ownerState {
 	s := c.owners[owner]
 	if s == nil {
-		s = &ownerState{activities: make(map[*activity]struct{}), serial: make(chan struct{}, 1)}
+		s = &ownerState{}
 		c.owners[owner] = s
 	}
 	return s
@@ -346,59 +340,6 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 	close(f.done)
 }
 
-// RunOwnerWork is the shared removal gate for notification sends and membership
-// changes. Pass the immutable enrollment ID for sends; an empty ID permits an
-// owner-level membership event even without an enrollment. All callbacks for an
-// owner serialize, including queued events, while checks may run independently.
-// The callback must honor cancellation, fence durable acknowledgements with its
-// enrollment identity, return sanitized errors, and return only after all its work
-// has drained. It must
-// not call back into RunOwnerWork or Remove. Never put SQL/Telegram types here.
-func (c *Coordinator) RunOwnerWork(ctx context.Context, owner int64, id string, fn func(context.Context) error) error {
-	if owner <= 0 {
-		return ErrDenied
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return ErrClosed
-	}
-	s := c.state(owner)
-	if s.removing {
-		c.mu.Unlock()
-		return ErrRemoving
-	}
-	if id != "" {
-		e, err := c.store.Enrollment(ctx, owner)
-		if err != nil {
-			c.mu.Unlock()
-			return safeStore(err)
-		}
-		if e.OwnerID != owner || e.ID != id {
-			c.mu.Unlock()
-			return repositories.ErrNotFound
-		}
-	}
-	work, cancel := context.WithCancel(ctx)
-	a := &activity{cancel: cancel, done: make(chan struct{})}
-	s.activities[a] = struct{}{}
-	c.mu.Unlock()
-	defer func() { cancel(); c.mu.Lock(); delete(s.activities, a); close(a.done); c.mu.Unlock() }()
-	select {
-	case s.serial <- struct{}{}:
-		defer func() { <-s.serial }()
-	case <-work.Done():
-		return work.Err()
-	}
-	if work.Err() != nil {
-		return work.Err()
-	}
-	return fn(work)
-}
-
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the enrollment and reopens work.
@@ -422,18 +363,13 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	s.removing = true
 	s.removalDone = make(chan struct{})
 	defer func() { c.mu.Lock(); s.removing = false; close(s.removalDone); s.removalDone = nil; c.mu.Unlock() }()
-	var done []<-chan struct{}
-	if s.flight != nil {
-		s.flight.cancel()
-		done = append(done, s.flight.done)
-	}
-	for a := range s.activities {
-		a.cancel()
-		done = append(done, a.done)
+	f := s.flight
+	if f != nil {
+		f.cancel()
 	}
 	c.mu.Unlock()
-	for _, ch := range done {
-		<-ch
+	if f != nil {
+		<-f.done
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -450,7 +386,7 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	return safeStore(c.store.Remove(ctx, owner, e.ID))
 }
 
-// Shutdown permanently closes admission, cancels every owner activity and drains
+// Shutdown permanently closes admission, cancels every owner check and drains
 // work before storage may close. Concurrent calls are safe and all wait for the
 // same admitted work. Collaborators must honor cancellation.
 func (c *Coordinator) Shutdown() {
@@ -461,10 +397,6 @@ func (c *Coordinator) Shutdown() {
 		if s.flight != nil {
 			s.flight.cancel()
 			done = append(done, s.flight.done)
-		}
-		for a := range s.activities {
-			a.cancel()
-			done = append(done, a.done)
 		}
 		if s.removalDone != nil {
 			done = append(done, s.removalDone)

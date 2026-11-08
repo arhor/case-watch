@@ -17,11 +17,6 @@ type telegramBot interface {
 	Close()
 }
 
-type delivery interface {
-	runner
-	Start(context.Context) error
-}
-
 // runtime owns acquired resources and the lifetime of constructed components.
 // It is private and is never passed to application services.
 type runtime struct {
@@ -34,7 +29,6 @@ type runtime struct {
 	tracking    *tracking.Coordinator
 	client      telegramClient
 	telegramBot telegramBot
-	worker      delivery
 	scheduler   runner
 }
 
@@ -63,7 +57,7 @@ func (r *runtime) run() error {
 		go func() {
 			defer wg.Done()
 			_ = component.Run(r.work)
-			// All three components run until canceled. Any earlier return,
+			// Both components run until canceled. Any earlier return,
 			// including nil or context.Canceled, is an unexpected termination.
 			if r.work.Err() == nil {
 				r.fail()
@@ -71,7 +65,6 @@ func (r *runtime) run() error {
 		}()
 	}
 	start(r.telegramBot)
-	start(r.worker)
 	start(r.scheduler)
 	<-r.work.Done()
 	// Detached tracking flights need explicit cancellation before joins.

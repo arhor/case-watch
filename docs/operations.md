@@ -9,30 +9,15 @@ and cleanup; its test overrides and lifecycle helpers are private. See
 
 Startup validates environment syntax, restricted database permissions and the database schema before constructing network integrations. The service holds an exclusive advisory lock on `DB_PATH.lock` through database closure. Do not delete the lock file while a process may hold it; the lock is released by process exit, not by removing its pathname.
 
-After local validation, startup validates the Telegram token with a bounded `getMe` request. Any validation failure prevents workers from starting. Startup then recovers uncertain notification reservations and starts one Telegram long poller, the notification worker and the Warsaw scheduler. All share the same coordinator; every enrolled owner is eligible subject to existing work and delivery gates. No scheduler catch-up occurs at startup. Direct replies honor the shared in-memory send cooldown and never acknowledge queued change notifications. Diagnostic messages contain fixed operational categories, without credentials, tokens, stage text or message bodies.
+After local validation, startup validates the Telegram token with a bounded `getMe` request. Any validation failure prevents workers from starting. Startup starts one Telegram long poller and the Warsaw scheduler. They share the same coordinator; every enrolled owner is eligible subject to check cooldowns and removal fencing. No scheduler catch-up occurs at startup. Scheduled checks save cache/history silently. Use `/status` to see results. Direct replies honor an in-memory send cooldown and are never queued or retried. Diagnostic messages contain fixed operational categories, without credentials, tokens, stage text or message bodies.
 
 Polling slots are calculated by `github.com/robfig/cron/v3` using `CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5`, independently of the host time zone. The scheduler processes cases sequentially and calculates the next slot after completion, skipping slots crossed by a slow run. A wake after the scheduled minute is skipped; cancellation drains active work.
 
-SIGINT or SIGTERM cancels intake and workers, closes coordinator admission, cancels/drains portal and send work, waits for handlers and enrollment work, and closes SQLite before releasing the lock. Unexpected worker/storage failure stops the service with a sanitized error so supervision can restart it. Tracking infrastructure monitoring ignores errors from canceled operations, so an interrupted storage read during shutdown does not itself mark the process as failed. Transaction recovery preserves reserved attempt counts; accepted-but-unrecorded Telegram sends may be duplicated after recovery. An ordinary shutdown does not guarantee completion of each pending delivery.
+SIGINT or SIGTERM cancels intake and workers, closes coordinator admission, cancels/drains portal and send work, waits for handlers and enrollment work, and closes SQLite before releasing the lock. Unexpected worker/storage failure stops the service with a sanitized error so supervision can restart it. Tracking infrastructure monitoring ignores errors from canceled operations, so an interrupted storage read during shutdown does not itself mark the process as failed. No notification recovery or background delivery runs.
 
-An invalid or revoked Telegram token during polling, sending or credential-message deletion stops the entire service, including portal checks. Diagnostics use a fixed sanitized category. Correct `CASE_WATCH_TELEGRAM_BOT_TOKEN` and restart normally; no resume command is required. A notification explicitly rejected for an invalid token retains its retry budget. Pending work, recipient pauses and notification retry deadlines remain intact. The shared send cooldown resets on restart under [ADR 0013](adr/0013_keep-telegram-send-cooldown-in-memory.md). See [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md).
+An invalid or revoked Telegram token during polling, sending or credential-message deletion stops the entire service, including portal checks. Diagnostics use a fixed sanitized category. Correct `CASE_WATCH_TELEGRAM_BOT_TOKEN` and restart normally; no resume command is required. See [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md).
 
-Recipient IDs are positive numeric Telegram user IDs. Recovery does not mark any notification delivered or erase history. Ordinary messages only resume an evidenced block pause; exhausted/permanent queues require operator recovery unless a later block/unblock cycle is observed.
-
-Recipient recovery uses [scripts/resume-recipient.sql](../scripts/resume-recipient.sql) instead of an application command. After correcting the delivery failure, stop the service and run from the repository root with an existing database path and a positive numeric Telegram user ID:
-
-```sh
-sqlite3 -bail /path/to/case-watch.db \
-  -cmd '.parameter init' \
-  -cmd '.parameter set @recipient_id 123456789' \
-  < scripts/resume-recipient.sql
-```
-
-The script atomically clears that recipient's pause/blocked state and resets only the oldest undelivered notification's cycle attempts, retry deadline and failure category. It preserves lifetime attempts, delivery status, history, later queued transitions. Restart the service afterward to process eligible work.
-
-The script rolls back if the recipient ID is missing/invalid or any notification in the database is still reserved. If reservations remain after an interrupted shutdown, start the service to perform normal uncertain-attempt recovery, stop it again, then rerun the script. Recovery can cause duplicate delivery for accepted-but-unrecorded sends. Use `-bail` so SQLite exits immediately on an error. Direct SQL does not acquire the application's advisory lock; keep the service stopped throughout. SQLite must already be installed; the database must already exist.
-
-No backup creation, restore automation, automatic data reset, deployment or Pi provisioning is provided. Losing the database requires re-enrollment and cannot reconstruct history or undelivered transitions. Portal credentials are plaintext in SQLite during WIP development; restrict access to the database and its directory. Live portal checks, actual deployment and Pi resource measurements require separate authorization and evidence.
+No backup creation, restore automation, automatic data reset, deployment or Pi provisioning is provided. Losing the database requires re-enrollment and cannot reconstruct history. Portal credentials are plaintext in SQLite during WIP development; restrict access to the database and its directory. Live portal checks, actual deployment and Pi resource measurements require separate authorization and evidence.
 
 ## Migration transition (2026-11-02)
 
@@ -44,3 +29,16 @@ during storage.Open under the existing process lock.
 Dirty migration metadata prevents startup; keep the service stopped and inspect
 the failed migration before correcting state. No automatic version forcing,
 downgrade command, or backup tooling is provided.
+
+## Notification removal (2026-11-08)
+
+Schema migration 2 runs during normal startup under the database lock. It drops
+legacy notification deliveries (including reserved/paused work) and recipient
+gates. Existing version 1 enrollments, cache, history and check cooldowns survive;
+no re-enrollment is needed. Fresh databases run migrations 1 and 2. The recipient
+recovery SQL script is removed. Never run old service binaries against the migrated
+database. See [ADR 0018](adr/0018_remove-automatic-notifications.md).
+
+Command replies retain an in-memory rate-limit deadline: positive Telegram
+`retry_after`, or 30 seconds otherwise. Restart clears it. Invalid-token failure
+still stops the whole service; correct the token and restart.

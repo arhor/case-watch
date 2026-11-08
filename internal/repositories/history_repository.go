@@ -43,22 +43,18 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 	return result, nil
 }
 
-func (this *HistoryRepository) Append(ctx context.Context, id string, previous string, o domain.Observation) (int64, error) {
+func (this *HistoryRepository) Append(ctx context.Context, id string, previous string, o domain.Observation) error {
 	if !validID(id) || !validObservation(o) {
-		return 0, ErrInvalid
+		return ErrInvalid
 	}
-	result, err := this.db.ExecContext(ctx, `
+	_, err := this.db.ExecContext(ctx, `
 		INSERT INTO history (enrollment_id, previous_stage, stage, checked_at)
 		VALUES (?, ?, ?, ?)
 	`, id, previous, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
-		return 0, ErrStorage
+		return ErrStorage
 	}
-	sequence, err := result.LastInsertId()
-	if err != nil {
-		return 0, ErrStorage
-	}
-	return sequence, nil
+	return nil
 }
 
 func (this *HistoryRepository) DeleteByEnrollmentID(ctx context.Context, id string) error {

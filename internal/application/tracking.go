@@ -53,8 +53,3 @@ func (m monitoredTracking) Remove(c context.Context, o int64) error {
 	m.checkError(c, e)
 	return e
 }
-func (m monitoredTracking) RunOwnerWork(c context.Context, o int64, id string, fn func(context.Context) error) error {
-	e := m.Coordinator.RunOwnerWork(c, o, id, fn)
-	m.checkError(c, e)
-	return e
-}

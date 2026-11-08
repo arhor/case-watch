@@ -1,8 +1,6 @@
 package application
 
 import (
-	"context"
-	"errors"
 	"log"
 	"time"
 
@@ -13,7 +11,7 @@ import (
 	"github.com/arhor/case-watch/internal/repositories"
 	"github.com/arhor/case-watch/internal/repositories/portal"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/notifications"
+	"github.com/arhor/case-watch/internal/services/replies"
 	"github.com/arhor/case-watch/internal/services/tracking"
 )
 
@@ -70,12 +68,11 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 	if err != nil {
 		return errStartup
 	}
-	worker, err := notifications.New(notifications.Config{
-		Store:       notifications.Persistence{DB: r.store},
-		Coordinator: monitored, Clock: clock, Sender: r.client,
+	sender, err := replies.New(replies.Config{
+		Clock: clock, Sender: r.client,
 		Report: func(category string) {
 			report(category)
-			if category == "outbound_gate_storage_failed" || category == "membership_storage_failed" || category == string(domain.SendInvalidToken) {
+			if category == string(domain.SendInvalidToken) {
 				r.fail()
 			}
 		},
@@ -83,20 +80,10 @@ func wire(r *runtime, c config.Config, d dependencies) error {
 	if err != nil {
 		return errStartup
 	}
-	r.worker = worker
 	telegramBot, err := telegram.New(telegram.Config{
 		Client: r.client, Tracking: monitored, Clock: clock,
 		Diagnostic: report,
-		Membership: func(ctx context.Context, m telegram.Membership) {
-			worker.Membership(ctx, notifications.Event{Owner: m.Owner, Blocked: m.Blocked, Unblocked: m.Unblocked, Interaction: m.Interaction})
-		},
-		DirectSend: func(ctx context.Context, id int64, text string) (domain.SendOutcome, error) {
-			out, err := worker.SendDirect(ctx, id, text)
-			if errors.Is(err, notifications.ErrWorker) {
-				r.fail()
-			}
-			return out, err
-		},
+		DirectSend: sender.Send,
 	})
 	if err != nil {
 		return errStartup

@@ -139,3 +139,11 @@ Checklist evidence maps to the reviewed implementation and offline tests in [the
 [ADR 0017](0017_remove-user-authorization.md) removes user eligibility checks and
 authorization suppression. Scheduling, cooldowns, retry ordering, blocked-recipient
 gates, ownership and retained pending work continue to follow this record.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces notification-specific
+requirements in this record. Scheduled and manual tracking keep cache/history
+without enqueueing outbound work. The runtime now supervises Telegram intake and
+the scheduler; direct replies retain rate limits and invalid-token shutdown.
+Migration 2 discards legacy delivery state while preserving tracking data.

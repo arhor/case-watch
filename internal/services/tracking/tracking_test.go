@@ -2,6 +2,7 @@ package tracking_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/entrypoints/scheduler"
 	"github.com/arhor/case-watch/internal/repositories"
-	"github.com/arhor/case-watch/internal/services/notifications"
 	"github.com/arhor/case-watch/internal/services/tracking"
 )
 
@@ -256,10 +256,9 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.
 	_, e2 := f.c.Status(context.Background(), 0)
 	_, e3 := f.c.Scheduled(context.Background(), 0)
 	e4 := f.c.Remove(context.Background(), 0)
-	e5 := f.c.RunOwnerWork(context.Background(), 0, "", func(context.Context) error { t.Error("invalid owner callback"); return nil })
 	_, other := f.c.Status(context.Background(), 202)
 	// Then
-	for _, err := range []error{e1, e2, e3, e4, e5} {
+	for _, err := range []error{e1, e2, e3, e4} {
 		if !errors.Is(err, tracking.ErrDenied) {
 			t.Fatalf("denial: %v", err)
 		}
@@ -276,10 +275,9 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	// When
 	_, err := f.c.Enroll(context.Background(), 101, plain)
 	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	queue, qerr := f.s.Pending.FindByRecipient(context.Background(), 101)
 	// Then
-	if !errors.Is(err, repositories.ErrExists) || read != nil || qerr != nil || e.ID != id || f.calls.Load() != 1 || len(queue) != 0 {
-		t.Fatalf("replacement: %v/%v/%v calls=%d queue=%d", err, read, qerr, f.calls.Load(), len(queue))
+	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
+		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
 	}
 	if e.Credentials != plain {
 		t.Fatal("enrollment credentials missing")
@@ -328,7 +326,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 	}
 }
 
-func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArrive(t *testing.T) {
+func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *testing.T) {
 	// Given
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var block atomic.Bool
@@ -348,26 +346,12 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	checked := make(chan answer, 1)
 	go func() { s, e := f.c.Status(context.Background(), 101); checked <- answer{s, e} }()
 	<-entered
-	sendEntered, sendCanceled, sendRelease := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	sent := make(chan error, 1)
-	go func() {
-		sent <- f.c.RunOwnerWork(context.Background(), 101, id, func(ctx context.Context) error {
-			close(sendEntered)
-			<-ctx.Done()
-			close(sendCanceled)
-			<-sendRelease
-			return ctx.Err()
-		})
-	}()
-	<-sendEntered
 	removed := make(chan error, 1)
 	// When
 	go func() { removed <- f.c.Remove(context.Background(), 101) }()
 	<-canceled
-	<-sendCanceled
 	_, busyStatus := f.c.Status(context.Background(), 101)
 	_, busyEnroll := f.c.Enroll(context.Background(), 101, plain)
-	busySend := f.c.RunOwnerWork(context.Background(), 101, id, func(context.Context) error { t.Error("send during remove"); return nil })
 	before, beforeErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
@@ -376,19 +360,16 @@ func TestRemoveShouldCancelAndDrainPortalAndSendBeforeDeletingWhenLateResultsArr
 	}
 	close(release)
 	late := <-checked
-	close(sendRelease)
-	sendErr := <-sent
 	removeErr := <-removed
 	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	block.Store(false)
 	newID := f.enroll(t, 101)
 	lateObservation := (tracking.Persistence{DB: f.s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "LATE", CheckedAt: f.clock.Now()})
-	oldSend := f.c.RunOwnerWork(context.Background(), 101, id, func(context.Context) error { t.Error("old enrollment sent"); return nil })
 	f.clock.set(epoch.Add(119 * time.Second))
 	cached, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || !errors.Is(busySend, tracking.ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || !errors.Is(sendErr, context.Canceled) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || !errors.Is(oldSend, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("removal results: late=%v send=%v remove=%v missing=%v lateObservation=%v oldSend=%v status=%+v err=%v", late.err, sendErr, removeErr, missing, lateObservation, oldSend, cached, statusErr)
+	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
+		t.Fatalf("removal results: late=%v remove=%v missing=%v lateObservation=%v status=%+v err=%v", late.err, removeErr, missing, lateObservation, cached, statusErr)
 	}
 	obs(t, cached, "A", epoch.Add(time.Minute))
 }
@@ -417,47 +398,6 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	// Then
 	if !errors.Is(busy, tracking.ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
-	}
-}
-
-func TestOwnerWorkShouldSerializeMembershipAfterSendWhenAnUnblockArrives(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
-	entered, release := make(chan struct{}), make(chan struct{})
-	sent := make(chan error, 1)
-	go func() {
-		sent <- f.c.RunOwnerWork(context.Background(), 101, id, func(context.Context) error {
-			close(entered)
-			<-release
-			return (notifications.Persistence{DB: f.s}).SetBlocked(context.Background(), 101, true)
-		})
-	}()
-	<-entered
-	eventCtx := waitingContext(context.Background())
-	event := make(chan error, 1)
-	// When
-	go func() {
-		event <- f.c.RunOwnerWork(eventCtx, 101, "", func(ctx context.Context) error {
-			return (notifications.Persistence{DB: f.s}).SetBlocked(ctx, 101, false)
-		})
-	}()
-	<-eventCtx.entered
-	select {
-	case err := <-event:
-		t.Fatalf("membership passed active send: %v", err)
-	default:
-	}
-	close(release)
-	sendErr, eventErr := <-sent, <-event
-	recipient, gateErr := (notifications.Persistence{DB: f.s}).RecipientState(context.Background(), 101)
-	removed := f.c.Remove(context.Background(), 101)
-	noCaseEvent := f.c.RunOwnerWork(context.Background(), 101, "", func(ctx context.Context) error {
-		return (notifications.Persistence{DB: f.s}).SetBlocked(ctx, 101, true)
-	})
-	// Then
-	if sendErr != nil || eventErr != nil || gateErr != nil || recipient.Blocked || recipient.Pause != "" || removed != nil || noCaseEvent != nil {
-		t.Fatalf("serialized membership: send=%v event=%v state=%+v gate=%v remove=%v noCase=%v", sendErr, eventErr, recipient, gateErr, removed, noCaseEvent)
 	}
 }
 
@@ -538,30 +478,34 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	stage.Store("A")
 	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
 	history, e3 := f.s.History.FindByEnrollment(context.Background(), 101, id)
-	queue, e4 := f.s.Pending.FindByRecipient(context.Background(), 101)
 	// Then
-	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || len(queue) != 2 || queue[0].Stage != "B" || queue[1].Stage != "A" || queue[0].MessageID != 0 || queue[1].MessageID != 0 {
-		t.Fatalf("shared observation transaction: history=%+v queue=%+v errors=%v/%v/%v/%v", history, queue, e1, e2, e3, e4)
+	if e1 != nil || e2 != nil || e3 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || history[0].Stage != "B" || history[1].Stage != "A" {
+		t.Fatalf("shared observation transaction: history=%+v errors=%v/%v/%v", history, e1, e2, e3)
 	}
 }
 
 func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t *testing.T) {
 	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	work := make(chan error, 1)
-	go func() {
-		work <- f.c.RunOwnerWork(context.Background(), 101, id, func(ctx context.Context) error {
+	var block atomic.Bool
+	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+		if block.Load() {
 			close(entered)
 			<-ctx.Done()
 			close(canceled)
 			<-release
-			return ctx.Err()
-		})
-	}()
+			return domain.Observation{}, ctx.Err()
+		}
+		return domain.Observation{Stage: "A"}, nil
+	})
+	id := f.enroll(t, 101)
+	f.clock.set(epoch.Add(time.Minute))
+	block.Store(true)
+	work := make(chan error, 1)
+	go func() { _, err := f.c.Status(context.Background(), 101); work <- err }()
 	<-entered
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	removed := make(chan error, 1)
 	// When
 	go func() { removed <- f.c.Remove(ctx, 101) }()
@@ -572,7 +516,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(workErr, context.Canceled) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.Observation == nil {
+	if !errors.Is(workErr, tracking.ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.Observation == nil {
 		t.Fatalf("canceled removal: work=%v remove=%v read=%v status=%v", workErr, removeErr, readErr, statusErr)
 	}
 }
@@ -634,20 +578,21 @@ func TestSchedulerShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.
 
 func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	// Given
-	f := setup(t, nil)
 	started := make(chan struct{}, 2)
 	cancelled := make(chan struct{}, 2)
 	release := make(chan struct{})
+	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+		started <- struct{}{}
+		<-ctx.Done()
+		cancelled <- struct{}{}
+		<-release
+		return domain.Observation{}, ctx.Err()
+	})
 	finished := make(chan error, 2)
 	for _, owner := range []int64{101, 202} {
 		go func(owner int64) {
-			finished <- f.c.RunOwnerWork(context.Background(), owner, "", func(ctx context.Context) error {
-				started <- struct{}{}
-				<-ctx.Done()
-				cancelled <- struct{}{}
-				<-release
-				return ctx.Err()
-			})
+			_, err := f.c.Enroll(context.Background(), owner, plain)
+			finished <- err
 		}(owner)
 	}
 	for i := 0; i < 2; i++ {
@@ -664,9 +609,6 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	case <-done:
 		t.Fatal("shutdown returned before callbacks drained")
 	default:
-	}
-	if e := f.c.RunOwnerWork(context.Background(), 101, "", func(context.Context) error { t.Fatal("admitted callback after shutdown"); return nil }); !errors.Is(e, tracking.ErrClosed) {
-		t.Fatal("terminal admission not enforced")
 	}
 	close(release)
 	<-done
@@ -699,5 +641,28 @@ func TestScheduledShouldRefreshAnyEnrolledOwnerWhenNoAccessPolicyIsConfigured(t 
 	}
 	if !errors.Is(otherErr, repositories.ErrNotFound) {
 		t.Fatalf("another owner's case was accessible: %v", otherErr)
+	}
+}
+
+func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
+	// Given
+	f := setup(t, nil)
+	id := f.enroll(t, 101)
+	db, err := sql.Open("sqlite", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
+ BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	// When
+	observeErr := (tracking.Persistence{DB: f.s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: epoch.Add(time.Minute)})
+	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
+	// Then
+	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Observation.Stage != "A" || !enrollment.Observation.CheckedAt.Equal(epoch) || len(history) != 0 {
+		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment.Observation, history, observeErr, readErr, historyErr)
 	}
 }

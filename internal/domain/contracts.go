@@ -8,7 +8,7 @@ import (
 )
 
 // Credentials are plaintext. They are persisted only on the enrollment record
-// during WIP development; never log or include them in errors or notifications.
+// during WIP development; never log or include them in errors or messages.
 // Dropping references does not guarantee secure erasure of Go memory.
 type Credentials struct {
 	Number   string
@@ -26,7 +26,7 @@ type Portal interface {
 	Check(context.Context, Credentials) (Observation, error)
 }
 
-// Clock lets coordinators and delivery workers use deterministic time in tests.
+// Clock lets coordinators and reply senders use deterministic time in tests.
 type Clock interface {
 	Now() time.Time
 }
@@ -45,7 +45,7 @@ type Status struct {
 // Enroll refuses replacement and commits portal credentials plus baseline
 // atomically. Confirmation is sent separately after success.
 // Remove is called only after explicit, unexpired owner confirmation. It cancels
-// and drains checks/sends and rejects late results before returning success.
+// and drains checks and rejects late results before returning success.
 type Tracking interface {
 	Enroll(context.Context, int64, Credentials) (Observation, error)
 	Status(context.Context, int64) (Status, error)
@@ -56,22 +56,19 @@ type SendCategory string
 
 const (
 	SendAccepted     SendCategory = "accepted"
-	SendTransient    SendCategory = "transient"
+	SendFailed       SendCategory = "failed"
 	SendRateLimited  SendCategory = "rate_limited"
-	SendBlocked      SendCategory = "blocked"
 	SendInvalidToken SendCategory = "invalid_token"
-	SendPermanent    SendCategory = "permanent"
 )
 
 // SendOutcome carries sanitized classification, never raw transport errors.
 // RetryAfter is a minimum duration reported by the remote transport.
 type SendOutcome struct {
 	Category   SendCategory
-	MessageID  int64
 	RetryAfter time.Duration
 }
 
-// Sender makes one attempt; durable reservation/retry policy belongs to callers.
+// Sender makes one attempt without automatic retries.
 // Text contains no credentials and must not appear in diagnostics.
 type Sender interface {
 	Send(context.Context, int64, string) (SendOutcome, error)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -37,7 +36,7 @@ func New(c Config) (*Client, error) {
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
 		bot.WithNotAsyncHandlers(),
-		bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "my_chat_member"}),
+		bot.WithAllowedUpdates(bot.AllowedUpdates{"message"}),
 		bot.WithErrorsHandler(func(err error) {
 			if !client.tokenRejected(err) {
 				client.report("telegram polling failure")
@@ -110,11 +109,11 @@ func (c *Client) DeleteMessage(ctx context.Context, chatID int64, messageID int)
 
 // Send makes exactly one API call and returns a sanitized outcome.
 func (c *Client) Send(ctx context.Context, id int64, text string) (domain.SendOutcome, error) {
-	m, err := c.bot.SendMessage(ctx, &bot.SendMessageParams{ChatID: id, Text: text})
+	_, err := c.bot.SendMessage(ctx, &bot.SendMessageParams{ChatID: id, Text: text})
 	if err == nil {
-		return domain.SendOutcome{Category: domain.SendAccepted, MessageID: int64(m.ID)}, nil
+		return domain.SendOutcome{Category: domain.SendAccepted}, nil
 	}
-	out := domain.SendOutcome{Category: domain.SendTransient}
+	out := domain.SendOutcome{Category: domain.SendFailed}
 	var rate *bot.TooManyRequestsError
 	switch {
 	case errors.As(err, &rate):
@@ -122,13 +121,6 @@ func (c *Client) Send(ctx context.Context, id int64, text string) (domain.SendOu
 		out.RetryAfter = time.Duration(rate.RetryAfter) * time.Second
 	case errors.Is(err, bot.ErrorUnauthorized):
 		out.Category = domain.SendInvalidToken
-	case errors.Is(err, bot.ErrorForbidden):
-		out.Category = domain.SendPermanent
-		if strings.Contains(strings.ToLower(err.Error()), "bot was blocked by the user") {
-			out.Category = domain.SendBlocked
-		}
-	case errors.Is(err, bot.ErrorBadRequest), errors.Is(err, bot.ErrorNotFound):
-		out.Category = domain.SendPermanent
 	}
 	return out, errors.New("telegram send failed")
 }

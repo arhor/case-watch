@@ -19,7 +19,7 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 		code        int
 		description string
 		category    domain.SendCategory
-	}{{401, "synthetic-token", domain.SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", domain.SendBlocked}, {403, "Forbidden: other reason", domain.SendPermanent}, {429, "synthetic-password", domain.SendRateLimited}, {500, "synthetic-password", domain.SendTransient}} {
+	}{{401, "synthetic-token", domain.SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", domain.SendFailed}, {403, "Forbidden: other reason", domain.SendFailed}, {429, "synthetic-password", domain.SendRateLimited}, {500, "synthetic-password", domain.SendFailed}} {
 		t.Run(string(tc.category)+tc.description, func(t *testing.T) {
 			// Given
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +134,7 @@ func TestPollShouldKeepPollingAvailableWhenHandlerIsMissing(t *testing.T) {
 	}
 }
 
-func TestPollShouldDispatchMessagesAndMembershipInOrderWhenUpdatesArrive(t *testing.T) {
+func TestPollShouldDispatchMessagesInOrderWhenUpdatesArrive(t *testing.T) {
 	// Given
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -142,7 +142,7 @@ func TestPollShouldDispatchMessagesAndMembershipInOrderWhenUpdatesArrive(t *test
 	server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if first {
 			first = false
-			w.Write([]byte(`{"ok":true,"result":[{"update_id":1,"message":{"message_id":1,"text":"first"}},{"update_id":2,"my_chat_member":{"chat":{"id":101,"type":"private"},"from":{"id":101},"old_chat_member":{"status":"member","user":{"id":123}},"new_chat_member":{"status":"kicked","user":{"id":123}}}}]}`))
+			w.Write([]byte(`{"ok":true,"result":[{"update_id":1,"message":{"message_id":1,"text":"first"}},{"update_id":2,"message":{"message_id":2,"text":"second"}}]}`))
 			return
 		}
 		<-r.Context().Done()
@@ -156,14 +156,13 @@ func TestPollShouldDispatchMessagesAndMembershipInOrderWhenUpdatesArrive(t *test
 	err = client.Poll(ctx, func(_ context.Context, update *models.Update) {
 		if update.Message != nil {
 			received = append(received, update.Message.Text)
-		}
-		if update.MyChatMember != nil {
-			received = append(received, "membership")
-			cancel()
+			if len(received) == 2 {
+				cancel()
+			}
 		}
 	})
 	// Then
-	if !errors.Is(err, context.Canceled) || strings.Join(received, ",") != "first,membership" {
+	if !errors.Is(err, context.Canceled) || strings.Join(received, ",") != "first,second" {
 		t.Fatalf("error=%v received=%v", err, received)
 	}
 }

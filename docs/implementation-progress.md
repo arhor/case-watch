@@ -285,7 +285,7 @@ deployment acceptance checks were run.
 Removed `--resume-recipient`, its handler and the operator-only recipient
 recovery API. Token maintenance now calls `ResumeToken` directly. Automatic
 Telegram unblock recovery remains in the notification worker.
-Added [resume-recipient.sql](../scripts/resume-recipient.sql) and updated the
+Added [resume-recipient.sql (removed by ADR 0018)](adr/0018_remove-automatic-notifications.md) and updated the
 operations/storage guides. The transaction validates a bound recipient ID,
 rejects any outstanding reservation, clears the recipient pause/block and
 resets only the oldest undelivered notification's retry cycle. Startup remains
@@ -483,3 +483,86 @@ private sender validation for messages/membership, arbitrary-owner enrollment,
 scheduled refresh and delivery, plus preserved ownership isolation. No live
 portal/Telegram calls, database migration, deployment or target-device checks
 were performed.
+
+## 2026-11-08: Remove automatic notifications
+
+Implemented [ADR 0018](adr/0018_remove-automatic-notifications.md). Removed the
+notification worker, retry/recovery state, delivery repositories, recipient
+membership handling and recovery SQL script. Scheduled and manual checks retain
+atomic cache/history updates; `/status` continues to return results. Telegram
+subscribes to message updates only. Direct replies retain serialized bounded
+sends, an in-memory rate-limit cooldown and invalid-token shutdown through
+`internal/services/replies`. Removed the coordinator's unused delivery activity
+gate while retaining check cancellation/draining and enrollment identity fencing.
+Help and removal text, maintained guides and affected ADR amendments are updated.
+
+Added immutable migration 2 to discard the legacy queue, recipient gates and
+queue trigger. Migration coverage starts with a version 1 database containing a
+reserved delivery and verifies that credentials, enrollment, cached observation,
+history and manual cooldown survive. No application database was migrated in
+this session. Added silent scheduled change followed by cached `/status` coverage
+and reply cooldown boundary/cancellation and invalid-token admission tests.
+Existing manual/scheduled A → B → A history and scheduler behavior tests pass.
+
+Verification with Go 1.27.3 after `nvm use` (Node 26.13.0):
+
+- `go test ./...` passed.
+- `go test -race ./...` passed.
+- `go vet ./...` passed.
+- `go build -o /tmp/case-watch .` passed (exit 0).
+- Local links in changed Markdown documents and `git diff --check` passed.
+
+Go checks used `GOCACHE=/tmp/case-watch-go-cache` because the default build cache
+was restricted. Build emitted a non-fatal module stat-cache write warning for the
+restricted module cache; compilation completed successfully. Tests used temporary
+databases and synthetic transports/HTTP fixtures. No live portal/Telegram calls,
+deployment or target-device acceptance was performed.
+
+## 2026-11-08: Review and simplify after notification removal
+
+Reviewed tracking, persistence, Telegram transport, reply sending and runtime
+wiring for obsolete delivery assumptions. Simplified history insertion to return
+only an error, removed its unused insert-ID lookup, and made removal wait directly
+for its single active check. Removed unused `ErrNotEligible`, `ErrSchema` and
+`instant` storage helpers. Simplified send outcomes to accepted/failed/rate-limited/
+invalid-token, removing unused Telegram message IDs and blocking/permanent/transient
+retry classifications. Updated migration fixture setup and ordered-message polling
+coverage. Corrected stale domain comments and the maintained Telegram guide.
+Reply serialization and runtime supervision remain necessary for asynchronous
+enrollment replies, rate-limit coordination and orderly shutdown.
+
+Fresh verification with Go 1.27.3 after `nvm use` passed: affected package tests,
+`go test ./...`, `go test -race ./...`, `go vet ./...`, and
+`go build -o /tmp/case-watch .`. Changed-document relative links and
+`git diff --check` passed. Checks used `GOCACHE=/tmp/case-watch-go-cache`;
+the build again exited 0 with the non-fatal restricted module stat-cache warning
+recorded above. No live portal/Telegram calls, deployment or target-device
+acceptance was performed.
+
+## 2026-11-08: Uncached correctness review of notification removal
+
+Re-reviewed the full affected implementation: migration drop ordering, tracking
+cache/history transaction boundaries, single-flight removal and shutdown drains,
+reply cooldown/token handling, and the absence of automatic send paths. No new
+production defect was identified. Added a real SQLite history-insert failure test
+that verifies cache stage/time rollback, supplementing the existing substituted
+storage-failure test. Temporarily bypassing the transaction made the new test fail
+with an incorrectly updated cache; restoring the implementation made it pass.
+Strengthened migration coverage to verify both manual/case cooldowns, complete
+credentials, and clean schema version 2 metadata.
+
+Fresh verification with Go 1.27.3 after `nvm use`:
+
+- Focused rollback and version 1 migration tests passed without cached results.
+- `go test -count=1 ./...` passed.
+- `go test -race -count=1 ./...` passed.
+- `go vet ./...` and `go build -o /tmp/case-watch .` passed.
+- Changed-document relative links and `git diff --check` passed.
+
+The initial uncached full suites hit the sandbox's local-socket restriction in
+existing portal HTTP fixtures. Both suites then passed with approved local socket
+access. Earlier verification runs had reused cached portal package results; these
+uncached runs execute that package too. Checks used the temporary Go build cache;
+the build emitted the previously recorded non-fatal module-cache warning. All
+network exchanges were synthetic fixtures. Live portal/Telegram, deployment and
+target-device acceptance remain unverified.

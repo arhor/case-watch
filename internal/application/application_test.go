@@ -13,7 +13,6 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/notifications"
 	"github.com/arhor/case-watch/internal/services/tracking"
 	"github.com/go-telegram/bot/models"
 )
@@ -94,7 +93,7 @@ func (t *transport) Send(ctx context.Context, owner int64, text string) (domain.
 	if t.send != nil {
 		return t.send(ctx, owner, text)
 	}
-	return domain.SendOutcome{Category: domain.SendAccepted, MessageID: 1}, nil
+	return domain.SendOutcome{Category: domain.SendAccepted}, nil
 }
 func (f *fixture) run(ctx context.Context, d dependencies) error {
 	d.lookup = f.lookup
@@ -253,42 +252,6 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 	}
 }
 
-func TestRunShouldRecoverUncertainReservationsBeforePollingWhenStarted(t *testing.T) {
-	// Given
-	f := setup(t)
-	s := f.open(t)
-	id := seed(t, s, 1)
-	now := time.Now()
-	if err := (tracking.Persistence{DB: s}).Observe(context.Background(), 1, id, domain.Observation{Stage: "B", CheckedAt: now}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (notifications.Persistence{DB: s}).ReserveDelivery(context.Background(), 1, now); err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	recoveredBeforePolling := false
-	// When
-	err := f.run(ctx, dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
-		return &transport{poll: func(context.Context, func(context.Context, *models.Update)) error {
-			defer cancel()
-			reopened, openErr := repositories.NewStore(context.Background(), f.db)
-			if openErr != nil {
-				return openErr
-			}
-			defer reopened.Close()
-			rows, err := reopened.Pending.FindByRecipient(context.Background(), 1)
-			recoveredBeforePolling = err == nil && len(rows) == 1 && rows[0].Status != "reserved" && rows[0].LifetimeAttempts == 1 && rows[0].Failure == "uncertain"
-			return nil
-		}}, nil
-	}})
-	// Then
-	if err != nil || !recoveredBeforePolling {
-		t.Fatalf("startup=%v recovery before polling=%t", err, recoveredBeforePolling)
-	}
-}
-
 func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *testing.T) {
 	// Given
 	f := setup(t)
@@ -336,9 +299,6 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 	if err := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (notifications.Persistence{DB: s}).ReserveDelivery(context.Background(), 101, time.Now()); err != nil {
-		t.Fatal(err)
-	}
 	s.Close()
 	started, validated := false, false
 	// When
@@ -356,9 +316,9 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 	defer lock.close()
 	s = f.open(t)
 	defer s.Close()
-	rows, readErr := s.Pending.FindByRecipient(context.Background(), 101)
-	if !errors.Is(err, errStartup) || !validated || started || readErr != nil || len(rows) != 1 || rows[0].Status != "reserved" {
-		t.Fatalf("error=%v validated=%t started=%t queue=%+v read=%v", err, validated, started, rows, readErr)
+	enrollment, readErr := s.Enrollments.FindByOwner(context.Background(), 101)
+	if !errors.Is(err, errStartup) || !validated || started || readErr != nil || enrollment.Observation.Stage != "B" {
+		t.Fatalf("error=%v validated=%t started=%t enrollment=%+v read=%v", err, validated, started, enrollment, readErr)
 	}
 }
 
@@ -385,72 +345,11 @@ func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T)
 	}
 }
 
-func TestRunShouldPersistAcknowledgmentBeforeClosingDatabaseWhenSendIsCanceled(t *testing.T) {
-	// Given
-	f := setup(t)
-	s := f.open(t)
-	id := seed(t, s, 101)
-	if err := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
-	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		done <- f.run(ctx, dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
-			return &transport{send: func(ctx context.Context, _ int64, _ string) (domain.SendOutcome, error) {
-				close(entered)
-				<-ctx.Done()
-				close(canceled)
-				<-release
-				return domain.SendOutcome{Category: domain.SendAccepted, MessageID: 42}, nil
-			}}, nil
-		}})
-	}()
-	wait(t, entered)
-	// When
-	cancel()
-	wait(t, canceled)
-	// Then
-	select {
-	case <-done:
-		t.Fatal("service returned before the send drained")
-	default:
-	}
-	lock, lockErr := acquire(f.db)
-	if lock != nil {
-		lock.close()
-	}
-	if !errors.Is(lockErr, errLocked) {
-		t.Fatal("lock released before acknowledgment")
-	}
-	close(release)
-	if err := result(t, done); err != nil {
-		t.Fatal(err)
-	}
-	s = f.open(t)
-	defer s.Close()
-	rows, err := s.Pending.FindByRecipient(context.Background(), 101)
-	if err != nil || len(rows) != 1 || rows[0].Status != "delivered" || rows[0].MessageID != 42 {
-		t.Fatalf("acknowledgment did not survive shutdown: rows=%+v error=%v", rows, err)
-	}
-}
-
 func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
-	for _, source := range []string{"polling", "deletion", "direct", "durable"} {
+	for _, source := range []string{"polling", "deletion", "direct"} {
 		t.Run(source, func(t *testing.T) {
 			// Given
 			f := setup(t)
-			if source == "durable" {
-				s := f.open(t)
-				id := seed(t, s, 101)
-				if err := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
-					t.Fatal(err)
-				}
-				s.Close()
-			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			stopped := false
@@ -479,15 +378,6 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 			// Then
 			if !errors.Is(err, errService) || !stopped || ctx.Err() != nil {
 				t.Fatalf("error=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
-			}
-			s := f.open(t)
-			defer s.Close()
-			rows, readErr := s.Pending.FindByRecipient(context.Background(), 101)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if source == "durable" && (len(rows) != 1 || rows[0].Status != "pending" || rows[0].CycleAttempts != 0 || rows[0].LifetimeAttempts != 0) {
-				t.Fatalf("queue=%+v", rows)
 			}
 		})
 	}

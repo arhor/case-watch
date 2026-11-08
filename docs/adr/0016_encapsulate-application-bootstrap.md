@@ -290,3 +290,11 @@ bounded Go compilation concurrency; the repository Dockerfile and final trust
 store do not contain the session CA. That local image build succeeded. No live
 Telegram/portal acceptance, application deployment or target-device execution
 was performed.
+
+### 2026-11-08: Automatic notifications removed
+
+[ADR 0018](0018_remove-automatic-notifications.md) replaces notification-specific
+requirements in this record. Scheduled and manual tracking keep cache/history
+without enqueueing outbound work. The runtime now supervises Telegram intake and
+the scheduler; direct replies retain rate limits and invalid-token shutdown.
+Migration 2 discards legacy delivery state while preserving tracking data.
