@@ -1,6 +1,6 @@
 # Portal client
 
-The production portal repository is `internal/repositories/portal.NewClient(portal.Options{})`. It retrieves a case's current stage through a bounded Vaadin RPC exchange.
+The production portal client is `internal/services/cases/portal.NewClient(portal.Options{})`. It retrieves a case's current stage through a bounded Vaadin RPC exchange.
 
 Each check starts with a fresh cookie jar and a 60-second overall deadline. Individual requests have a 10-second timeout. The client makes at most six HTTP requests, spaces request starts by at least two seconds, and does not follow redirects or retry requests. Production connections are not reused, and request bodies cannot be replayed automatically. The client discovers current UI identifiers instead of reusing recorded session identifiers.
 

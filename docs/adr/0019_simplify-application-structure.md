@@ -78,3 +78,14 @@ Uncached ordinary/race suites, vet, root build and changed-document link/whitesp
 checks passed with Go 1.27.3. Temporary SQLite fixtures exercise storage failures
 through the actual case service. See [implementation progress](../implementation-progress.md)
 for commands and limits. No live deployment or external-service acceptance is claimed.
+
+### 2026-11-08: Keep API clients outside database repositories
+
+The maintainer clarified that `internal/repositories` means database repositories
+or DAOs. Move the Telegram client into `internal/bot` alongside its consumer,
+using `bot.NewClient(bot.ClientConfig)` for application construction. The bot's
+small polling/sending/deletion interface is named Transport to distinguish it from
+the concrete Client. Move the independent case-status HTTP client to
+`internal/services/cases/portal`. Keep application-owned construction and existing behavior;
+no forwarding packages, dependency or schema changes are needed. Bot client and
+conversation tests share their synthetic HTTP fixture helpers.

@@ -14,7 +14,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
-	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
@@ -342,7 +341,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 // supplying only synthetic HTTP exchanges and a deterministic clock.
 func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
-	client, err := telegramrepository.New(telegramrepository.Config{
+	client, err := NewClient(ClientConfig{
 		Token: "123:synthetic-token", Endpoint: server.URL,
 		HTTPClient: server.Client(), Diagnostic: c.Diagnostic,
 	})

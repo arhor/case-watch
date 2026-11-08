@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
@@ -23,15 +22,15 @@ type Cases interface {
 	HasEnrollment(context.Context, int64) (bool, error)
 }
 
-// Client supplies Telegram polling, replies and credential-message deletion.
-type Client interface {
+// Transport supplies Telegram polling, replies and credential-message deletion.
+type Transport interface {
 	domain.Sender
 	Poll(context.Context, func(context.Context, *models.Update)) error
 	DeleteMessage(context.Context, int64, int) error
 }
 
 type Config struct {
-	Client     Client
+	Client     Transport
 	Cases      Cases
 	Clock      domain.Clock
 	Diagnostic func(string)
@@ -43,7 +42,7 @@ type state struct {
 	cancel            context.CancelFunc
 }
 type Bot struct {
-	client  Client
+	client  Transport
 	replies *replySender
 	config  Config
 	mu      sync.Mutex
@@ -140,7 +139,7 @@ func (a *Bot) reply(ctx context.Context, id int64, text string) {
 }
 func (a *Bot) erase(ctx context.Context, id int64, message int) {
 	err := a.client.DeleteMessage(ctx, id, message)
-	if err != nil && !errors.Is(err, telegramrepository.ErrInvalidToken) {
+	if err != nil && !errors.Is(err, ErrInvalidToken) {
 		a.diagnostic("telegram credential deletion failure")
 	}
 }

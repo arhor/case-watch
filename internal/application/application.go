@@ -13,10 +13,9 @@ import (
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
-	"github.com/arhor/case-watch/internal/repositories/portal"
-	telegram "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/arhor/case-watch/internal/scheduler"
 	"github.com/arhor/case-watch/internal/services/cases"
+	"github.com/arhor/case-watch/internal/services/cases/portal"
 )
 
 type clock struct{}
@@ -25,14 +24,14 @@ func (clock) Now() time.Time { return time.Now() }
 
 // Only external boundaries are replaceable in offline application tests.
 type telegramClient interface {
-	bot.Client
+	bot.Transport
 	Validate(context.Context) error
 }
 type dependencies struct {
 	lookup   func(string) (string, bool)
 	report   func(string)
 	portal   func() domain.Portal
-	telegram func(telegram.Config) (telegramClient, error)
+	telegram func(bot.ClientConfig) (telegramClient, error)
 }
 
 func Run(ctx context.Context) error {
@@ -88,9 +87,9 @@ func run(ctx context.Context, d dependencies) (result error) {
 	defer caseService.Shutdown()
 	newClient := d.telegram
 	if newClient == nil {
-		newClient = func(c telegram.Config) (telegramClient, error) { return telegram.New(c) }
+		newClient = func(c bot.ClientConfig) (telegramClient, error) { return bot.NewClient(c) }
 	}
-	client, err := newClient(telegram.Config{Token: cfg.TelegramBotToken, Diagnostic: diagnostic})
+	client, err := newClient(bot.ClientConfig{Token: cfg.TelegramBotToken, Diagnostic: diagnostic})
 	if err != nil {
 		return errStartup
 	}

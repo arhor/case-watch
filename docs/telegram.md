@@ -1,8 +1,8 @@
 # Telegram bot
 
-`internal/application` constructs one `internal/repositories/telegram.Client`
+`internal/application` constructs one `internal/bot.Client` using `bot.NewClient(bot.ClientConfig{...})`
 without network requests (`WithSkipGetMe`) and injects it into `internal/bot.New`
-along with the case service and clock. The bot consumes a small local `Cases`
+along with the case service and clock. The bot accepts that client through its `Transport` interface and consumes a small local `Cases`
 interface for enrollment, status, removal and enrollment existence checks.
 It receives no repository reader or application runtime object.
 
@@ -23,7 +23,7 @@ Invalid-token sends close send admission and report `telegram_invalid_token`,
 which stops the application. Polling and credential-message deletion report
 structured token rejection through the same diagnostic category.
 
-`internal/repositories/telegram.Client` owns the Bot API library and transport
+`internal/bot.Client` owns the Bot API library and transport
 configuration. It returns sanitized accepted/failed/rate-limited/invalid-token
 send outcomes. Raw errors, tokens and message text never enter diagnostics.
 Messages use plain text without parse mode, preserving portal stage text.

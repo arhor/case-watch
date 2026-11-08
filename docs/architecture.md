@@ -6,10 +6,11 @@ Case Watch has one case service, a Telegram bot, a weekday scheduler and reposit
 ```text
 internal/
   application/       construction, startup, shutdown and database file protection
-  bot/               Telegram commands, enrollment drafts and bounded replies
+  bot/               Telegram API client, commands, enrollment drafts and replies
   scheduler/         the six Warsaw weekday checks
   services/cases/    enrollment, status checks, history and removal
-  repositories/      SQLite repositories and portal/Telegram clients
+    portal/          external case-status API client
+  repositories/      SQLite repositories, transactions and migrations
   domain/            shared values and small external collaborator interfaces
 ```
 
@@ -31,7 +32,7 @@ to overwrite each other. Check cooldowns persist in SQLite; successful cache age
 measured from completion. Portal requests run outside database transactions.
 Storage failures invoke the application's cancellation callback directly.
 
-The bot owns conversation drafts and removal confirmation. Its private reply sender
+The bot package owns its Telegram API client, conversation drafts and removal confirmation. Its private reply sender
 serializes Telegram sends and records rate limits in memory. Invalid tokens stop
 the application. Scheduled checks update cache/history silently; results are viewed
 with `/status`.

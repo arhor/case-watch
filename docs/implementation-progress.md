@@ -613,3 +613,25 @@ with the previously recorded non-fatal module stat-cache warning. Maintained
 architecture, README, product, storage, Telegram and operations guides now match
 the current code. No live portal/Telegram, deployment or target-device acceptance
 was performed.
+
+## 2026-11-08: Place API clients beside their consumers
+
+Moved Telegram API implementation/tests into `internal/bot`, with
+`bot.NewClient(bot.ClientConfig)` constructing the concrete Client. Renamed the
+bot's small consumer interface to Transport and removed the cross-package token
+error reference. Bot conversation/client tests share their synthetic HTTP helpers.
+Moved the portal client and fixtures to `internal/services/cases/portal`, beside
+the consuming case service. Application constructs both integrations explicitly;
+`internal/repositories` now contains SQLite repositories/migrations only. Updated
+maintained architecture, Telegram, portal and storage guides and appended the
+placement clarification to ADRs 0015/0019. No behavior, schema or dependency change.
+
+Verification with Go 1.27.3 after `nvm use` (Node 26.13.0): focused bot/application
+tests, `go test -count=1 ./...`, `go test -race -count=1 ./...`, `go vet ./...`,
+`go build -o /tmp/case-watch .`, changed/moved-document relative links and
+`git diff --check` passed. No obsolete API-client imports remain. The final full
+suites ran after the portal move to its consumer package; approved local socket
+access was used only for existing synthetic portal fixtures. Checks used the
+temporary Go build cache. Build exited 0 with the previously recorded non-fatal
+module stat-cache warning. No live Telegram/portal or deployment acceptance was
+performed.

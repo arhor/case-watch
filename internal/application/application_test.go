@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arhor/case-watch/internal/bot"
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
-	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -142,7 +142,7 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 			// When
 			err := f.run(context.Background(), dependencies{
 				portal:   func() domain.Portal { calls++; return nil },
-				telegram: func(telegramrepository.Config) (telegramClient, error) { calls++; return nil, nil },
+				telegram: func(bot.ClientConfig) (telegramClient, error) { calls++; return nil, nil },
 			})
 			// Then
 			if err == nil || calls != 0 || strings.Contains(err.Error(), "secret") {
@@ -167,7 +167,7 @@ func TestRunShouldExcludeOtherServicesWhenDatabaseLocked(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- f.run(ctx, dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
+		done <- f.run(ctx, dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 			return &transport{poll: func(ctx context.Context, _ func(context.Context, *models.Update)) error {
 				close(started)
 				<-ctx.Done()
@@ -214,7 +214,7 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 				<-release
 				return domain.Observation{}, ctx.Err()
 			})
-		}, telegram: func(telegramrepository.Config) (telegramClient, error) {
+		}, telegram: func(bot.ClientConfig) (telegramClient, error) {
 			return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 				handle(ctx, message(1, "/status"))
 				close(callerDone)
@@ -258,7 +258,7 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 			// Given
 			f := setup(t)
 			// When
-			err := f.run(context.Background(), dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
+			err := f.run(context.Background(), dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 				return &transport{poll: func(context.Context, func(context.Context, *models.Update)) error {
 					switch outcome {
 					case "error":
@@ -289,7 +289,7 @@ func TestRunShouldDrainNormallyWhenRateLimitedDirectSendIsCancelled(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// When
-	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(telegramrepository.Config) (telegramClient, error) {
+	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 			handle(ctx, message(101, "/help"))
 			return ctx.Err()
@@ -315,7 +315,7 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 	s.Close()
 	started, validated := false, false
 	// When
-	err := f.run(context.Background(), dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
+	err := f.run(context.Background(), dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return &transport{validate: func(context.Context) error { validated = true; return errors.New("synthetic-token") }, poll: func(context.Context, func(context.Context, *models.Update)) error { started = true; return nil }, send: func(context.Context, int64, string) (domain.SendOutcome, error) {
 			started = true
 			return domain.SendOutcome{}, nil
@@ -339,7 +339,7 @@ func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T)
 	// Given
 	f := setup(t)
 	// When
-	err := f.run(context.Background(), dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
+	err := f.run(context.Background(), dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return nil, errors.New("synthetic-secret")
 	}})
 	// Then
@@ -367,7 +367,7 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 			defer cancel()
 			stopped := false
 			// When
-			err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(c telegramrepository.Config) (telegramClient, error) {
+			err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(c bot.ClientConfig) (telegramClient, error) {
 				return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 					defer func() { stopped = true }()
 					if source == "polling" {
@@ -383,7 +383,7 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 					return ctx.Err()
 				}, delete: func(context.Context, int64, int) error {
 					c.Diagnostic("telegram_invalid_token")
-					return telegramrepository.ErrInvalidToken
+					return bot.ErrInvalidToken
 				}, send: func(context.Context, int64, string) (domain.SendOutcome, error) {
 					return domain.SendOutcome{Category: domain.SendInvalidToken}, errors.New("sanitized")
 				}}, nil
@@ -401,7 +401,7 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 	f := setup(t)
 	started := false
 	// When
-	err := f.run(context.Background(), dependencies{report: func(string) {}, telegram: func(c telegramrepository.Config) (telegramClient, error) {
+	err := f.run(context.Background(), dependencies{report: func(string) {}, telegram: func(c bot.ClientConfig) (telegramClient, error) {
 		return &transport{validate: func(context.Context) error { c.Diagnostic("telegram_invalid_token"); return nil }, poll: func(context.Context, func(context.Context, *models.Update)) error { started = true; return nil }}, nil
 	}})
 	// Then
@@ -427,7 +427,7 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	defer cancel()
 	stopped := false
 	// When
-	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(telegramrepository.Config) (telegramClient, error) {
+	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 			db, err := sql.Open("sqlite", f.db)
 			if err != nil {

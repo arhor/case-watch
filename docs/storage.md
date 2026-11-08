@@ -1,6 +1,6 @@
 # SQLite data access
 
-`internal/repositories/models.go` defines persistence values. Entity repositories own SQL for enrollments, history and cooldowns. Services compose these repositories and choose transaction boundaries under [ADR 0011](adr/0011_move-transaction-boundaries-to-services.md) and [ADR 0015](adr/0015_adopt-three-layer-application-structure.md). `Store` owns the single SQLite connection, migrations, and transaction lifecycle.
+`internal/repositories/models.go` defines persistence values. Entity repositories own SQL for enrollments, history and cooldowns. Services compose these repositories and choose transaction boundaries under [ADR 0011](adr/0011_move-transaction-boundaries-to-services.md) and [ADR 0015](adr/0015_adopt-three-layer-application-structure.md). `Store` owns the single SQLite connection, migrations, and transaction lifecycle. This package contains database access only; Telegram transport belongs to `internal/bot` and the external portal client to `internal/services/cases/portal`.
 
 ## Repositories and transactions
 

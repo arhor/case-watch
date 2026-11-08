@@ -1,11 +1,10 @@
-package telegram
+package bot
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +26,7 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 			}))
 			defer server.Close()
 
-			a, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client()})
+			a, err := NewClient(ClientConfig{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,8 +58,8 @@ func TestValidateShouldCheckAcceptanceWithoutLeakingSecretsWhenTelegramResponds(
 				}
 				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": code, "description": "synthetic-secret"})
 			}))
-			config := Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Diagnostic: func(s string) { logs = append(logs, s) }}
-			a, err := New(config)
+			config := ClientConfig{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client(), Diagnostic: func(s string) { logs = append(logs, s) }}
+			a, err := NewClient(config)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,9 +82,9 @@ func TestValidateShouldCheckAcceptanceWithoutLeakingSecretsWhenTelegramResponds(
 
 func TestValidateShouldHonorCancellationWhenStartupIsCanceled(t *testing.T) {
 	// Given
-	config := Config{Token: "123:synthetic-token"}
+	config := ClientConfig{Token: "123:synthetic-token"}
 	config.HTTPClient = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() })}
-	a, err := New(config)
+	a, err := NewClient(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +100,7 @@ func TestValidateShouldHonorCancellationWhenStartupIsCanceled(t *testing.T) {
 
 func TestPollShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
 	// Given
-	client, err := New(Config{Token: "123:synthetic-token"})
+	client, err := NewClient(ClientConfig{Token: "123:synthetic-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +118,7 @@ func TestPollShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
 
 func TestPollShouldKeepPollingAvailableWhenHandlerIsMissing(t *testing.T) {
 	// Given
-	client, err := New(Config{Token: "123:synthetic-token"})
+	client, err := NewClient(ClientConfig{Token: "123:synthetic-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +146,7 @@ func TestPollShouldDispatchMessagesInOrderWhenUpdatesArrive(t *testing.T) {
 		}
 		<-r.Context().Done()
 	}))
-	client, err := New(Config{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client()})
+	client, err := NewClient(ClientConfig{Token: "123:synthetic-token", Endpoint: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,22 +165,3 @@ func TestPollShouldDispatchMessagesInOrderWhenUpdatesArrive(t *testing.T) {
 		t.Fatalf("error=%v received=%v", err, received)
 	}
 }
-
-type fakeServer struct {
-	handler http.Handler
-	URL     string
-}
-
-func newServer(h http.Handler) *fakeServer { return &fakeServer{h, "https://offline.invalid"} }
-func (s *fakeServer) Close()               {}
-func (s *fakeServer) Client() *http.Client {
-	return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		w := httptest.NewRecorder()
-		s.handler.ServeHTTP(w, r)
-		return w.Result(), nil
-	})}
-}
-
-type roundTrip func(*http.Request) (*http.Response, error)
-
-func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

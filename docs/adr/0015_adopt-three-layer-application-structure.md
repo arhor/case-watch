@@ -121,3 +121,14 @@ Persistence adapter, monitoring decorator and runtime object. cases.Service owns
 transactions directly. The bot and scheduler live in direct internal packages;
 reply handling is private to the bot. The checked-in initial schema already
 excludes notifications; this structural refactor makes no schema change.
+
+### 2026-11-08: Keep API clients outside database repositories
+
+The maintainer clarified that `internal/repositories` means database repositories
+or DAOs. Move the Telegram client into `internal/bot` alongside its consumer,
+using `bot.NewClient(bot.ClientConfig)` for application construction. The bot's
+small polling/sending/deletion interface is named Transport to distinguish it from
+the concrete Client. Move the independent case-status HTTP client to
+`internal/services/cases/portal`. Keep application-owned construction and existing behavior;
+no forwarding packages, dependency or schema changes are needed. Bot client and
+conversation tests share their synthetic HTTP fixture helpers.
