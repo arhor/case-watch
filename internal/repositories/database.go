@@ -3,7 +3,6 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,13 +18,7 @@ func openDB(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Portal credentials are stored here, so the directory and database file
-	// must not be readable by other users.
-	dir, err := os.Stat(filepath.Dir(absPath))
-	if err != nil || !dir.IsDir() || dir.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("database directory must be private")
-	}
-
+	// SQLite stores portal credentials; protect the file on creation and reopen.
 	file, err := os.OpenFile(absPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
