@@ -24,6 +24,48 @@ var (
 	ErrNotFound = repositories.ErrNotFound
 )
 
+type check struct {
+	cancel     context.CancelFunc
+	done       chan struct{}
+	status     domain.Status
+	err        error
+	waiters    int
+	enrollment bool
+}
+
+type ownerState struct {
+	check       *check
+	removing    bool
+	removalDone chan struct{}
+}
+
+type Service struct {
+	mu             sync.Mutex
+	closed         bool
+	owners         map[int64]*ownerState
+	db             *repositories.Store
+	onStorageError func()
+	portal         domain.Portal
+	clock          domain.Clock
+}
+
+type Config struct {
+	DB             *repositories.Store
+	Portal         domain.Portal
+	Clock          domain.Clock
+	OnStorageError func()
+}
+
+func New(config Config) *Service {
+	return &Service{
+		owners:         make(map[int64]*ownerState),
+		db:             config.DB,
+		portal:         config.Portal,
+		clock:          config.Clock,
+		onStorageError: config.OnStorageError,
+	}
+}
+
 // HasEnrollment lets interactive entry points ask a business-level question
 // without reading an enrollment repository directly.
 func (c *Service) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
@@ -54,91 +96,6 @@ func (c *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
 		}
 	}
 	return owners, nil
-}
-
-type check struct {
-	cancel     context.CancelFunc
-	done       chan struct{}
-	status     domain.Status
-	err        error
-	waiters    int
-	enrollment bool
-}
-type ownerState struct {
-	check       *check
-	removing    bool
-	removalDone chan struct{}
-}
-type Service struct {
-	mu             sync.Mutex
-	closed         bool
-	owners         map[int64]*ownerState
-	db             *repositories.Store
-	onStorageError func()
-	portal         domain.Portal
-	clock          domain.Clock
-}
-
-// Config contains the case service's repositories and external collaborators.
-type Config struct {
-	DB             *repositories.Store
-	Portal         domain.Portal
-	Clock          domain.Clock
-	OnStorageError func()
-}
-
-func New(config Config) *Service {
-	return &Service{owners: make(map[int64]*ownerState), db: config.DB, portal: config.Portal, clock: config.Clock, onStorageError: config.OnStorageError}
-}
-func (c *Service) state(owner int64) *ownerState {
-	s := c.owners[owner]
-	if s == nil {
-		s = &ownerState{}
-		c.owners[owner] = s
-	}
-	return s
-}
-func (c *Service) storageError(ctx context.Context, err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, context.Canceled) {
-		return context.Canceled
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return context.DeadlineExceeded
-	}
-	if errors.Is(err, repositories.ErrNotFound) {
-		return repositories.ErrNotFound
-	}
-	if errors.Is(err, repositories.ErrExists) {
-		return repositories.ErrExists
-	}
-	if ctx.Err() == nil && c.onStorageError != nil {
-		c.onStorageError()
-	}
-	return ErrStorage
-}
-func canceled(ctx context.Context, fallback error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return fallback
-}
-func (c *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
-	defer func() { credentials = domain.Credentials{} }()
-	bounded, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	o, err := c.portal.Check(bounded, credentials)
-	if err != nil {
-		return domain.Observation{}, canceled(bounded, ErrCheck)
-	}
-	if err = bounded.Err(); err != nil {
-		return domain.Observation{}, err
-	}
-	// Completion time belongs to this case service, not a supplied portal timestamp.
-	o.CheckedAt = c.clock.Now()
-	return o, nil
 }
 
 func (c *Service) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
@@ -202,9 +159,6 @@ func (c *Service) Enroll(ctx context.Context, owner int64, credentials domain.Cr
 	return o, nil
 }
 
-func cached(o domain.Observation) domain.Status {
-	return domain.Status{Observation: &o}
-}
 func (c *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
 	return c.check(ctx, owner, true)
 }
@@ -215,6 +169,135 @@ func (c *Service) Status(ctx context.Context, owner int64) (domain.Status, error
 func (c *Service) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
 	return c.check(ctx, owner, false)
 }
+
+// Remove requires confirmation at the conversation boundary. Once admitted it
+// drains canceled work before returning, even when the caller cancels; cancellation
+// then prevents deletion. Failed removal retains the enrollment and reopens work.
+func (c *Service) Remove(ctx context.Context, owner int64) error {
+	if owner <= 0 {
+		return ErrDenied
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return ErrClosed
+	}
+	s := c.state(owner)
+	if s.removing {
+		c.mu.Unlock()
+		return ErrRemoving
+	}
+	s.removing = true
+	s.removalDone = make(chan struct{})
+	defer func() { c.mu.Lock(); s.removing = false; close(s.removalDone); s.removalDone = nil; c.mu.Unlock() }()
+	f := s.check
+	if f != nil {
+		f.cancel()
+	}
+	c.mu.Unlock()
+	if f != nil {
+		<-f.done
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
+	if err != nil {
+		return c.storageError(ctx, err)
+	}
+	if e.OwnerID != owner {
+		return ErrDenied
+	}
+	return c.storageError(ctx, c.deleteEnrollment(ctx, owner, e.ID))
+}
+
+// Shutdown permanently closes admission, cancels every owner check and drains
+// work before storage may close. Concurrent calls are safe and all wait for the
+// same admitted work. Collaborators must honor cancellation.
+func (c *Service) Shutdown() {
+	c.mu.Lock()
+	c.closed = true
+	var done []<-chan struct{}
+	for _, s := range c.owners {
+		if s.check != nil {
+			s.check.cancel()
+			done = append(done, s.check.done)
+		}
+		if s.removalDone != nil {
+			done = append(done, s.removalDone)
+		}
+	}
+	c.mu.Unlock()
+	for _, ch := range done {
+		<-ch
+	}
+}
+
+// -- Internal implementation ---------------------------------------------------------------------
+
+func (c *Service) state(owner int64) *ownerState {
+	s := c.owners[owner]
+	if s == nil {
+		s = &ownerState{}
+		c.owners[owner] = s
+	}
+	return s
+}
+
+func (c *Service) storageError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	if errors.Is(err, repositories.ErrNotFound) {
+		return repositories.ErrNotFound
+	}
+	if errors.Is(err, repositories.ErrExists) {
+		return repositories.ErrExists
+	}
+	if ctx.Err() == nil && c.onStorageError != nil {
+		c.onStorageError()
+	}
+	return ErrStorage
+}
+
+func canceled(ctx context.Context, fallback error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fallback
+}
+
+func (c *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
+	defer func() { credentials = domain.Credentials{} }()
+	bounded, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	o, err := c.portal.Check(bounded, credentials)
+	if err != nil {
+		return domain.Observation{}, canceled(bounded, ErrCheck)
+	}
+	if err = bounded.Err(); err != nil {
+		return domain.Observation{}, err
+	}
+	// Completion time belongs to this case service, not a supplied portal timestamp.
+	o.CheckedAt = c.clock.Now()
+	return o, nil
+}
+
+func cached(o domain.Observation) domain.Status {
+	return domain.Status{Observation: &o}
+}
+
 func (c *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
 	if owner <= 0 {
 		return domain.Status{}, ErrDenied
@@ -298,12 +381,14 @@ func (c *Service) wait(ctx context.Context, f *check, drain bool) (domain.Status
 		return status, ctx.Err()
 	}
 }
+
 func later(a, b time.Time) time.Time {
 	if a.After(b) {
 		return a
 	}
 	return b
 }
+
 func copyStatus(s domain.Status) domain.Status {
 	if s.Observation != nil {
 		o := *s.Observation
@@ -311,6 +396,7 @@ func copyStatus(s domain.Status) domain.Status {
 	}
 	return s
 }
+
 func (c *Service) refresh(ctx context.Context, owner int64, s *ownerState, f *check, e repositories.Enrollment) {
 	credentials := e.Credentials
 	o, err := c.baseline(ctx, credentials)
@@ -334,72 +420,4 @@ func (c *Service) refresh(ctx context.Context, owner int64, s *ownerState, f *ch
 	f.err = err
 	s.check = nil
 	close(f.done)
-}
-
-// Remove requires confirmation at the conversation boundary. Once admitted it
-// drains canceled work before returning, even when the caller cancels; cancellation
-// then prevents deletion. Failed removal retains the enrollment and reopens work.
-func (c *Service) Remove(ctx context.Context, owner int64) error {
-	if owner <= 0 {
-		return ErrDenied
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return ErrClosed
-	}
-	s := c.state(owner)
-	if s.removing {
-		c.mu.Unlock()
-		return ErrRemoving
-	}
-	s.removing = true
-	s.removalDone = make(chan struct{})
-	defer func() { c.mu.Lock(); s.removing = false; close(s.removalDone); s.removalDone = nil; c.mu.Unlock() }()
-	f := s.check
-	if f != nil {
-		f.cancel()
-	}
-	c.mu.Unlock()
-	if f != nil {
-		<-f.done
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
-	if err != nil {
-		return c.storageError(ctx, err)
-	}
-	if e.OwnerID != owner {
-		return ErrDenied
-	}
-	return c.storageError(ctx, c.deleteEnrollment(ctx, owner, e.ID))
-}
-
-// Shutdown permanently closes admission, cancels every owner check and drains
-// work before storage may close. Concurrent calls are safe and all wait for the
-// same admitted work. Collaborators must honor cancellation.
-func (c *Service) Shutdown() {
-	c.mu.Lock()
-	c.closed = true
-	var done []<-chan struct{}
-	for _, s := range c.owners {
-		if s.check != nil {
-			s.check.cancel()
-			done = append(done, s.check.done)
-		}
-		if s.removalDone != nil {
-			done = append(done, s.removalDone)
-		}
-	}
-	c.mu.Unlock()
-	for _, ch := range done {
-		<-ch
-	}
 }

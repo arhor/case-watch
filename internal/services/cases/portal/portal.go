@@ -37,6 +37,7 @@ func object(b []byte, marker string) (map[string]any, error) {
 	err := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(b[i+len(marker):]))).Decode(&v)
 	return v, err
 }
+
 func (s *state) apply(v map[string]any) error {
 	sync, sok := v["syncId"].(float64)
 	client, cok := v["clientId"].(float64)
@@ -125,6 +126,7 @@ func (s *state) apply(v map[string]any) error {
 	}
 	return nil
 }
+
 func (s *state) find(tag, label string) (float64, error) {
 	var found []float64
 	for n, p := range s.props {
@@ -148,6 +150,7 @@ func (s *state) find(tag, label string) (float64, error) {
 	}
 	return found[0], nil
 }
+
 func Probe(ctx context.Context, base, number, password string) (Result, error) {
 	return probe(ctx, base, number, password, 2*time.Second, 6)
 }
@@ -362,4 +365,6 @@ func (c *Client) run(ctx context.Context, number, password string) (result Resul
 	return result, &Error{Kind: Protocol}
 }
 
-func integer(v float64) bool { return v >= 0 && v <= 1<<53-1 && math.Trunc(v) == v }
+func integer(v float64) bool {
+	return v >= 0 && v <= 1<<53-1 && math.Trunc(v) == v
+}
