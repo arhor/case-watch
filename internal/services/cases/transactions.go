@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/database/store"
 )
 
 const (
@@ -22,7 +23,7 @@ func (this *Service) saveEnrollment(
 	credentials domain.Credentials,
 	observation domain.Observation,
 ) error {
-	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
 		return store.Enrollments.Create(ctx, owner, id, credentials, observation)
 	})
 }
@@ -33,7 +34,7 @@ func (this *Service) saveObservation(
 	id string,
 	observation domain.Observation,
 ) error {
-	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
 		e, err := store.Enrollments.FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
@@ -53,7 +54,7 @@ func (this *Service) deleteEnrollment(
 	owner int64,
 	id string,
 ) error {
-	return this.db.RunInTx(ctx, func(store *repositories.Store) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
 		if err := store.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
@@ -71,7 +72,7 @@ func (this *Service) checkEligibility(
 	manual bool,
 ) (time.Time, error) {
 	var next time.Time
-	err := this.db.RunInTx(ctx, func(store *repositories.Store) error {
+	err := this.db.RunInTx(ctx, func(store *store.Store) error {
 		var err error
 		next, err = eligibility(ctx, store, owner, id, manual)
 		return err
@@ -90,7 +91,7 @@ func (this *Service) reserveCheck(
 		return repositories.CheckReservation{}, repositories.ErrInvalid
 	}
 	var result repositories.CheckReservation
-	err := this.db.RunInTx(ctx, func(store *repositories.Store) error {
+	err := this.db.RunInTx(ctx, func(store *store.Store) error {
 		next, err := eligibility(ctx, store, owner, id, manual)
 		if err != nil {
 			return err
@@ -131,7 +132,7 @@ func (this *Service) reserveCheck(
 
 func eligibility(
 	ctx context.Context,
-	store *repositories.Store,
+	store *store.Store,
 	owner int64,
 	id string,
 	manual bool,

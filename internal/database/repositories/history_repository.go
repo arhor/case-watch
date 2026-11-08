@@ -7,9 +7,17 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 )
 
+type HistoryRepository struct {
+	executor QueryExecutor
+}
+
+func NewHistoryRepository(executor QueryExecutor) *HistoryRepository {
+	return &HistoryRepository{executor: executor}
+}
+
 // FindByEnrollment returns transitions belonging to the supplied owner and identity.
 func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]Transition, error) {
-	rows, err := this.db.QueryContext(ctx, `
+	rows, err := this.executor.QueryContext(ctx, `
 		SELECT h.sequence, h.enrollment_id, h.previous_stage, h.stage, h.checked_at
 		  FROM history AS h
 		  JOIN enrollments AS e
@@ -47,7 +55,7 @@ func (this *HistoryRepository) Append(ctx context.Context, id string, previous s
 	if !validID(id) || !validObservation(o) {
 		return ErrInvalid
 	}
-	_, err := this.db.ExecContext(ctx, `
+	_, err := this.executor.ExecContext(ctx, `
 		INSERT INTO history (enrollment_id, previous_stage, stage, checked_at)
 		VALUES (?, ?, ?, ?)
 	`, id, previous, o.Stage, stamp(o.CheckedAt))
@@ -61,7 +69,7 @@ func (this *HistoryRepository) DeleteByEnrollmentID(ctx context.Context, id stri
 	if !validID(id) {
 		return ErrInvalid
 	}
-	if _, err := this.db.ExecContext(ctx, `
+	if _, err := this.executor.ExecContext(ctx, `
 		DELETE FROM history
 		WHERE enrollment_id = ?
 	`, id); err != nil {

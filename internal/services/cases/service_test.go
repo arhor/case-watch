@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database"
+	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/scheduler"
 )
 
@@ -35,7 +37,8 @@ func (f portalFunc) Check(ctx context.Context, p domain.Credentials) (domain.Obs
 
 type fixture struct {
 	c     *Service
-	s     *repositories.Store
+	db    *sql.DB
+	s     *store.Store
 	clock *clock
 	path  string
 	calls atomic.Int32
@@ -45,11 +48,12 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	t.Helper()
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db")}
 	var err error
-	f.s, err = repositories.NewStore(context.Background(), f.path)
+	f.db, err = database.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { f.s.Close() })
+	f.s = store.New(f.db)
+	t.Cleanup(func() { f.db.Close() })
 	wrapped := portalFunc(func(ctx context.Context, creds domain.Credentials) (domain.Observation, error) {
 		f.calls.Add(1)
 		if p != nil {
@@ -60,6 +64,19 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	f.c = New(Config{DB: f.s, Portal: wrapped, Clock: f.clock})
 	return f
 }
+func (f *fixture) reopen(t *testing.T) {
+	t.Helper()
+	if err := f.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := database.Open(context.Background(), f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.db = db
+	f.s = store.New(db)
+}
+
 func (f *fixture) enroll(t *testing.T, owner int64) string {
 	t.Helper()
 	if _, err := f.c.Enroll(context.Background(), owner, plain); err != nil {
@@ -113,12 +130,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	f.clock.set(epoch.Add(time.Minute))
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
-	f.s.Close()
-	reopened, err := repositories.NewStore(context.Background(), f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.s = reopened
+	f.reopen(t)
 	f.c = New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls.Add(1)
 		return domain.Observation{}, errors.New("secret")
@@ -512,12 +524,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	// Given
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
-	f.s.Close()
-	reopened, err := repositories.NewStore(context.Background(), f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.s = reopened
+	f.reopen(t)
 	c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		t.Error("recent baseline triggered portal work")
 		return domain.Observation{}, nil
@@ -674,7 +681,7 @@ func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *tes
 		t.Run(map[bool]string{false: "active", true: "canceled"}[canceled], func(t *testing.T) {
 			// Given
 			f := setup(t, nil)
-			if err := f.s.Close(); err != nil {
+			if err := f.db.Close(); err != nil {
 				t.Fatal(err)
 			}
 			reports := 0

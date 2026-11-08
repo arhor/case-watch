@@ -1,4 +1,4 @@
-package repositories
+package database
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/arhor/case-watch/internal/repositories/migrations"
+	"github.com/arhor/case-watch/internal/database/migrations"
 )
 
-func openDB(ctx context.Context, path string) (*sql.DB, error) {
+func Open(ctx context.Context, path string) (*sql.DB, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err

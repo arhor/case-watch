@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`main.go` is the executable entry point. Application wiring and lifecycle code live in `internal/application`; business logic is under `internal/services/cases`; Telegram integration is split between `internal/bot` and `internal/telegram_bot.go`. Persistence code, models, and embedded SQL migrations are in `internal/repositories`, while scheduling, configuration, and shared domain contracts have dedicated packages under `internal/`. Tests sit beside production files as `*_test.go`; portal fixtures are in `internal/services/cases/portal/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
+`main.go` is the executable entry point. Application wiring and lifecycle code live in `internal/application`; business logic is under `internal/services/cases`; Telegram integration is split between `internal/bot` and `internal/telegram_bot.go`. Database setup, migrations, repository implementations, and transaction management are in `internal/database`, while scheduling, configuration, and shared domain contracts have dedicated packages under `internal/`. Tests sit beside production files as `*_test.go`; portal fixtures are in `internal/services/cases/portal/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
 
 ## Build, Test, and Development Commands
 

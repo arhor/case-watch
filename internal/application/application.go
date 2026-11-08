@@ -12,7 +12,8 @@ import (
 	"github.com/arhor/case-watch/internal/bot"
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database"
+	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/scheduler"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/arhor/case-watch/internal/services/cases/portal"
@@ -43,7 +44,7 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return err
 	}
-	db, err := repositories.NewStore(ctx, cfg.DBPath)
+	db, err := database.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return errStartup
 	}
@@ -52,6 +53,8 @@ func run(ctx context.Context, d dependencies) (result error) {
 			result = errors.Join(result, errService)
 		}
 	}()
+
+	storage := store.New(db)
 
 	work, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
@@ -71,7 +74,7 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if d.portal != nil {
 		portalClient = d.portal()
 	}
-	caseService := cases.New(cases.Config{DB: db, Portal: portalClient, Clock: clock, OnStorageError: fail})
+	caseService := cases.New(cases.Config{DB: storage, Portal: portalClient, Clock: clock, OnStorageError: fail})
 	defer caseService.Shutdown()
 	newClient := d.telegram
 	if newClient == nil {

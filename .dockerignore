@@ -9,4 +9,4 @@
 # Tests are verified outside the image; keep fixtures and test-only text out.
 **/*_test.go
 
-!internal/repositories/migrations/*.up.sql
+!internal/database/migrations/*.up.sql

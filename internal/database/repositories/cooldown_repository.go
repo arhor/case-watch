@@ -10,7 +10,11 @@ import (
 )
 
 type CooldownRepository struct {
-	db DBTX
+	executor QueryExecutor
+}
+
+func NewCooldownRepository(executor QueryExecutor) *CooldownRepository {
+	return &CooldownRepository{executor: executor}
 }
 
 func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
@@ -25,7 +29,7 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 		c       Cooldown
 		started int64
 	)
-	err := this.db.QueryRowContext(
+	err := this.executor.QueryRowContext(
 		ctx,
 		selectBySubjectTypeAndSubjectID,
 		subjectType,
@@ -51,7 +55,7 @@ func (this *CooldownRepository) Upsert(
 	if !validCooldownKey(c.SubjectType, c.SubjectID) || c.StartedAt.IsZero() {
 		return ErrInvalid
 	}
-	_, err := this.db.ExecContext(
+	_, err := this.executor.ExecContext(
 		ctx,
 		insertOrUpdateCooldown,
 		c.SubjectType,
@@ -72,7 +76,7 @@ func (this *CooldownRepository) DeleteBySubjectTypeAndSubjectID(
 	if !validCooldownKey(subjectType, subjectID) {
 		return ErrInvalid
 	}
-	_, err := this.db.ExecContext(
+	_, err := this.executor.ExecContext(
 		ctx,
 		deleteBySubjectTypeAndSubjectID,
 		subjectType,

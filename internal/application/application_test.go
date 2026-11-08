@@ -13,7 +13,9 @@ import (
 
 	"github.com/arhor/case-watch/internal/bot"
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database"
+	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -29,15 +31,15 @@ func setup(t *testing.T) *fixture {
 	return f
 }
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }
-func (f *fixture) open(t *testing.T) *repositories.Store {
+func (f *fixture) open(t *testing.T) (*store.Store, *sql.DB) {
 	t.Helper()
-	s, e := repositories.NewStore(context.Background(), f.db)
-	if e != nil {
-		t.Fatal(e)
+	db, err := database.Open(context.Background(), f.db)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return s
+	return store.New(db), db
 }
-func seed(t *testing.T, s *repositories.Store, owner int64) string {
+func seed(t *testing.T, s *store.Store, owner int64) string {
 	t.Helper()
 	id, e := repositories.NewEnrollmentID()
 	if e != nil {
@@ -146,9 +148,9 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *testing.T) {
 	// Given
 	f := setup(t)
-	s := f.open(t)
+	s, connection := f.open(t)
 	seed(t, s, 1)
-	s.Close()
+	connection.Close()
 	entered, cancelled, release, callerDone := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	done := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -186,8 +188,8 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 	if err := result(t, done); err != nil {
 		t.Fatal(err)
 	}
-	s = f.open(t)
-	defer s.Close()
+	s, connection = f.open(t)
+	defer connection.Close()
 	if _, err := s.Enrollments.FindByOwner(context.Background(), 1); err != nil {
 		t.Fatal("database failed to reopen")
 	}
@@ -243,12 +245,12 @@ func TestRunShouldDrainNormallyWhenRateLimitedDirectSendIsCancelled(t *testing.T
 func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails(t *testing.T) {
 	// Given
 	f := setup(t)
-	s := f.open(t)
+	s, connection := f.open(t)
 	id := seed(t, s, 101)
 	if err := s.Enrollments.UpdateObservation(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	s.Close()
+	connection.Close()
 	started, validated := false, false
 	// When
 	err := f.run(context.Background(), dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
@@ -258,8 +260,8 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 		}}, nil
 	}})
 	// Then
-	s = f.open(t)
-	defer s.Close()
+	s, connection = f.open(t)
+	defer connection.Close()
 	enrollment, readErr := s.Enrollments.FindByOwner(context.Background(), 101)
 	if !errors.Is(err, errStartup) || !validated || started || readErr != nil || enrollment.Observation.Stage != "B" {
 		t.Fatalf("error=%v validated=%t started=%t enrollment=%+v read=%v", err, validated, started, enrollment, readErr)
@@ -277,8 +279,8 @@ func TestRunShouldReleaseResourcesWhenTelegramConstructionFails(t *testing.T) {
 	if !errors.Is(err, errStartup) {
 		t.Fatalf("unsanitized startup error: %v", err)
 	}
-	s := f.open(t)
-	defer s.Close()
+	s, connection := f.open(t)
+	defer connection.Close()
 	if _, readErr := s.Enrollments.FindByOwner(context.Background(), 1); !errors.Is(readErr, repositories.ErrNotFound) {
 		t.Fatal(readErr)
 	}
@@ -339,9 +341,9 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	// Given
 	f := setup(t)
-	store := f.open(t)
-	seed(t, store, 101)
-	if err := store.Close(); err != nil {
+	s, connection := f.open(t)
+	seed(t, s, 101)
+	if err := connection.Close(); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
