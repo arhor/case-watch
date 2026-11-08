@@ -43,19 +43,7 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return err
 	}
-	path, err := databasePath(cfg.DBPath)
-	if err != nil {
-		return err
-	}
-	lock, err := acquire(path)
-	if err != nil {
-		return err
-	}
-	defer func() { result = errors.Join(result, lock.close()) }()
-	if err := databaseFile(path); err != nil {
-		return err
-	}
-	db, err := repositories.NewStore(ctx, path)
+	db, err := repositories.NewStore(ctx, cfg.DBPath)
 	if err != nil {
 		return errStartup
 	}
@@ -135,3 +123,8 @@ func run(ctx context.Context, d dependencies) (result error) {
 	}
 	return nil
 }
+
+var (
+	errStartup = errors.New("service startup validation failed")
+	errService = errors.New("service operation failed")
+)
