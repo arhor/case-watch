@@ -149,11 +149,11 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 				t.Fatal("startup did not stop before transports")
 			}
 			if kind == "schema" {
-				lock, err := acquire(f.db)
+				lock, err := acquireInstanceLock(f.db)
 				if err != nil {
 					t.Fatalf("failed storage startup retained lock: %v", err)
 				}
-				lock.close()
+				lock.Close()
 			}
 		})
 	}
@@ -184,11 +184,11 @@ func TestRunShouldExcludeOtherServicesWhenDatabaseLocked(t *testing.T) {
 	if !errors.Is(second, errLocked) || stopped != nil {
 		t.Fatalf("exclusive process lock failed: %v %v", second, stopped)
 	}
-	lock, err := acquire(f.db)
+	lock, err := acquireInstanceLock(f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lock.close()
+	defer lock.Close()
 	s := f.open(t)
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
@@ -234,9 +234,9 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 		t.Fatal("service returned with detached portal still running")
 	default:
 	}
-	lock, err := acquire(f.db)
+	lock, err := acquireInstanceLock(f.db)
 	if lock != nil {
-		lock.close()
+		lock.Close()
 	}
 	if !errors.Is(err, errLocked) {
 		t.Fatal("lock released before portal drained")
@@ -274,11 +274,11 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 			if !errors.Is(err, errService) {
 				t.Fatalf("unexpected polling exit did not stop service: %v", err)
 			}
-			lock, err := acquire(f.db)
+			lock, err := acquireInstanceLock(f.db)
 			if err != nil {
 				t.Fatal("service did not release lock after drain")
 			}
-			defer lock.close()
+			defer lock.Close()
 		})
 	}
 }
@@ -322,11 +322,11 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 		}}, nil
 	}})
 	// Then
-	lock, lockErr := acquire(f.db)
+	lock, lockErr := acquireInstanceLock(f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
-	defer lock.close()
+	defer lock.Close()
 	s = f.open(t)
 	defer s.Close()
 	enrollment, readErr := s.Enrollments.FindByOwner(context.Background(), 101)
@@ -346,11 +346,11 @@ func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T)
 	if !errors.Is(err, errStartup) {
 		t.Fatalf("unsanitized startup error: %v", err)
 	}
-	lock, lockErr := acquire(f.db)
+	lock, lockErr := acquireInstanceLock(f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
-	defer lock.close()
+	defer lock.Close()
 	s := f.open(t)
 	defer s.Close()
 	if _, readErr := s.Enrollments.FindByOwner(context.Background(), 1); !errors.Is(readErr, repositories.ErrNotFound) {
@@ -408,11 +408,11 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 	if !errors.Is(err, errService) || started {
 		t.Fatalf("early failure: err=%v started=%t", err, started)
 	}
-	lock, lockErr := acquire(f.db)
+	lock, lockErr := acquireInstanceLock(f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
-	defer lock.close()
+	defer lock.Close()
 }
 
 func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
@@ -447,9 +447,9 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	if !errors.Is(err, errService) || !stopped || ctx.Err() != nil {
 		t.Fatalf("storage failure: err=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
 	}
-	lock, lockErr := acquire(f.db)
+	lock, lockErr := acquireInstanceLock(f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
-	defer lock.close()
+	defer lock.Close()
 }
