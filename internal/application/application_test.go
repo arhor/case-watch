@@ -146,11 +146,13 @@ func TestRunShouldAvoidTransportConstructionWhenStartupValidationFails(t *testin
 				t.Fatal("startup did not stop before transports")
 			}
 			if kind == "schema" {
-				lock, err := acquireInstanceLock(f.db)
-				if err != nil {
+				store, err := repositories.NewExclusiveStore(context.Background(), f.db)
+				if errors.Is(err, repositories.ErrLocked) {
 					t.Fatalf("failed storage startup retained lock: %v", err)
 				}
-				lock.Close()
+				if store != nil {
+					store.Close()
+				}
 			}
 		})
 	}
@@ -178,10 +180,10 @@ func TestRunShouldExcludeOtherServicesWhenDatabaseLocked(t *testing.T) {
 	cancel()
 	stopped := result(t, done)
 	// Then
-	if !errors.Is(second, errLocked) || stopped != nil {
+	if !errors.Is(second, repositories.ErrLocked) || stopped != nil {
 		t.Fatalf("exclusive process lock failed: %v %v", second, stopped)
 	}
-	lock, err := acquireInstanceLock(f.db)
+	lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,11 +233,11 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 		t.Fatal("service returned with detached portal still running")
 	default:
 	}
-	lock, err := acquireInstanceLock(f.db)
+	lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
 	if lock != nil {
 		lock.Close()
 	}
-	if !errors.Is(err, errLocked) {
+	if !errors.Is(err, repositories.ErrLocked) {
 		t.Fatal("lock released before portal drained")
 	}
 	close(release)
@@ -271,7 +273,7 @@ func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *
 			if !errors.Is(err, errService) {
 				t.Fatalf("unexpected polling exit did not stop service: %v", err)
 			}
-			lock, err := acquireInstanceLock(f.db)
+			lock, err := repositories.NewExclusiveStore(context.Background(), f.db)
 			if err != nil {
 				t.Fatal("service did not release lock after drain")
 			}
@@ -319,7 +321,7 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 		}}, nil
 	}})
 	// Then
-	lock, lockErr := acquireInstanceLock(f.db)
+	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
@@ -343,7 +345,7 @@ func TestRunShouldReleaseDatabaseLockWhenTelegramConstructionFails(t *testing.T)
 	if !errors.Is(err, errStartup) {
 		t.Fatalf("unsanitized startup error: %v", err)
 	}
-	lock, lockErr := acquireInstanceLock(f.db)
+	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
@@ -405,7 +407,7 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 	if !errors.Is(err, errService) || started {
 		t.Fatalf("early failure: err=%v started=%t", err, started)
 	}
-	lock, lockErr := acquireInstanceLock(f.db)
+	lock, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
 	if lockErr != nil {
 		t.Fatal(lockErr)
 	}
@@ -444,17 +446,20 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	if !errors.Is(err, errService) || !stopped || ctx.Err() != nil {
 		t.Fatalf("storage failure: err=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
 	}
-	lock, lockErr := acquireInstanceLock(f.db)
-	if lockErr != nil {
-		t.Fatal(lockErr)
+	store, lockErr := repositories.NewExclusiveStore(context.Background(), f.db)
+	if errors.Is(lockErr, repositories.ErrLocked) {
+		t.Fatal("service retained its instance lock")
 	}
-	defer lock.Close()
+	if store != nil {
+		defer store.Close()
+	}
 }
 
-func TestAcquireInstanceLockShouldDistinguishStartupFailure(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "state.db")
-	lock, err := acquireInstanceLock(path)
-	if lock != nil || !errors.Is(err, errStartup) || errors.Is(err, errLocked) {
-		t.Fatalf("unexpected lock result: %v %v", lock, err)
+func TestRunShouldRejectMissingDatabaseDirectory(t *testing.T) {
+	f := setup(t)
+	f.db = filepath.Join(t.TempDir(), "missing", "state.db")
+	f.env["CASE_WATCH_DB_PATH"] = f.db
+	if err := f.run(context.Background(), dependencies{}); !errors.Is(err, errStartup) {
+		t.Fatalf("unexpected startup result: %v", err)
 	}
 }
