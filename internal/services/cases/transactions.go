@@ -97,15 +97,28 @@ func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manu
 		if now.Before(next) {
 			return nil
 		}
-		if err = tx.Cooldowns.Upsert(ctx, repositories.Cooldown{SubjectType: caseCheckCooldown, SubjectID: id, StartedAt: now}); err != nil {
+		if err = tx.Cooldowns.Upsert(ctx,
+			repositories.Cooldown{
+				SubjectType: caseCheckCooldown,
+				SubjectID:   id,
+				StartedAt:   now,
+			},
+		); err != nil {
 			return err
 		}
 		if manual {
-			if err = tx.Cooldowns.Upsert(ctx, repositories.Cooldown{SubjectType: manualCheckCooldown, SubjectID: strconv.FormatInt(owner, 10), StartedAt: now}); err != nil {
+			if err = tx.Cooldowns.Upsert(ctx, repositories.Cooldown{
+				SubjectType: manualCheckCooldown,
+				SubjectID:   strconv.FormatInt(owner, 10),
+				StartedAt:   now,
+			}); err != nil {
 				return err
 			}
 		}
-		result = repositories.CheckReservation{Reserved: true, NextEligibleAt: now.Add(time.Minute)}
+		result = repositories.CheckReservation{
+			Reserved:       true,
+			NextEligibleAt: now.Add(time.Minute),
+		}
 		return nil
 	})
 	if err != nil {
