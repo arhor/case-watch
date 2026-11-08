@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/tracking"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -36,7 +36,7 @@ func setup(t *testing.T) *fixture {
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }
 func (f *fixture) open(t *testing.T) *repositories.Store {
 	t.Helper()
-	if e := databaseFile(f.db, true); e != nil {
+	if e := databaseFile(f.db); e != nil {
 		t.Fatal(e)
 	}
 	s, e := repositories.NewStore(context.Background(), f.db)
@@ -51,7 +51,7 @@ func seed(t *testing.T, s *repositories.Store, owner int64) string {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = (tracking.Persistence{DB: s}).Enroll(context.Background(), owner, id, domain.Credentials{Number: "synthetic-number", Password: "synthetic-password"}, domain.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
+	if e = s.Enrollments.Create(context.Background(), owner, id, domain.Credentials{Number: "synthetic-number", Password: "synthetic-password"}, domain.Observation{Stage: "A", CheckedAt: time.Now().Add(-time.Hour)}); e != nil {
 		t.Fatal(e)
 	}
 	return id
@@ -253,21 +253,34 @@ func TestRunShouldDrainDetachedFlightsBeforeClosingDatabaseWhenCancelled(t *test
 }
 
 func TestRunShouldReturnSanitizedFailureAndDrainWhenPollingStopsUnexpectedly(t *testing.T) {
-	// Given
-	f := setup(t)
-	// When
-	err := f.run(context.Background(), dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
-		return &transport{poll: func(context.Context, func(context.Context, *models.Update)) error { return nil }}, nil
-	}})
-	// Then
-	if !errors.Is(err, errService) {
-		t.Fatalf("unexpected polling exit did not stop service: %v", err)
+	for _, outcome := range []string{"nil", "error", "canceled"} {
+		t.Run(outcome, func(t *testing.T) {
+			// Given
+			f := setup(t)
+			// When
+			err := f.run(context.Background(), dependencies{telegram: func(telegramrepository.Config) (telegramClient, error) {
+				return &transport{poll: func(context.Context, func(context.Context, *models.Update)) error {
+					switch outcome {
+					case "error":
+						return errors.New("synthetic-secret")
+					case "canceled":
+						return context.Canceled
+					default:
+						return nil
+					}
+				}}, nil
+			}})
+			// Then
+			if !errors.Is(err, errService) {
+				t.Fatalf("unexpected polling exit did not stop service: %v", err)
+			}
+			lock, err := acquire(f.db)
+			if err != nil {
+				t.Fatal("service did not release lock after drain")
+			}
+			defer lock.close()
+		})
 	}
-	lock, err := acquire(f.db)
-	if err != nil {
-		t.Fatal("service did not release lock after drain")
-	}
-	lock.close()
 }
 
 func TestRunShouldDrainNormallyWhenRateLimitedDirectSendIsCancelled(t *testing.T) {
@@ -296,7 +309,7 @@ func TestRunShouldReleaseResourcesWithoutStartingWorkersWhenTokenValidationFails
 	f := setup(t)
 	s := f.open(t)
 	id := seed(t, s, 101)
-	if err := (tracking.Persistence{DB: s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
+	if err := s.Enrollments.UpdateObservation(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -381,4 +394,62 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *testing.T) {
+	// Given
+	f := setup(t)
+	started := false
+	// When
+	err := f.run(context.Background(), dependencies{report: func(string) {}, telegram: func(c telegramrepository.Config) (telegramClient, error) {
+		return &transport{validate: func(context.Context) error { c.Diagnostic("telegram_invalid_token"); return nil }, poll: func(context.Context, func(context.Context, *models.Update)) error { started = true; return nil }}, nil
+	}})
+	// Then
+	if !errors.Is(err, errService) || started {
+		t.Fatalf("early failure: err=%v started=%t", err, started)
+	}
+	lock, lockErr := acquire(f.db)
+	if lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	defer lock.close()
+}
+
+func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
+	// Given
+	f := setup(t)
+	store := f.open(t)
+	seed(t, store, 101)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stopped := false
+	// When
+	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(telegramrepository.Config) (telegramClient, error) {
+		return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
+			db, err := sql.Open("sqlite", f.db)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			if _, err := db.Exec("DROP TABLE cooldowns"); err != nil {
+				return err
+			}
+			handle(ctx, message(101, "/status"))
+			<-ctx.Done()
+			stopped = true
+			return ctx.Err()
+		}}, nil
+	}})
+	// Then
+	if !errors.Is(err, errService) || !stopped || ctx.Err() != nil {
+		t.Fatalf("storage failure: err=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
+	}
+	lock, lockErr := acquire(f.db)
+	if lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	defer lock.close()
 }

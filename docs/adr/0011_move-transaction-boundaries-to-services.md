@@ -111,3 +111,11 @@ requirements in this record. Scheduled and manual tracking keep cache/history
 without enqueueing outbound work. The runtime now supervises Telegram intake and
 the scheduler; direct replies retain rate limits and invalid-token shutdown.
 Migration 2 discards legacy delivery state while preserving tracking data.
+
+### 2026-11-08: Direct case service and application wiring
+
+[ADR 0019](0019_simplify-application-structure.md) removes the Coordinator,
+Persistence adapter, monitoring decorator and runtime object. cases.Service owns
+transactions directly. The bot and scheduler live in direct internal packages;
+reply handling is private to the bot. The checked-in initial schema already
+excludes notifications; this structural refactor makes no schema change.

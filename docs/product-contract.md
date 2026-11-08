@@ -28,7 +28,7 @@ Follow ADR 0007: 60-second persisted user manual and case attempt-start guards; 
 
 Direct replies use one bounded transport attempt with an in-memory cooldown under [ADR 0018](adr/0018_remove-automatic-notifications.md). Serialize replies across recipients. Honor positive Telegram `retry_after`, otherwise 30 seconds, and retain the observed deadline even after caller cancellation. Restart clears it. Replies are never queued or retried. Invalid tokens fail startup or stop the runtime under [ADR 0012](adr/0012_fail-fast-on-invalid-telegram-token.md). Never hold a database transaction over network I/O. Diagnostics contain no tokens, credentials, message bodies or raw portal/Telegram errors.
 
-Schema migration 2 removes legacy pending deliveries and recipient gates, including reserved and paused deliveries. They are never replayed. Enrollments, cached observations, history and check cooldowns are preserved.
+The current initial schema contains enrollments, cached observations, history and check cooldowns, with no notification state. Earlier development schemas have no automatic upgrade path. The structural refactor in [ADR 0019](adr/0019_simplify-application-structure.md) does not change this schema.
 
 ## Acceptance and boundaries
 

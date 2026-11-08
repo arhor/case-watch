@@ -1,6 +1,6 @@
-// Package telegram implements the private command transport selected by ADR 0003.
+// Package bot implements the private command transport selected by ADR 0003.
 // Library types remain here. Incoming commands are not durably acknowledged.
-package telegram
+package bot
 
 import (
 	"context"
@@ -12,28 +12,29 @@ import (
 
 	"github.com/arhor/case-watch/internal/domain"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/tracking"
+	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
 
-type Tracking interface {
-	domain.Tracking
+type Cases interface {
+	Enroll(context.Context, int64, domain.Credentials) (domain.Observation, error)
+	Status(context.Context, int64) (domain.Status, error)
+	Remove(context.Context, int64) error
 	HasEnrollment(context.Context, int64) (bool, error)
 }
 
-// Client supplies update polling and credential-message deletion. Raw outbound
-// sends belong to the reply service.
+// Client supplies Telegram polling, replies and credential-message deletion.
 type Client interface {
+	domain.Sender
 	Poll(context.Context, func(context.Context, *models.Update)) error
 	DeleteMessage(context.Context, int64, int) error
 }
 
 type Config struct {
 	Client     Client
-	Tracking   Tracking
+	Cases      Cases
 	Clock      domain.Clock
 	Diagnostic func(string)
-	DirectSend func(context.Context, int64, string) (domain.SendOutcome, error)
 }
 type state struct {
 	mu                sync.Mutex
@@ -42,18 +43,20 @@ type state struct {
 	cancel            context.CancelFunc
 }
 type Bot struct {
-	client Client
-	config Config
-	mu     sync.Mutex
-	owners map[int64]*state
-	wg     sync.WaitGroup
+	client  Client
+	replies *replySender
+	config  Config
+	mu      sync.Mutex
+	owners  map[int64]*state
+	wg      sync.WaitGroup
 }
 
 func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.Tracking == nil || c.Clock == nil || c.DirectSend == nil {
+	if c.Client == nil || c.Cases == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	return &Bot{client: c.Client, config: c, owners: make(map[int64]*state)}, nil
+	sender := &replySender{client: c.Client, clock: c.Clock, diagnostic: c.Diagnostic}
+	return &Bot{client: c.Client, replies: sender, config: c, owners: make(map[int64]*state)}, nil
 }
 
 func (a *Bot) diagnostic(s string) {
@@ -131,7 +134,7 @@ func (a *Bot) owner(id int64) *state {
 	return s
 }
 func (a *Bot) reply(ctx context.Context, id int64, text string) {
-	if _, err := a.config.DirectSend(ctx, id, text); err != nil {
+	if _, err := a.replies.Send(ctx, id, text); err != nil {
 		a.diagnostic("telegram reply failure")
 	}
 }
@@ -142,7 +145,7 @@ func (a *Bot) erase(ctx context.Context, id int64, message int) {
 	}
 }
 func (a *Bot) exists(ctx context.Context, id int64) (bool, error) {
-	return a.config.Tracking.HasEnrollment(ctx, id)
+	return a.config.Cases.HasEnrollment(ctx, id)
 }
 
 const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
@@ -224,9 +227,9 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		return
 	case "/status":
 		s.mu.Unlock()
-		status, e := a.config.Tracking.Status(ctx, id)
+		status, e := a.config.Cases.Status(ctx, id)
 		s.mu.Lock()
-		if errors.Is(e, tracking.ErrNotFound) {
+		if errors.Is(e, cases.ErrNotFound) {
 			a.reply(ctx, id, "No tracked case. Use /enroll.")
 			return
 		}
@@ -265,7 +268,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		e := a.config.Tracking.Remove(ctx, id)
+		e := a.config.Cases.Remove(ctx, id)
 		s.mu.Lock()
 		if e != nil {
 			a.reply(ctx, id, "Removal failed. Use /remove to try again.")
@@ -299,11 +302,11 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	work, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	// The intake handler remains ordered while collection can be cancelled by
-	// a later command. The coordinator owns bounded work and commit fencing.
+	// a later command. The case service owns bounded work and commit fencing.
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		_, e := a.config.Tracking.Enroll(work, id, credentials)
+		_, e := a.config.Cases.Enroll(work, id, credentials)
 		credentials = domain.Credentials{}
 		cancel()
 		s.mu.Lock()

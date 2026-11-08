@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/entrypoints/scheduler"
+	"github.com/arhor/case-watch/internal/scheduler"
 )
 
 type clock struct{ now time.Time }
@@ -41,7 +41,7 @@ func newScheduler(t *testing.T, c scheduler.Config) *scheduler.Scheduler {
 }
 func TestNextShouldReturnStrictWarsawSlotsWhenDatesCrossSeasonsWeekendsAndHolidays(t *testing.T) {
 	// Given
-	s := newScheduler(t, scheduler.Config{Tracking: tracking{scheduled: func(context.Context, int64) (domain.Status, error) { return domain.Status{}, nil }}, Clock: &clock{}})
+	s := newScheduler(t, scheduler.Config{Cases: tracking{scheduled: func(context.Context, int64) (domain.Status, error) { return domain.Status{}, nil }}, Clock: &clock{}})
 	cases := []struct{ after, want string }{
 		{"2026-01-05T06:59:59Z", "2026-01-05T07:00:00Z"},
 		{"2026-07-06T05:59:59Z", "2026-07-06T06:00:00Z"},
@@ -77,7 +77,7 @@ func TestRunShouldSkipCrossedSlotsAndRecheckQueuedAuthorizationWhenFirstCheckIsS
 	defer cancel()
 	var calls []int64
 	var deadlines []time.Time
-	s := newScheduler(t, scheduler.Config{Clock: c, Tracking: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (domain.Status, error) {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (domain.Status, error) {
 		calls = append(calls, owner)
 		if owner == 1 {
 			c.now = parse("2026-07-06T10:30:00Z")
@@ -106,7 +106,7 @@ func TestRunShouldWaitForFutureSlotWhenStartingAtBoundaryOrRestartingAfterMissed
 		c := &clock{now: parse(start)}
 		calls := 0
 		var deadline time.Time
-		s := newScheduler(t, scheduler.Config{Clock: c, Tracking: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
+		s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
 		// When
 		err := s.Run(ctx)
 		// Then
@@ -124,7 +124,7 @@ func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
 	canceled := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan error, 1)
-	s := newScheduler(t, scheduler.Config{Clock: c, Tracking: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (domain.Status, error) {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (domain.Status, error) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
@@ -158,7 +158,7 @@ func TestRunShouldSkipMissedMinuteAndAcceptTimerJitterWhenWaitReturnsLate(t *tes
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	waits, calls := 0, 0
-	s := newScheduler(t, scheduler.Config{Clock: c, Tracking: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
 		waits++
 		switch waits {
 		case 1:

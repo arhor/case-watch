@@ -26,7 +26,7 @@ type Portal interface {
 	Check(context.Context, Credentials) (Observation, error)
 }
 
-// Clock lets coordinators and reply senders use deterministic time in tests.
+// Clock lets case services and reply senders use deterministic time in tests.
 type Clock interface {
 	Now() time.Time
 }
@@ -38,18 +38,6 @@ type Status struct {
 	Fresh          bool
 	InProgress     bool
 	NextEligibleAt time.Time
-}
-
-// Tracking is the owner-facing use case boundary. Enrollment is
-// called only after the transport's ephemeral, separate-message draft is complete.
-// Enroll refuses replacement and commits portal credentials plus baseline
-// atomically. Confirmation is sent separately after success.
-// Remove is called only after explicit, unexpired owner confirmation. It cancels
-// and drains checks and rejects late results before returning success.
-type Tracking interface {
-	Enroll(context.Context, int64, Credentials) (Observation, error)
-	Status(context.Context, int64) (Status, error)
-	Remove(context.Context, int64) error
 }
 
 type SendCategory string

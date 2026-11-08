@@ -15,15 +15,15 @@ import (
 
 var ErrScheduler = errors.New("scheduler operation failed")
 
-type Tracking interface {
+type Cases interface {
 	ScheduledOwners(context.Context) ([]int64, error)
 	// Scheduled shares manual coordination and returns after canceled work drains.
 	Scheduled(context.Context, int64) (domain.Status, error)
 }
 
 type Config struct {
-	Tracking Tracking
-	Clock    domain.Clock
+	Cases Cases
+	Clock domain.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
@@ -37,7 +37,7 @@ type Scheduler struct {
 }
 
 func New(c Config) (*Scheduler, error) {
-	if c.Tracking == nil || c.Clock == nil {
+	if c.Cases == nil || c.Clock == nil {
 		return nil, ErrScheduler
 	}
 	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
@@ -75,7 +75,7 @@ func (s *Scheduler) report(category string) {
 // Run does no startup check. Runs and case calls are sequential; computing the
 // next slot after completion discards every slot crossed by a slow run. Repeated
 // concurrent Run calls are rejected rather than queued. Cancellation drains the
-// active Scheduled call before returning; the shared coordinator owns its I/O.
+// active Scheduled call before returning; the shared case service owns its I/O.
 func (s *Scheduler) Run(ctx context.Context) error {
 	if !s.running.TryLock() {
 		return ErrScheduler
@@ -100,7 +100,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		if now := s.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := s.c.Tracking.ScheduledOwners(ctx)
+		owners, err := s.c.Cases.ScheduledOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -112,7 +112,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if _, err := s.c.Tracking.Scheduled(ctx, owner); err != nil {
+			if _, err := s.c.Cases.Scheduled(ctx, owner); err != nil {
 				s.report("check_failed")
 			}
 		}

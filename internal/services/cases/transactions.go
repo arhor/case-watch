@@ -1,4 +1,4 @@
-package tracking
+package cases
 
 import (
 	"context"
@@ -10,28 +10,16 @@ import (
 	"github.com/arhor/case-watch/internal/repositories"
 )
 
-// Persistence composes tracking's atomic workflows from granular repositories.
-// Network requests belong to Coordinator and occur outside these transactions.
-type Persistence struct{ DB *repositories.Store }
-
-var _ Store = Persistence{}
-
 const (
 	caseCheckCooldown   = "case_check"
 	manualCheckCooldown = "manual_check"
 )
 
-func (p Persistence) Enrollment(ctx context.Context, owner int64) (repositories.Enrollment, error) {
-	return p.DB.Enrollments.FindByOwner(ctx, owner)
+func (s *Service) saveEnrollment(ctx context.Context, owner int64, id string, c domain.Credentials, o domain.Observation) error {
+	return s.db.RunInTx(ctx, func(tx *repositories.Store) error { return tx.Enrollments.Create(ctx, owner, id, c, o) })
 }
-func (p Persistence) Enrollments(ctx context.Context) ([]repositories.Enrollment, error) {
-	return p.DB.Enrollments.FindAll(ctx)
-}
-func (p Persistence) Enroll(ctx context.Context, owner int64, id string, c domain.Credentials, o domain.Observation) error {
-	return p.DB.RunInTx(ctx, func(tx *repositories.Store) error { return tx.Enrollments.Create(ctx, owner, id, c, o) })
-}
-func (p Persistence) Observe(ctx context.Context, owner int64, id string, o domain.Observation) error {
-	return p.DB.RunInTx(ctx, func(tx *repositories.Store) error {
+func (s *Service) saveObservation(ctx context.Context, owner int64, id string, o domain.Observation) error {
+	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		e, err := tx.Enrollments.FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
@@ -45,8 +33,8 @@ func (p Persistence) Observe(ctx context.Context, owner int64, id string, o doma
 		return tx.History.Append(ctx, id, e.Observation.Stage, o)
 	})
 }
-func (p Persistence) Remove(ctx context.Context, owner int64, id string) error {
-	return p.DB.RunInTx(ctx, func(tx *repositories.Store) error {
+func (s *Service) deleteEnrollment(ctx context.Context, owner int64, id string) error {
+	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		if err := tx.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
@@ -79,21 +67,21 @@ func eligibility(ctx context.Context, tx *repositories.Store, owner int64, id st
 	}
 	return caseStart.Add(time.Minute), nil
 }
-func (p Persistence) CheckEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
+func (s *Service) checkEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
 	var next time.Time
-	err := p.DB.RunInTx(ctx, func(tx *repositories.Store) error {
+	err := s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		var err error
 		next, err = eligibility(ctx, tx, owner, id, manual)
 		return err
 	})
 	return next, err
 }
-func (p Persistence) ReserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (repositories.CheckReservation, error) {
+func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (repositories.CheckReservation, error) {
 	if now.IsZero() {
 		return repositories.CheckReservation{}, repositories.ErrInvalid
 	}
 	var result repositories.CheckReservation
-	err := p.DB.RunInTx(ctx, func(tx *repositories.Store) error {
+	err := s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		next, err := eligibility(ctx, tx, owner, id, manual)
 		if err != nil {
 			return err

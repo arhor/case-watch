@@ -14,22 +14,8 @@ var (
 )
 
 const (
-	// ownerReadWriteMode is read and write for the owner and no access for
-	// group or others. Database and lock files must have exactly this mode.
-	//
-	//	Digit  Who     Value                 Meaning
-	//	6      owner   4 (read) + 2 (write)  read and write
-	//	0      group   0                     no access
-	//	0      others  0                     no access
-	ownerReadWriteMode = os.FileMode(0o600)
-
-	// groupOtherPermissions is every group and other permission bit.
-	// The database directory is rejected when any of these bits is set.
-	//
-	//	Digit  Who     Value                                 Meaning
-	//	0      owner   0                                     not tested
-	//	7      group   4 (read) + 2 (write) + 1 (execute)    any access
-	//	7      others  4 (read) + 2 (write) + 1 (execute)    any access
+	// Restrict database and lock files to the service account.
+	ownerReadWriteMode    = os.FileMode(0o600)
 	groupOtherPermissions = os.FileMode(0o077)
 )
 
@@ -100,12 +86,9 @@ func (l *databaseLock) close() error {
 	return nil
 }
 
-// Opens a database file with the given path and creates it if create is true.
-func databaseFile(path string, create bool) error {
-	flags := syscall.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
-	if create {
-		flags |= syscall.O_CREAT
-	}
+// databaseFile creates or validates the protected SQLite file.
+func databaseFile(path string) error {
+	flags := syscall.O_CREAT | syscall.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
 
 	descriptor, err := syscall.Open(path, flags, uint32(ownerReadWriteMode))
 	if err != nil {

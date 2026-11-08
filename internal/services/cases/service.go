@@ -1,7 +1,6 @@
-// Package tracking coordinates the owner-facing use cases in ADRs 0004–0007
-// and ADR 0018 removal of notifications. Network I/O never spans a
-// storage transaction. One Coordinator must be shared by every runtime caller.
-package tracking
+// Package cases implements enrollment, status checks and removal.
+// One Service is shared by the bot and scheduler; transactions contain no network I/O.
+package cases
 
 import (
 	"context"
@@ -15,49 +14,38 @@ import (
 )
 
 var (
-	ErrClosed   = errors.New("tracking coordinator stopped")
+	ErrClosed   = errors.New("case service stopped")
 	ErrDenied   = errors.New("access denied")
 	ErrBusy     = errors.New("owner work in progress")
 	ErrRemoving = errors.New("removal in progress")
 	ErrCheck    = errors.New("portal check failed")
-	ErrStorage  = errors.New("tracking storage operation failed")
+	ErrStorage  = errors.New("case storage operation failed")
 	ErrInvalid  = errors.New("invalid enrollment input")
 	ErrNotFound = repositories.ErrNotFound
 )
 
-// Store contains the atomic tracking workflows implemented by Persistence.
-type Store interface {
-	Enroll(context.Context, int64, string, domain.Credentials, domain.Observation) error
-	Observe(context.Context, int64, string, domain.Observation) error
-	Enrollment(context.Context, int64) (repositories.Enrollment, error)
-	ReserveCheck(context.Context, int64, string, bool, time.Time) (repositories.CheckReservation, error)
-	Remove(context.Context, int64, string) error
-	CheckEligibility(context.Context, int64, string, bool) (time.Time, error)
-	Enrollments(context.Context) ([]repositories.Enrollment, error)
-}
-
 // HasEnrollment lets interactive entry points ask a business-level question
 // without reading an enrollment repository directly.
-func (c *Coordinator) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
+func (c *Service) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
 	if owner <= 0 {
 		return false, ErrDenied
 	}
-	_, err := c.store.Enrollment(ctx, owner)
+	_, err := c.db.Enrollments.FindByOwner(ctx, owner)
 	if errors.Is(err, repositories.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
-		return false, safeStore(err)
+		return false, c.storageError(ctx, err)
 	}
 	return true, nil
 }
 
 // ScheduledOwners returns the enrolled owners available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
-func (c *Coordinator) ScheduledOwners(ctx context.Context) ([]int64, error) {
-	items, err := c.store.Enrollments(ctx)
+func (c *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
+	items, err := c.db.Enrollments.FindAll(ctx)
 	if err != nil {
-		return nil, safeStore(err)
+		return nil, c.storageError(ctx, err)
 	}
 	owners := make([]int64, 0, len(items))
 	for _, item := range items {
@@ -68,7 +56,7 @@ func (c *Coordinator) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-type flight struct {
+type check struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
 	status     domain.Status
@@ -77,25 +65,32 @@ type flight struct {
 	enrollment bool
 }
 type ownerState struct {
-	flight      *flight
+	check       *check
 	removing    bool
 	removalDone chan struct{}
 }
-type Coordinator struct {
-	mu     sync.Mutex
-	closed bool
-	owners map[int64]*ownerState
-	store  Store
-	portal domain.Portal
-	clock  domain.Clock
+type Service struct {
+	mu             sync.Mutex
+	closed         bool
+	owners         map[int64]*ownerState
+	db             *repositories.Store
+	onStorageError func()
+	portal         domain.Portal
+	clock          domain.Clock
 }
 
-var _ domain.Tracking = (*Coordinator)(nil)
-
-func New(store Store, portal domain.Portal, clock domain.Clock) *Coordinator {
-	return &Coordinator{owners: make(map[int64]*ownerState), store: store, portal: portal, clock: clock}
+// Config contains the case service's repositories and external collaborators.
+type Config struct {
+	DB             *repositories.Store
+	Portal         domain.Portal
+	Clock          domain.Clock
+	OnStorageError func()
 }
-func (c *Coordinator) state(owner int64) *ownerState {
+
+func New(config Config) *Service {
+	return &Service{owners: make(map[int64]*ownerState), db: config.DB, portal: config.Portal, clock: config.Clock, onStorageError: config.OnStorageError}
+}
+func (c *Service) state(owner int64) *ownerState {
 	s := c.owners[owner]
 	if s == nil {
 		s = &ownerState{}
@@ -103,7 +98,7 @@ func (c *Coordinator) state(owner int64) *ownerState {
 	}
 	return s
 }
-func safeStore(err error) error {
+func (c *Service) storageError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -119,6 +114,9 @@ func safeStore(err error) error {
 	if errors.Is(err, repositories.ErrExists) {
 		return repositories.ErrExists
 	}
+	if ctx.Err() == nil && c.onStorageError != nil {
+		c.onStorageError()
+	}
 	return ErrStorage
 }
 func canceled(ctx context.Context, fallback error) error {
@@ -127,7 +125,7 @@ func canceled(ctx context.Context, fallback error) error {
 	}
 	return fallback
 }
-func (c *Coordinator) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
+func (c *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
 	defer func() { credentials = domain.Credentials{} }()
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
@@ -138,12 +136,12 @@ func (c *Coordinator) baseline(ctx context.Context, credentials domain.Credentia
 	if err = bounded.Err(); err != nil {
 		return domain.Observation{}, err
 	}
-	// Completion time belongs to this coordinator, not a supplied portal timestamp.
+	// Completion time belongs to this case service, not a supplied portal timestamp.
 	o.CheckedAt = c.clock.Now()
 	return o, nil
 }
 
-func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
+func (c *Service) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
 	defer func() { credentials = domain.Credentials{} }()
 	if owner <= 0 {
 		return domain.Observation{}, ErrDenied
@@ -164,24 +162,24 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domai
 		c.mu.Unlock()
 		return domain.Observation{}, ErrRemoving
 	}
-	if s.flight != nil {
+	if s.check != nil {
 		c.mu.Unlock()
 		return domain.Observation{}, ErrBusy
 	}
-	_, err := c.store.Enrollment(ctx, owner)
+	_, err := c.db.Enrollments.FindByOwner(ctx, owner)
 	if err == nil {
 		c.mu.Unlock()
 		return domain.Observation{}, repositories.ErrExists
 	}
 	if !errors.Is(err, repositories.ErrNotFound) {
 		c.mu.Unlock()
-		return domain.Observation{}, safeStore(err)
+		return domain.Observation{}, c.storageError(ctx, err)
 	}
 	work, cancel := context.WithCancel(ctx)
-	f := &flight{cancel: cancel, done: make(chan struct{}), enrollment: true}
-	s.flight = f
+	f := &check{cancel: cancel, done: make(chan struct{}), enrollment: true}
+	s.check = f
 	c.mu.Unlock()
-	defer func() { cancel(); c.mu.Lock(); s.flight = nil; close(f.done); c.mu.Unlock() }()
+	defer func() { cancel(); c.mu.Lock(); s.check = nil; close(f.done); c.mu.Unlock() }()
 	id, err := repositories.NewEnrollmentID()
 	if err != nil {
 		return domain.Observation{}, ErrStorage
@@ -198,8 +196,8 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domai
 	if work.Err() != nil {
 		return domain.Observation{}, work.Err()
 	}
-	if err = c.store.Enroll(work, owner, id, credentials, o); err != nil {
-		return domain.Observation{}, safeStore(err)
+	if err = c.saveEnrollment(work, owner, id, credentials, o); err != nil {
+		return domain.Observation{}, c.storageError(ctx, err)
 	}
 	return o, nil
 }
@@ -207,17 +205,17 @@ func (c *Coordinator) Enroll(ctx context.Context, owner int64, credentials domai
 func cached(o domain.Observation) domain.Status {
 	return domain.Status{Observation: &o}
 }
-func (c *Coordinator) Status(ctx context.Context, owner int64) (domain.Status, error) {
-	return c.check(ctx, owner, true, false)
+func (c *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
+	return c.check(ctx, owner, true)
 }
 
-// Scheduled checks share in-flight results and the persisted case-start guard.
+// Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (c *Coordinator) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
-	return c.check(ctx, owner, false, true)
+func (c *Service) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
+	return c.check(ctx, owner, false)
 }
-func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool) (domain.Status, error) {
+func (c *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
 	if owner <= 0 {
 		return domain.Status{}, ErrDenied
 	}
@@ -234,19 +232,19 @@ func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool
 		c.mu.Unlock()
 		return domain.Status{}, ErrRemoving
 	}
-	if f := s.flight; f != nil {
+	if f := s.check; f != nil {
 		if f.enrollment {
 			c.mu.Unlock()
 			return domain.Status{}, ErrBusy
 		}
 		f.waiters++
 		c.mu.Unlock()
-		return c.waitCheck(ctx, s, f, drain)
+		return c.wait(ctx, f, !manual)
 	}
-	e, err := c.store.Enrollment(ctx, owner)
+	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
 	if err != nil {
 		c.mu.Unlock()
-		return domain.Status{}, safeStore(err)
+		return domain.Status{}, c.storageError(ctx, err)
 	}
 	if e.OwnerID != owner {
 		c.mu.Unlock()
@@ -255,15 +253,15 @@ func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool
 	now := c.clock.Now()
 	status := cached(e.Observation)
 	if now.Before(e.Observation.CheckedAt.Add(time.Minute)) {
-		status.NextEligibleAt, err = c.store.CheckEligibility(ctx, owner, e.ID, manual)
+		status.NextEligibleAt, err = c.checkEligibility(ctx, owner, e.ID, manual)
 		status.NextEligibleAt = later(status.NextEligibleAt, e.Observation.CheckedAt.Add(time.Minute))
 		c.mu.Unlock()
-		return status, safeStore(err)
+		return status, c.storageError(ctx, err)
 	}
-	reservation, err := c.store.ReserveCheck(ctx, owner, e.ID, manual, now)
+	reservation, err := c.reserveCheck(ctx, owner, e.ID, manual, now)
 	if err != nil {
 		c.mu.Unlock()
-		return status, safeStore(err)
+		return status, c.storageError(ctx, err)
 	}
 	status.NextEligibleAt = reservation.NextEligibleAt
 	if !reservation.Reserved {
@@ -271,22 +269,20 @@ func (c *Coordinator) check(ctx context.Context, owner int64, manual, drain bool
 		return status, nil
 	}
 	work, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	f := &flight{cancel: cancel, done: make(chan struct{}), waiters: 1, status: status}
-	s.flight = f
+	f := &check{cancel: cancel, done: make(chan struct{}), waiters: 1, status: status}
+	s.check = f
 	c.mu.Unlock()
 	go c.refresh(work, owner, s, f, e)
-	return c.waitCheck(ctx, s, f, drain)
+	return c.wait(ctx, f, !manual)
 }
 
-// Scheduled callers drain precisely the flight they joined, never a replacement.
-func (c *Coordinator) waitCheck(ctx context.Context, s *ownerState, f *flight, drain bool) (domain.Status, error) {
-	status, err := c.wait(ctx, s, f)
-	if drain && ctx.Err() != nil {
-		<-f.done
-	}
-	return status, err
-}
-func (c *Coordinator) wait(ctx context.Context, s *ownerState, f *flight) (domain.Status, error) {
+// Scheduled calls wait for their canceled check to finish before returning.
+func (c *Service) wait(ctx context.Context, f *check, drain bool) (domain.Status, error) {
+	defer func() {
+		if drain && ctx.Err() != nil {
+			<-f.done
+		}
+	}()
 	select {
 	case <-f.done:
 		return copyStatus(f.status), f.err
@@ -315,7 +311,7 @@ func copyStatus(s domain.Status) domain.Status {
 	}
 	return s
 }
-func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f *flight, e repositories.Enrollment) {
+func (c *Service) refresh(ctx context.Context, owner int64, s *ownerState, f *check, e repositories.Enrollment) {
 	credentials := e.Credentials
 	o, err := c.baseline(ctx, credentials)
 	credentials = domain.Credentials{}
@@ -327,7 +323,7 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		err = safeStore(c.store.Observe(ctx, owner, e.ID, o))
+		err = c.storageError(ctx, c.saveObservation(ctx, owner, e.ID, o))
 		if err == nil {
 			next := f.status.NextEligibleAt
 			f.status = cached(o)
@@ -336,14 +332,14 @@ func (c *Coordinator) refresh(ctx context.Context, owner int64, s *ownerState, f
 		}
 	}
 	f.err = err
-	s.flight = nil
+	s.check = nil
 	close(f.done)
 }
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the enrollment and reopens work.
-func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
+func (c *Service) Remove(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
 	}
@@ -363,7 +359,7 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	s.removing = true
 	s.removalDone = make(chan struct{})
 	defer func() { c.mu.Lock(); s.removing = false; close(s.removalDone); s.removalDone = nil; c.mu.Unlock() }()
-	f := s.flight
+	f := s.check
 	if f != nil {
 		f.cancel()
 	}
@@ -376,27 +372,27 @@ func (c *Coordinator) Remove(ctx context.Context, owner int64) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	e, err := c.store.Enrollment(ctx, owner)
+	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
 	if err != nil {
-		return safeStore(err)
+		return c.storageError(ctx, err)
 	}
 	if e.OwnerID != owner {
 		return ErrDenied
 	}
-	return safeStore(c.store.Remove(ctx, owner, e.ID))
+	return c.storageError(ctx, c.deleteEnrollment(ctx, owner, e.ID))
 }
 
 // Shutdown permanently closes admission, cancels every owner check and drains
 // work before storage may close. Concurrent calls are safe and all wait for the
 // same admitted work. Collaborators must honor cancellation.
-func (c *Coordinator) Shutdown() {
+func (c *Service) Shutdown() {
 	c.mu.Lock()
 	c.closed = true
 	var done []<-chan struct{}
 	for _, s := range c.owners {
-		if s.flight != nil {
-			s.flight.cancel()
-			done = append(done, s.flight.done)
+		if s.check != nil {
+			s.check.cancel()
+			done = append(done, s.check.done)
 		}
 		if s.removalDone != nil {
 			done = append(done, s.removalDone)

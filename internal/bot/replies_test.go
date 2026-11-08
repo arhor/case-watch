@@ -1,4 +1,4 @@
-package replies
+package bot
 
 import (
 	"context"
@@ -35,10 +35,7 @@ func TestSenderShouldHonorCooldownAcrossRecipientsWhenTelegramRateLimitsReply(t 
 				}
 				return domain.SendOutcome{Category: domain.SendAccepted}, nil
 			})
-			s, err := New(Config{Clock: c, Sender: raw})
-			if err != nil {
-				t.Fatal(err)
-			}
+			s := &replySender{clock: c, client: raw}
 			actual := delay
 			if actual <= 0 {
 				actual = 30 * time.Second
@@ -62,22 +59,19 @@ func TestSenderShouldCloseAdmissionWhenTelegramRejectsToken(t *testing.T) {
 	// Given
 	c := &clock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
 	calls, reports := 0, 0
-	s, err := New(Config{Clock: c, Sender: sendFunc(func(context.Context, int64, string) (domain.SendOutcome, error) {
+	s := &replySender{clock: c, client: sendFunc(func(context.Context, int64, string) (domain.SendOutcome, error) {
 		calls++
 		return domain.SendOutcome{Category: domain.SendInvalidToken}, nil
-	}), Report: func(category string) {
-		if category == string(domain.SendInvalidToken) {
+	}), diagnostic: func(category string) {
+		if category == "telegram_invalid_token" {
 			reports++
 		}
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}}
 	// When
 	_, first := s.Send(context.Background(), 101, "help")
 	_, second := s.Send(context.Background(), 202, "help")
 	// Then
-	if !errors.Is(first, ErrSender) || !errors.Is(second, ErrSender) || calls != 1 || reports != 1 {
+	if !errors.Is(first, errReply) || !errors.Is(second, errReply) || calls != 1 || reports != 1 {
 		t.Fatalf("token failure: %v %v calls=%d reports=%d", first, second, calls, reports)
 	}
 }

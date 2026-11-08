@@ -113,3 +113,11 @@ and isolated queue experiment remain unchanged. Build the root package with
 [ADR 0018](0018_remove-automatic-notifications.md) removes the notification service
 and delivery repositories. `internal/services/replies` owns direct command reply
 rate limits and token-rejection admission. The three-layer boundaries remain.
+
+### 2026-11-08: Direct case service and application wiring
+
+[ADR 0019](0019_simplify-application-structure.md) removes the Coordinator,
+Persistence adapter, monitoring decorator and runtime object. cases.Service owns
+transactions directly. The bot and scheduler live in direct internal packages;
+reply handling is private to the bot. The checked-in initial schema already
+excludes notifications; this structural refactor makes no schema change.

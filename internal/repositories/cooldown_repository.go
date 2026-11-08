@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/arhor/case-watch/internal/utils"
+	"strings"
 )
 
 type CooldownRepository struct {
@@ -108,5 +108,5 @@ const deleteBySubjectTypeAndSubjectID = `
 `
 
 func validCooldownKey(subjectType, subjectID string) bool {
-	return !utils.IsBlank(subjectType) && !utils.IsBlank(subjectID)
+	return strings.TrimSpace(subjectType) != "" && strings.TrimSpace(subjectID) != ""
 }

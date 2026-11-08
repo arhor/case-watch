@@ -566,3 +566,50 @@ uncached runs execute that package too. Checks used the temporary Go build cache
 the build emitted the previously recorded non-fatal module-cache warning. All
 network exchanges were synthetic fixtures. Live portal/Telegram, deployment and
 target-device acceptance remain unverified.
+
+## 2026-11-08: Global refactor to direct application components
+
+Implemented [ADR 0019](adr/0019_simplify-application-structure.md) on the
+maintainer's request for a simpler application. Replaced tracking.Coordinator
+and its Store/Persistence indirection with `cases.Service`, which calls concrete
+repositories and owns transactions directly. Removed the monitoredTracking
+forwarding decorator and moved storage-failure reporting into the case service.
+Moved the bot and scheduler into direct `internal/bot` and `internal/scheduler`
+packages. Reply serialization/rate limits are now private bot code, removing the
+standalone replies service and injected direct-send callback. Removed the redundant
+domain.Tracking contract and one-use string utility package.
+
+Application construction and launch now live together in application.go. Removed
+the runtime object, separate wiring file and explicit failure latch; cancellation
+causes, two goroutines, a wait group and normal defers provide the same lifetime
+behavior. Database file/lock protection stays in storage.go. Production Go files
+fell from 26 to 22 and production lines from 2,967 to 2,716 (251 lines removed).
+The experimental internal/telegram_bot.go marked “don't touch” was preserved.
+
+Retained tests for shared manual/scheduled checks, cooldown boundaries, ownership,
+enrollment cancellation, removal draining/fencing, silent scheduled history and
+status replies. Replaced adapter-fault mocks with actual SQLite insert failures.
+Added direct service storage-reporting checks, unexpected poll-return outcomes,
+fatal cancellation during token validation and application shutdown following a
+real case-service storage error. The current initial schema in this checkout
+already excludes notification tables and has no migration 2; replaced the stale
+notification-migration fixture with current initialization/reopen coverage. This
+refactor does not change SQL migrations or reset any application database.
+
+Verification with Go 1.27.3 after `nvm use` (Node 26.13.0):
+
+- Focused application, bot, scheduler, case-service and repository tests passed.
+- `go test -count=1 ./...` passed.
+- `go test -race -count=1 ./...` passed.
+- `go vet ./...` passed.
+- `go build -o /tmp/case-watch .` passed.
+- Changed Markdown relative links and `git diff --check` passed.
+- Structural search found no remaining production Coordinator, Persistence,
+  monitoredTracking, runtime-owner or old package imports.
+
+Both full suites used approved local socket access for existing synthetic portal
+HTTP fixtures. Go checks used `GOCACHE=/tmp/case-watch-go-cache`; the build exited 0
+with the previously recorded non-fatal module stat-cache warning. Maintained
+architecture, README, product, storage, Telegram and operations guides now match
+the current code. No live portal/Telegram, deployment or target-device acceptance
+was performed.

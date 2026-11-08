@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-11-07
 decision-makers: Repository maintainer
 ---
@@ -298,3 +298,9 @@ requirements in this record. Scheduled and manual tracking keep cache/history
 without enqueueing outbound work. The runtime now supervises Telegram intake and
 the scheduler; direct replies retain rate limits and invalid-token shutdown.
 Migration 2 discards legacy delivery state while preserving tracking data.
+
+### 2026-11-08: Simplified application structure
+
+[ADR 0019](0019_simplify-application-structure.md) replaces the private runtime,
+monitor and split wiring organization with direct application construction and
+launch. The root entry point still calls only application.Run(ctx).

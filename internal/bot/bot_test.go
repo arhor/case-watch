@@ -1,4 +1,4 @@
-package telegram
+package bot
 
 import (
 	"context"
@@ -15,8 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/repositories"
 	telegramrepository "github.com/arhor/case-watch/internal/repositories/telegram"
-	"github.com/arhor/case-watch/internal/services/replies"
-	"github.com/arhor/case-watch/internal/services/tracking"
+	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -71,15 +70,15 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.s.Close() })
-	coordinator := tracking.New(tracking.Persistence{DB: f.s}, portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
+	caseService := cases.New(cases.Config{DB: f.s, Portal: portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls++
 		stage := f.stage
 		if stage == "" {
 			stage = "Etap <A>"
 		}
 		return domain.Observation{Stage: stage}, nil
-	}), f.clock)
-	f.a = f.bot(t, server, Config{Tracking: coordinator, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
+	}), Clock: f.clock})
+	f.a = f.bot(t, server, Config{Cases: caseService, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	return f
 }
 func (f *fixture) message(id int64, text string) {
@@ -194,7 +193,7 @@ func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActi
 	// Given
 	f := setup(t)
 	work := &cancelTracking{make(chan struct{}), make(chan struct{})}
-	f.a.config.Tracking = work
+	f.a.config.Cases = work
 	// When
 	f.message(101, "/enroll")
 	f.message(101, "/synthetic-secret")
@@ -243,7 +242,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.bot(t, server, Config{Tracking: f.a.config.Tracking, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, Config{Cases: f.a.config.Cases, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -283,7 +282,7 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
-	for _, missing := range []string{"client", "tracking", "clock", "direct send"} {
+	for _, missing := range []string{"client", "case service", "clock"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
@@ -291,12 +290,10 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 			switch missing {
 			case "client":
 				c.Client = nil
-			case "tracking":
-				c.Tracking = nil
+			case "case service":
+				c.Cases = nil
 			case "clock":
 				c.Clock = nil
-			case "direct send":
-				c.DirectSend = nil
 			}
 			// When
 			a, err := New(c)
@@ -352,14 +349,7 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sender, err := replies.New(replies.Config{
-		Clock: c.Clock, Sender: client,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	c.Client = client
-	c.DirectSend = sender.Send
 	a, err := New(c)
 	if err != nil {
 		t.Fatal(err)
@@ -405,11 +395,11 @@ func TestBotShouldReplyOnlyOnRequestWhenScheduledChecksChangeStage(t *testing.T)
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	before := len(f.replies)
-	coordinator := f.a.config.Tracking.(*tracking.Coordinator)
+	caseService := f.a.config.Cases.(*cases.Service)
 	// When
 	f.clock.now = f.clock.now.Add(time.Minute)
 	f.stage = "Etap B"
-	status, checkErr := coordinator.Scheduled(context.Background(), 101)
+	status, checkErr := caseService.Scheduled(context.Background(), 101)
 	afterCheck := len(f.replies)
 	f.message(101, "/status")
 	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)

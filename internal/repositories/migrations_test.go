@@ -2,8 +2,6 @@ package repositories
 
 import (
 	"context"
-	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,25 +9,16 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 )
 
-func TestStoreShouldPreserveTrackingWhenMigratingNotificationQueue(t *testing.T) {
+func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")
-	db, err := sql.Open("sqlite", path)
+	initial, err := NewStore(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	initial, err := os.ReadFile("migrations/000001_initial.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec(string(initial)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec("CREATE TABLE schema_migrations (version uint64, dirty bool); INSERT INTO schema_migrations VALUES (1,false)"); err != nil {
-		t.Fatal(err)
-	}
+	defer initial.Close()
+	db := initial.db
 	id := "0123456789abcdef0123456789abcdef"
 	checked := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	observation := domain.Observation{Stage: "B", CheckedAt: checked}
@@ -37,9 +26,6 @@ func TestStoreShouldPreserveTrackingWhenMigratingNotificationQueue(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := (&HistoryRepository{db: db}).Append(ctx, id, "A", observation); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec("INSERT INTO pending (history_sequence,recipient_id,status,cycle_attempts,lifetime_attempts) SELECT sequence,101,'reserved',1,1 FROM history WHERE enrollment_id = ?", id); err != nil {
 		t.Fatal(err)
 	}
 	guard := Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
@@ -51,6 +37,9 @@ func TestStoreShouldPreserveTrackingWhenMigratingNotificationQueue(t *testing.T)
 		t.Fatal(err)
 	}
 	// When
+	if err := initial.Close(); err != nil {
+		t.Fatal(err)
+	}
 	store, openErr := NewStore(ctx, path)
 	if openErr != nil {
 		t.Fatal(openErr)
@@ -66,7 +55,7 @@ func TestStoreShouldPreserveTrackingWhenMigratingNotificationQueue(t *testing.T)
 	var obsolete int
 	schemaErr := store.db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name IN ('pending','recipients','pending_recipient')").Scan(&obsolete)
 	// Then
-	if readErr != nil || historyErr != nil || guardErr != nil || caseGuardErr != nil || versionErr != nil || version != 2 || dirty || schemaErr != nil || enrollment.ID != id || enrollment.Credentials != (domain.Credentials{Number: "synthetic-number", Password: "synthetic-password"}) || enrollment.Observation != observation || len(history) != 1 || history[0].Stage != "B" || !cooldown.StartedAt.Equal(checked) || !caseCooldown.StartedAt.Equal(checked) || obsolete != 0 {
-		t.Fatalf("migration lost tracking: enrollment=%+v history=%+v guard=%+v caseGuard=%+v version=%d dirty=%t obsolete=%d errors=%v/%v/%v/%v/%v/%v", enrollment, history, cooldown, caseCooldown, version, dirty, obsolete, readErr, historyErr, guardErr, caseGuardErr, versionErr, schemaErr)
+	if readErr != nil || historyErr != nil || guardErr != nil || caseGuardErr != nil || versionErr != nil || version != 1 || dirty || schemaErr != nil || enrollment.ID != id || enrollment.Credentials != (domain.Credentials{Number: "synthetic-number", Password: "synthetic-password"}) || enrollment.Observation != observation || len(history) != 1 || history[0].Stage != "B" || !cooldown.StartedAt.Equal(checked) || !caseCooldown.StartedAt.Equal(checked) || obsolete != 0 {
+		t.Fatalf("reopening lost tracking: enrollment=%+v history=%+v guard=%+v caseGuard=%+v version=%d dirty=%t obsolete=%d errors=%v/%v/%v/%v/%v/%v", enrollment, history, cooldown, caseCooldown, version, dirty, obsolete, readErr, historyErr, guardErr, caseGuardErr, versionErr, schemaErr)
 	}
 }

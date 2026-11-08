@@ -6,6 +6,7 @@ Use the [root README](../README.md) for the project overview, build and deployme
 
 | Document | Read for |
 | --- | --- |
+| [Application structure](architecture.md) | Current packages, responsibilities and construction. |
 | [Product contract](product-contract.md) | Commands, enrollment, removal, checks and silent scheduled tracking. |
 | [ADR index](adr/README.md) | Accepted architecture decisions, dated amendments and the decision workflow. |
 

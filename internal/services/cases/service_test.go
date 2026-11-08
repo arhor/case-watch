@@ -1,4 +1,4 @@
-package tracking_test
+package cases
 
 import (
 	"context"
@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/entrypoints/scheduler"
 	"github.com/arhor/case-watch/internal/repositories"
-	"github.com/arhor/case-watch/internal/services/tracking"
+	"github.com/arhor/case-watch/internal/scheduler"
 )
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -35,7 +34,7 @@ func (f portalFunc) Check(ctx context.Context, p domain.Credentials) (domain.Obs
 }
 
 type fixture struct {
-	c     *tracking.Coordinator
+	c     *Service
 	s     *repositories.Store
 	clock *clock
 	path  string
@@ -58,7 +57,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 		}
 		return domain.Observation{Stage: "A"}, nil
 	})
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, wrapped, f.clock)
+	f.c = New(Config{DB: f.s, Portal: wrapped, Clock: f.clock})
 	return f
 }
 func (f *fixture) enroll(t *testing.T, owner int64) string {
@@ -91,7 +90,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	f.clock.set(epoch.Add(time.Minute))
 	at, e2 := f.c.Status(context.Background(), 101)
 	e, _ := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	deadline, e3 := (tracking.Persistence{DB: f.s}).CheckEligibility(context.Background(), 101, e.ID, true)
+	deadline, e3 := f.c.checkEligibility(context.Background(), 101, e.ID, true)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("freshness: recent=%+v at=%+v calls=%d errors=%v/%v/%v", recent, at, f.calls.Load(), e1, e2, e3)
@@ -120,16 +119,16 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 		t.Fatal(err)
 	}
 	f.s = reopened
-	f.c = tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f.c = New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls.Add(1)
 		return domain.Observation{}, errors.New("secret")
-	}), f.clock)
+	}), Clock: f.clock})
 	f.clock.set(epoch.Add(119 * time.Second))
 	before, e2 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(2 * time.Minute))
 	at, e3 := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(e1, tracking.ErrCheck) || e2 != nil || !errors.Is(e3, tracking.ErrCheck) || failed.Fresh || before.Fresh || at.Fresh || f.calls.Load() != 3 || strings.Contains(e1.Error(), "secret") || !before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
+	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || failed.Fresh || before.Fresh || at.Fresh || f.calls.Load() != 3 || strings.Contains(e1.Error(), "secret") || !before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("failure guard: %+v %+v errors=%v/%v/%v calls=%d", failed, before, e1, e2, e3, f.calls.Load())
 	}
 	obs(t, failed, "A", epoch)
@@ -175,7 +174,7 @@ func TestScheduledShouldPreventManualRetryWhenScheduledAttemptFails(t *testing.T
 	f.clock.set(epoch.Add(2 * time.Minute))
 	_, e3 := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(e1, tracking.ErrCheck) || e2 != nil || !errors.Is(e3, tracking.ErrCheck) || before.Fresh || f.calls.Load() != 3 {
+	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || before.Fresh || f.calls.Load() != 3 {
 		t.Fatalf("failed schedule guard: %+v errors=%v/%v/%v calls=%d", before, e1, e2, e3, f.calls.Load())
 	}
 }
@@ -259,7 +258,7 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.
 	_, other := f.c.Status(context.Background(), 202)
 	// Then
 	for _, err := range []error{e1, e2, e3, e4} {
-		if !errors.Is(err, tracking.ErrDenied) {
+		if !errors.Is(err, ErrDenied) {
 			t.Fatalf("denial: %v", err)
 		}
 	}
@@ -284,17 +283,11 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	}
 }
 
-type failingStore struct{ tracking.Store }
-
-func (s failingStore) Enroll(context.Context, int64, string, domain.Credentials, domain.Observation) error {
-	return errors.New("private storage detail")
-}
 func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.T) {
 	for _, kind := range []string{"portal", "storage", "cancellation", "validation"} {
 		t.Run(kind, func(t *testing.T) {
 			// Given
 			f := setup(t, nil)
-			var s tracking.Store = tracking.Persistence{DB: f.s}
 			ctx := context.Background()
 			input := plain
 			p := portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
@@ -306,7 +299,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 					return domain.Observation{}, errors.New("private remote detail")
 				}
 			case "storage":
-				s = failingStore{s}
+				rejectInsert(t, f.path, "enrollments")
 			case "cancellation":
 				c, cancel := context.WithCancel(ctx)
 				cancel()
@@ -314,7 +307,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			case "validation":
 				input.Password = ""
 			}
-			c := tracking.New(s, p, f.clock)
+			c := New(Config{DB: f.s, Portal: p, Clock: f.clock})
 			// When
 			_, err := c.Enroll(ctx, 101, input)
 			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
@@ -364,11 +357,11 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	block.Store(false)
 	newID := f.enroll(t, 101)
-	lateObservation := (tracking.Persistence{DB: f.s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "LATE", CheckedAt: f.clock.Now()})
+	lateObservation := f.c.saveObservation(context.Background(), 101, id, domain.Observation{Stage: "LATE", CheckedAt: f.clock.Now()})
 	f.clock.set(epoch.Add(119 * time.Second))
 	cached, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(busyStatus, tracking.ErrRemoving) || !errors.Is(busyEnroll, tracking.ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, tracking.ErrRemoving) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
+	if !errors.Is(busyStatus, ErrRemoving) || !errors.Is(busyEnroll, ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, ErrRemoving) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
 		t.Fatalf("removal results: late=%v remove=%v missing=%v lateObservation=%v status=%+v err=%v", late.err, removeErr, missing, lateObservation, cached, statusErr)
 	}
 	obs(t, cached, "A", epoch.Add(time.Minute))
@@ -396,7 +389,7 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	enrollErr, removeErr := <-enrolled, <-removed
 	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
-	if !errors.Is(busy, tracking.ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
+	if !errors.Is(busy, ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
 	}
 }
@@ -432,30 +425,24 @@ func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
 	}
 }
 
-type rejectingObserve struct{ tracking.Store }
-
-func (s rejectingObserve) Observe(context.Context, int64, string, domain.Observation) error {
-	return errors.New("private database details")
-}
 func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 	t.Run("observation", func(t *testing.T) {
 		// Given
 		f := setup(t, nil)
 		id := f.enroll(t, 101)
-		var s tracking.Store = tracking.Persistence{DB: f.s}
 		var calls atomic.Int32
-		s = rejectingObserve{s}
-		c := tracking.New(s, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+		rejectInsert(t, f.path, "history")
+		c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 			calls.Add(1)
 			return domain.Observation{Stage: "B"}, nil
-		}), f.clock)
+		}), Clock: f.clock})
 		f.clock.set(epoch.Add(time.Minute))
 		// When
 		status, err := c.Status(context.Background(), 101)
 		e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 		history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
 		// Then
-		if !errors.Is(err, tracking.ErrStorage) || readErr != nil || historyErr != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
+		if !errors.Is(err, ErrStorage) || readErr != nil || historyErr != nil || e.Observation.Stage != "A" || !e.Observation.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
 			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
 		}
 		obs(t, status, "A", epoch)
@@ -516,7 +503,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(workErr, tracking.ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.Observation == nil {
+	if !errors.Is(workErr, ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.Observation == nil {
 		t.Fatalf("canceled removal: work=%v remove=%v read=%v status=%v", workErr, removeErr, readErr, statusErr)
 	}
 }
@@ -531,14 +518,14 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 		t.Fatal(err)
 	}
 	f.s = reopened
-	c := tracking.New(tracking.Persistence{DB: f.s}, portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+	c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		t.Error("recent baseline triggered portal work")
 		return domain.Observation{}, nil
-	}), f.clock)
+	}), Clock: f.clock})
 	f.clock.set(epoch.Add(59 * time.Second))
 	// When
 	status, statusErr := c.Scheduled(context.Background(), 101)
-	next, guardErr := (tracking.Persistence{DB: f.s}).CheckEligibility(context.Background(), 101, id, true)
+	next, guardErr := c.checkEligibility(context.Background(), 101, id, true)
 	// Then
 	if statusErr != nil || guardErr != nil || status.Fresh || !next.IsZero() || !status.NextEligibleAt.Equal(epoch.Add(time.Minute)) {
 		t.Fatalf("baseline reuse: %+v status=%v next=%v guard=%v", status, statusErr, next, guardErr)
@@ -556,7 +543,7 @@ func TestSchedulerShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	waits := 0
-	s, err := scheduler.New(scheduler.Config{Tracking: f.c, Clock: f.clock, Wait: func(_ context.Context, deadline time.Time) error {
+	s, err := scheduler.New(scheduler.Config{Cases: f.c, Clock: f.clock, Wait: func(_ context.Context, deadline time.Time) error {
 		waits++
 		if waits == 2 {
 			cancel()
@@ -618,10 +605,10 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 		}
 	}
 	f.c.Shutdown()
-	if _, e := f.c.Enroll(context.Background(), 101, plain); !errors.Is(e, tracking.ErrClosed) {
+	if _, e := f.c.Enroll(context.Background(), 101, plain); !errors.Is(e, ErrClosed) {
 		t.Fatal("enrollment admitted after shutdown")
 	}
-	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, tracking.ErrClosed) {
+	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, ErrClosed) {
 		t.Fatal("removal admitted after shutdown")
 	}
 }
@@ -658,11 +645,55 @@ func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When
-	observeErr := (tracking.Persistence{DB: f.s}).Observe(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: epoch.Add(time.Minute)})
+	observeErr := f.c.saveObservation(context.Background(), 101, id, domain.Observation{Stage: "B", CheckedAt: epoch.Add(time.Minute)})
 	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Observation.Stage != "A" || !enrollment.Observation.CheckedAt.Equal(epoch) || len(history) != 0 {
 		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment.Observation, history, observeErr, readErr, historyErr)
+	}
+}
+
+func rejectInsert(t *testing.T, path, table string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if table != "history" && table != "enrollments" {
+		t.Fatal("invalid fixture table")
+	}
+	if _, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "active", true: "canceled"}[canceled], func(t *testing.T) {
+			// Given
+			f := setup(t, nil)
+			if err := f.s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reports := 0
+			f.c.onStorageError = func() { reports++ }
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if canceled {
+				cancel()
+			}
+			// When
+			_, err := f.c.HasEnrollment(ctx, 101)
+			// Then
+			want := 1
+			if canceled {
+				want = 0
+			}
+			if err == nil || reports != want {
+				t.Fatalf("storage failure: err=%v reports=%d want=%d", err, reports, want)
+			}
+		})
 	}
 }

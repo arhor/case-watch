@@ -20,9 +20,9 @@ Configure the Telegram bot token and database path using environment variables. 
 
 The application reads environment variables directly; it does not load `.env` files. Portal credentials are currently stored as plaintext in the protected SQLite database while the application remains work in progress. See [operator commands](docs/operations.md) for details.
 
-The root `main.go` calls `internal/application.Run(ctx)`. That package constructs
-and injects dependencies, validates startup, supervises runtime components and
-drains work before closing storage. See [ADR 0016](docs/adr/0016_encapsulate-application-bootstrap.md).
+The root `main.go` calls `internal/application.Run(ctx)`, which constructs the
+repositories, case service, Telegram bot and scheduler and launches them.
+See [application structure](docs/architecture.md) for the code map.
 
 ## Deployment
 
