@@ -36,9 +36,6 @@ func setup(t *testing.T) *fixture {
 func (f *fixture) lookup(k string) (string, bool) { v, ok := f.env[k]; return v, ok }
 func (f *fixture) open(t *testing.T) *repositories.Store {
 	t.Helper()
-	if e := databaseFile(f.db); e != nil {
-		t.Fatal(e)
-	}
 	s, e := repositories.NewStore(context.Background(), f.db)
 	if e != nil {
 		t.Fatal(e)
@@ -452,4 +449,12 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 		t.Fatal(lockErr)
 	}
 	defer lock.Close()
+}
+
+func TestAcquireInstanceLockShouldDistinguishStartupFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "state.db")
+	lock, err := acquireInstanceLock(path)
+	if lock != nil || !errors.Is(err, errStartup) || errors.Is(err, errLocked) {
+		t.Fatalf("unexpected lock result: %v %v", lock, err)
+	}
 }
