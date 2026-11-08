@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
-	"github.com/arhor/case-watch/internal/repositories"
+	"github.com/arhor/case-watch/internal/database"
+	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
@@ -30,7 +32,7 @@ func (p portal) Check(c context.Context, v domain.Credentials) (domain.Observati
 
 type fixture struct {
 	a       *Bot
-	s       *repositories.Store
+	s       *store.Store
 	clock   *fakeClock
 	mu      sync.Mutex
 	replies []string
@@ -62,13 +64,13 @@ func setup(t *testing.T) *fixture {
 		}
 	}))
 	t.Cleanup(server.Close)
-	var err error
 	f.path = filepath.Join(t.TempDir(), "state.db")
-	f.s, err = repositories.NewStore(context.Background(), f.path)
+	db, err := database.Open(context.Background(), f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { f.s.Close() })
+	f.s = store.New(db)
+	t.Cleanup(func() { db.Close() })
 	caseService := cases.New(cases.Config{DB: f.s, Portal: portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
 		f.calls++
 		stage := f.stage
