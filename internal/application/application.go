@@ -6,7 +6,9 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/arhor/case-watch/internal/bot"
@@ -43,18 +45,15 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return err
 	}
-	path, err := databasePath(cfg.DBPath)
+	path, err := filepath.Abs(cfg.DBPath)
 	if err != nil {
-		return err
+		return errStartup
 	}
 	lock, err := acquireInstanceLock(path)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := databaseFile(path); err != nil {
-		return err
-	}
 	db, err := repositories.NewStore(ctx, path)
 	if err != nil {
 		return errStartup
@@ -134,4 +133,27 @@ func run(ctx context.Context, d dependencies) (result error) {
 		return errService
 	}
 	return nil
+}
+
+var (
+	errStartup = errors.New("service startup validation failed")
+	errLocked  = errors.New("another case-watch instance is already running")
+	errService = errors.New("service operation failed")
+)
+
+// acquireInstanceLock prevents two bot processes from using the same database.
+// Keep the lock file in place so every process locks the same inode.
+func acquireInstanceLock(db string) (*os.File, error) {
+	file, err := os.OpenFile(db+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, errStartup
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		file.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, errLocked
+		}
+		return nil, errStartup
+	}
+	return file, nil
 }
