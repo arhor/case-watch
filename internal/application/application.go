@@ -47,11 +47,11 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return err
 	}
-	lock, err := acquire(path)
+	lock, err := acquireInstanceLock(path)
 	if err != nil {
 		return err
 	}
-	defer func() { result = errors.Join(result, lock.close()) }()
+	defer lock.Close()
 	if err := databaseFile(path); err != nil {
 		return err
 	}
