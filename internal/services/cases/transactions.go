@@ -16,8 +16,11 @@ const (
 )
 
 func (s *Service) saveEnrollment(ctx context.Context, owner int64, id string, c domain.Credentials, o domain.Observation) error {
-	return s.db.RunInTx(ctx, func(tx *repositories.Store) error { return tx.Enrollments.Create(ctx, owner, id, c, o) })
+	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
+		return tx.Enrollments.Create(ctx, owner, id, c, o)
+	})
 }
+
 func (s *Service) saveObservation(ctx context.Context, owner int64, id string, o domain.Observation) error {
 	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		e, err := tx.Enrollments.FindByIdentity(ctx, owner, id)
@@ -33,6 +36,7 @@ func (s *Service) saveObservation(ctx context.Context, owner int64, id string, o
 		return tx.History.Append(ctx, id, e.Observation.Stage, o)
 	})
 }
+
 func (s *Service) deleteEnrollment(ctx context.Context, owner int64, id string) error {
 	return s.db.RunInTx(ctx, func(tx *repositories.Store) error {
 		if err := tx.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
@@ -44,6 +48,7 @@ func (s *Service) deleteEnrollment(ctx context.Context, owner int64, id string) 
 		return tx.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
 	})
 }
+
 func eligibility(ctx context.Context, tx *repositories.Store, owner int64, id string, manual bool) (time.Time, error) {
 	if _, err := tx.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
 		return time.Time{}, err
@@ -67,6 +72,7 @@ func eligibility(ctx context.Context, tx *repositories.Store, owner int64, id st
 	}
 	return caseStart.Add(time.Minute), nil
 }
+
 func (s *Service) checkEligibility(ctx context.Context, owner int64, id string, manual bool) (time.Time, error) {
 	var next time.Time
 	err := s.db.RunInTx(ctx, func(tx *repositories.Store) error {
@@ -76,6 +82,7 @@ func (s *Service) checkEligibility(ctx context.Context, owner int64, id string, 
 	})
 	return next, err
 }
+
 func (s *Service) reserveCheck(ctx context.Context, owner int64, id string, manual bool, now time.Time) (repositories.CheckReservation, error) {
 	if now.IsZero() {
 		return repositories.CheckReservation{}, repositories.ErrInvalid
