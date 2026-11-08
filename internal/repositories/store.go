@@ -3,8 +3,6 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"os"
 )
 
 type DBTX interface {
@@ -15,7 +13,6 @@ type DBTX interface {
 
 type Store struct {
 	db          *sql.DB
-	lock        *os.File
 	inTx        bool
 	Enrollments *EnrollmentRepository
 	History     *HistoryRepository
@@ -27,38 +24,22 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStore(db, nil), nil
-}
-
-// NewExclusiveStore prevents concurrent bot instances from using the same
-// database. Ordinary NewStore callers retain SQLite's native multi-process access.
-func NewExclusiveStore(ctx context.Context, path string) (*Store, error) {
-	db, lock, err := openExclusiveDB(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	return newStore(db, lock), nil
-}
-
-func newStore(db *sql.DB, lock *os.File) *Store {
 	return &Store{
 		db:          db,
-		lock:        lock,
 		Enrollments: &EnrollmentRepository{db: db},
 		History:     &HistoryRepository{db: db},
 		Cooldowns:   &CooldownRepository{db: db},
-	}
+	}, nil
 }
 
 func (this *Store) Close() error {
 	if this.inTx {
 		return ErrTransaction
 	}
-	err := this.db.Close()
-	if this.lock != nil {
-		err = errors.Join(err, this.lock.Close())
+	if err := this.db.Close(); err != nil {
+		return err
 	}
-	return err
+	return nil
 }
 
 func (this *Store) RunInTx(ctx context.Context, fn func(*Store) error) error {
