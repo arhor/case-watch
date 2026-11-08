@@ -43,11 +43,8 @@ func run(ctx context.Context, d dependencies) (result error) {
 	if err != nil {
 		return err
 	}
-	db, err := repositories.NewExclusiveStore(ctx, cfg.DBPath)
+	db, err := repositories.NewStore(ctx, cfg.DBPath)
 	if err != nil {
-		if errors.Is(err, repositories.ErrLocked) {
-			return err
-		}
 		return errStartup
 	}
 	defer func() {
