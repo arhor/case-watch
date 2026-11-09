@@ -23,7 +23,6 @@ var (
 	errService = errors.New("service operation failed")
 )
 
-// Only external boundaries are replaceable in offline application tests.
 type telegramClient interface {
 	bot.Transport
 	Validate(context.Context) error
