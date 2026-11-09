@@ -47,6 +47,7 @@ func run[T interface {
 	if err != nil {
 		return err
 	}
+
 	db, err := database.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return errStartup
@@ -68,6 +69,7 @@ func run[T interface {
 			fail()
 		}
 	}
+
 	var portalClient domain.Portal = portal.NewClient(portal.Options{Clock: clock})
 	if newPortal != nil {
 		portalClient = newPortal()
