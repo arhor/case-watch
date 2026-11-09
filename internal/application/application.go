@@ -23,25 +23,27 @@ var (
 	errService = errors.New("service operation failed")
 )
 
-type telegramClient interface {
+func Run(ctx context.Context) error {
+	return run(
+		ctx,
+		os.LookupEnv,
+		nil,
+		bot.NewClient,
+	)
+}
+
+func run[T interface {
 	bot.Transport
 	Validate(context.Context) error
-}
-type dependencies struct {
-	lookup   func(string) (string, bool)
-	portal   func() domain.Portal
-	telegram func(bot.ClientConfig) (telegramClient, error)
-}
-
-func Run(ctx context.Context) error {
-	return run(ctx, dependencies{lookup: os.LookupEnv})
-}
-
-func run(ctx context.Context, d dependencies) (result error) {
-
+}](
+	ctx context.Context,
+	lookup func(string) (string, bool),
+	newPortal func() domain.Portal,
+	newClient func(bot.ClientConfig) (T, error),
+) (result error) {
 	clock := utils.NewClock()
 
-	cfg, err := config.Load(d.lookup)
+	cfg, err := config.Load(lookup)
 	if err != nil {
 		return err
 	}
@@ -66,38 +68,57 @@ func run(ctx context.Context, d dependencies) (result error) {
 			fail()
 		}
 	}
-	var portalClient domain.Portal = portal.NewClient(portal.Options{Now: clock.Now})
-	if d.portal != nil {
-		portalClient = d.portal()
+	var portalClient domain.Portal = portal.NewClient(portal.Options{Clock: clock})
+	if newPortal != nil {
+		portalClient = newPortal()
 	}
-	caseService := cases.New(cases.Config{DB: storage, Portal: portalClient, Clock: clock, OnStorageError: fail})
+	caseService := cases.New(cases.Config{
+		DB:             storage,
+		Portal:         portalClient,
+		Clock:          clock,
+		OnStorageError: fail,
+	})
 	defer caseService.Shutdown()
-	newClient := d.telegram
-	if newClient == nil {
-		newClient = func(c bot.ClientConfig) (telegramClient, error) { return bot.NewClient(c) }
-	}
-	client, err := newClient(bot.ClientConfig{Token: cfg.TelegramBotToken, Diagnostic: diagnostic})
+
+	client, err := newClient(bot.ClientConfig{
+		Token:      cfg.TelegramBotToken,
+		Diagnostic: diagnostic,
+	})
 	if err != nil {
 		return errStartup
 	}
-	telegramBot, err := bot.New(bot.Config{Client: client, Cases: caseService, Clock: clock, Diagnostic: diagnostic})
+
+	telegramBot, err := bot.New(bot.Config{
+		Client:     client,
+		Cases:      caseService,
+		Clock:      clock,
+		Diagnostic: diagnostic,
+	})
 	if err != nil {
 		return errStartup
 	}
 	defer telegramBot.Close()
-	scheduled, err := scheduler.New(scheduler.Config{Cases: caseService, Clock: clock, Report: diagnostic})
+
+	scheduled, err := scheduler.New(scheduler.Config{
+		Cases:  caseService,
+		Clock:  clock,
+		Report: diagnostic,
+	})
 	if err != nil {
 		return errStartup
 	}
+
 	if ctx.Err() != nil {
 		return nil
 	}
+
 	if err := client.Validate(work); err != nil {
 		if ctx.Err() != nil {
 			return nil
 		}
 		return errStartup
 	}
+
 	if work.Err() == nil {
 		var running sync.WaitGroup
 		start := func(loop func(context.Context) error) {
@@ -113,10 +134,10 @@ func run(ctx context.Context, d dependencies) (result error) {
 		start(telegramBot.Run)
 		start(scheduled.Run)
 		<-work.Done()
-		// Cancel shared portal work before joining callers waiting for it.
 		caseService.Shutdown()
 		running.Wait()
 	}
+
 	if errors.Is(context.Cause(work), errService) {
 		return errService
 	}

@@ -184,7 +184,7 @@ func (c *Client) run(ctx context.Context, number, password string) (result Resul
 			return nil, errors.New("request budget exhausted")
 		}
 		if !last.IsZero() {
-			if err := c.wait(ctx, last.Add(c.interval).Sub(c.now())); err != nil {
+			if err := c.wait(ctx, last.Add(c.interval).Sub(c.clock.Now())); err != nil {
 				return nil, err
 			}
 		}
@@ -205,7 +205,7 @@ func (c *Client) run(ctx context.Context, number, password string) (result Resul
 		req.GetBody = nil
 		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 		result.Requests++
-		last = c.now()
+		last = c.clock.Now()
 		resp, err := client.Do(req)
 		if err != nil {
 			if requestCtx.Err() != nil {

@@ -14,6 +14,12 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 )
 
+type fakeClock struct {
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time { return c.now }
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -23,7 +29,7 @@ func reply(body string) *http.Response {
 func TestClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenReused(t *testing.T) {
 	// Given
 	calls := 0
-	now := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	clock := &fakeClock{now: time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)}
 	waits := 0
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		step := calls % 5
@@ -55,22 +61,23 @@ func TestClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenReused(t *test
 		}
 		return response, nil
 	})
-	c := NewClient(Options{Transport: transport, Now: func() time.Time { return now }, Wait: func(ctx context.Context, d time.Duration) error {
+	c := NewClient(Options{Transport: transport, Clock: clock, Wait: func(ctx context.Context, d time.Duration) error {
 		if d != 2*time.Second {
 			t.Errorf("interval=%s", d)
 		}
 		waits++
-		now = now.Add(d)
+		clock.now = clock.now.Add(d)
 		return ctx.Err()
 	}})
 	// When
 	first, err := c.Check(context.Background(), domain.Credentials{Number: "synthetic-case", Password: "synthetic-password"})
 	second, err2 := c.Check(context.Background(), domain.Credentials{})
 	// Then
-	if err != nil || err2 != nil || calls != 10 || waits != 8 || first.Stage != "Synthetic stage" || second.Stage != first.Stage || !second.CheckedAt.Equal(now) || !first.CheckedAt.Before(second.CheckedAt) {
+	if err != nil || err2 != nil || calls != 10 || waits != 8 || first.Stage != "Synthetic stage" || second.Stage != first.Stage || !second.CheckedAt.Equal(clock.now) || !first.CheckedAt.Before(second.CheckedAt) {
 		t.Fatalf("observations=%+v %+v errors=%v %v calls=%d waits=%d", first, second, err, err2, calls, waits)
 	}
 }
+
 func TestClientShouldReturnSanitizedClassificationWhenExchangeFails(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/utils"
 )
 
 type Kind string
@@ -31,14 +32,14 @@ type Error struct {
 type Options struct {
 	BaseURL   string
 	Transport http.RoundTripper
-	Now       func() time.Time
+	Clock     utils.Clock
 	Wait      func(context.Context, time.Duration) error
 }
 
 type Client struct {
 	base       string
 	transport  http.RoundTripper
-	now        func() time.Time
+	clock      utils.Clock
 	wait       func(context.Context, time.Duration) error
 	interval   time.Duration
 	overall    time.Duration
@@ -61,9 +62,9 @@ func NewClient(options Options) *Client {
 	if base == "" {
 		base = "https://klient.gdansk.uw.gov.pl"
 	}
-	now := options.Now
-	if now == nil {
-		now = time.Now
+	clock := options.Clock
+	if clock == nil {
+		clock = utils.NewClock()
 	}
 	wait := options.Wait
 	if wait == nil {
@@ -72,7 +73,7 @@ func NewClient(options Options) *Client {
 	return &Client{
 		base:       strings.TrimRight(base, "/"),
 		transport:  options.Transport,
-		now:        now,
+		clock:      clock,
 		wait:       wait,
 		interval:   2 * time.Second,
 		overall:    60 * time.Second,
@@ -89,7 +90,7 @@ func (c *Client) Check(ctx context.Context, credentials domain.Credentials) (dom
 	if err := ctx.Err(); err != nil {
 		return domain.Observation{}, classify(err)
 	}
-	return domain.Observation{Stage: result.Stage, CheckedAt: c.now()}, nil
+	return domain.Observation{Stage: result.Stage, CheckedAt: c.clock.Now()}, nil
 }
 
 // -- Internal implementation ---------------------------------------------------------------------
