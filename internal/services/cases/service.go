@@ -70,26 +70,26 @@ func New(config Config) *Service {
 
 // HasEnrollment lets interactive entry points ask a business-level question
 // without reading an enrollment repository directly.
-func (c *Service) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
+func (this *Service) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
 	if owner <= 0 {
 		return false, ErrDenied
 	}
-	_, err := c.db.Enrollments.FindByOwner(ctx, owner)
+	_, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if errors.Is(err, repositories.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
-		return false, c.storageError(ctx, err)
+		return false, this.storageError(ctx, err)
 	}
 	return true, nil
 }
 
 // ScheduledOwners returns the enrolled owners available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
-func (c *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
-	items, err := c.db.Enrollments.FindAll(ctx)
+func (this *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
+	items, err := this.db.Enrollments.FindAll(ctx)
 	if err != nil {
-		return nil, c.storageError(ctx, err)
+		return nil, this.storageError(ctx, err)
 	}
 	owners := make([]int64, 0, len(items))
 	for _, item := range items {
@@ -100,7 +100,7 @@ func (c *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-func (c *Service) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
+func (this *Service) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
 	defer func() { credentials = domain.Credentials{} }()
 	if owner <= 0 {
 		return domain.Observation{}, ErrDenied
@@ -111,121 +111,127 @@ func (c *Service) Enroll(ctx context.Context, owner int64, credentials domain.Cr
 	if strings.TrimSpace(credentials.Number) == "" || strings.TrimSpace(credentials.Password) == "" {
 		return domain.Observation{}, ErrInvalid
 	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	this.mu.Lock()
+	if this.closed {
+		this.mu.Unlock()
 		return domain.Observation{}, ErrClosed
 	}
-	s := c.state(owner)
+	s := this.state(owner)
 	if s.removing {
-		c.mu.Unlock()
+		this.mu.Unlock()
 		return domain.Observation{}, ErrRemoving
 	}
 	if s.check != nil {
-		c.mu.Unlock()
+		this.mu.Unlock()
 		return domain.Observation{}, ErrBusy
 	}
-	_, err := c.db.Enrollments.FindByOwner(ctx, owner)
+	_, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if err == nil {
-		c.mu.Unlock()
+		this.mu.Unlock()
 		return domain.Observation{}, repositories.ErrExists
 	}
 	if !errors.Is(err, repositories.ErrNotFound) {
-		c.mu.Unlock()
-		return domain.Observation{}, c.storageError(ctx, err)
+		this.mu.Unlock()
+		return domain.Observation{}, this.storageError(ctx, err)
 	}
 	work, cancel := context.WithCancel(ctx)
 	f := &check{cancel: cancel, done: make(chan struct{}), enrollment: true}
 	s.check = f
-	c.mu.Unlock()
-	defer func() { cancel(); c.mu.Lock(); s.check = nil; close(f.done); c.mu.Unlock() }()
+	this.mu.Unlock()
+	defer func() { cancel(); this.mu.Lock(); s.check = nil; close(f.done); this.mu.Unlock() }()
 	id, err := repositories.NewEnrollmentID()
 	if err != nil {
 		return domain.Observation{}, ErrStorage
 	}
-	o, err := c.baseline(work, credentials)
+	o, err := this.baseline(work, credentials)
 	if err != nil {
 		return domain.Observation{}, err
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	this.mu.Lock()
+	defer this.mu.Unlock()
 	if s.removing {
 		return domain.Observation{}, ErrRemoving
 	}
 	if work.Err() != nil {
 		return domain.Observation{}, work.Err()
 	}
-	if err = c.saveEnrollment(work, owner, id, credentials, o); err != nil {
-		return domain.Observation{}, c.storageError(ctx, err)
+	if err = this.saveEnrollment(work, owner, id, credentials, o); err != nil {
+		return domain.Observation{}, this.storageError(ctx, err)
 	}
 	return o, nil
 }
 
-func (c *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
-	return c.check(ctx, owner, true)
+func (this *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
+	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (c *Service) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
-	return c.check(ctx, owner, false)
+func (this *Service) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
+	return this.check(ctx, owner, false)
 }
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the enrollment and reopens work.
-func (c *Service) Remove(ctx context.Context, owner int64) error {
+func (this *Service) Remove(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	this.mu.Lock()
+	if this.closed {
+		this.mu.Unlock()
 		return ErrClosed
 	}
-	s := c.state(owner)
+	s := this.state(owner)
 	if s.removing {
-		c.mu.Unlock()
+		this.mu.Unlock()
 		return ErrRemoving
 	}
 	s.removing = true
 	s.removalDone = make(chan struct{})
-	defer func() { c.mu.Lock(); s.removing = false; close(s.removalDone); s.removalDone = nil; c.mu.Unlock() }()
+	defer func() {
+		this.mu.Lock()
+		s.removing = false
+		close(s.removalDone)
+		s.removalDone = nil
+		this.mu.Unlock()
+	}()
 	f := s.check
 	if f != nil {
 		f.cancel()
 	}
-	c.mu.Unlock()
+	this.mu.Unlock()
 	if f != nil {
 		<-f.done
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	this.mu.Lock()
+	defer this.mu.Unlock()
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
+	e, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if err != nil {
-		return c.storageError(ctx, err)
+		return this.storageError(ctx, err)
 	}
 	if e.OwnerID != owner {
 		return ErrDenied
 	}
-	return c.storageError(ctx, c.deleteEnrollment(ctx, owner, e.ID))
+	return this.storageError(ctx, this.deleteEnrollment(ctx, owner, e.ID))
 }
 
 // Shutdown permanently closes admission, cancels every owner check and drains
 // work before storage may close. Concurrent calls are safe and all wait for the
 // same admitted work. Collaborators must honor cancellation.
-func (c *Service) Shutdown() {
-	c.mu.Lock()
-	c.closed = true
+func (this *Service) Shutdown() {
+	this.mu.Lock()
+	this.closed = true
 	var done []<-chan struct{}
-	for _, s := range c.owners {
+	for _, s := range this.owners {
 		if s.check != nil {
 			s.check.cancel()
 			done = append(done, s.check.done)
@@ -234,7 +240,7 @@ func (c *Service) Shutdown() {
 			done = append(done, s.removalDone)
 		}
 	}
-	c.mu.Unlock()
+	this.mu.Unlock()
 	for _, ch := range done {
 		<-ch
 	}
@@ -242,16 +248,16 @@ func (c *Service) Shutdown() {
 
 // -- Internal implementation ---------------------------------------------------------------------
 
-func (c *Service) state(owner int64) *ownerState {
-	s := c.owners[owner]
-	if s == nil {
-		s = &ownerState{}
-		c.owners[owner] = s
+func (this *Service) state(owner int64) *ownerState {
+	state := this.owners[owner]
+	if state == nil {
+		state = &ownerState{}
+		this.owners[owner] = state
 	}
-	return s
+	return state
 }
 
-func (c *Service) storageError(ctx context.Context, err error) error {
+func (this *Service) storageError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -267,8 +273,8 @@ func (c *Service) storageError(ctx context.Context, err error) error {
 	if errors.Is(err, repositories.ErrExists) {
 		return repositories.ErrExists
 	}
-	if ctx.Err() == nil && c.onStorageError != nil {
-		c.onStorageError()
+	if ctx.Err() == nil && this.onStorageError != nil {
+		this.onStorageError()
 	}
 	return ErrStorage
 }
@@ -280,107 +286,116 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (c *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
+func (this *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
 	defer func() { credentials = domain.Credentials{} }()
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	o, err := c.portal.Check(bounded, credentials)
+	observation, err := this.portal.Check(bounded, credentials)
 	if err != nil {
 		return domain.Observation{}, canceled(bounded, ErrCheck)
 	}
 	if err = bounded.Err(); err != nil {
 		return domain.Observation{}, err
 	}
-	// Completion time belongs to this case service, not a supplied portal timestamp.
-	o.CheckedAt = c.clock.Now()
-	return o, nil
+	observation.CheckedAt = this.clock.Now()
+	return observation, nil
 }
 
-func cached(o domain.Observation) domain.Status {
-	return domain.Status{Observation: &o}
+func cached(observation domain.Observation) domain.Status {
+	return domain.Status{Observation: &observation}
 }
 
-func (c *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
+func (this *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
 	if owner <= 0 {
 		return domain.Status{}, ErrDenied
 	}
 	if ctx.Err() != nil {
 		return domain.Status{}, ctx.Err()
 	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	this.mu.Lock()
+	if this.closed {
+		this.mu.Unlock()
 		return domain.Status{}, ErrClosed
 	}
-	s := c.state(owner)
-	if s.removing {
-		c.mu.Unlock()
+	state := this.state(owner)
+	if state.removing {
+		this.mu.Unlock()
 		return domain.Status{}, ErrRemoving
 	}
-	if f := s.check; f != nil {
-		if f.enrollment {
-			c.mu.Unlock()
+	if check := state.check; check != nil {
+		if check.enrollment {
+			this.mu.Unlock()
 			return domain.Status{}, ErrBusy
 		}
-		f.waiters++
-		c.mu.Unlock()
-		return c.wait(ctx, f, !manual)
+		check.waiters++
+		this.mu.Unlock()
+		return this.wait(ctx, check, !manual)
 	}
-	e, err := c.db.Enrollments.FindByOwner(ctx, owner)
+	enrollment, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if err != nil {
-		c.mu.Unlock()
-		return domain.Status{}, c.storageError(ctx, err)
+		this.mu.Unlock()
+		return domain.Status{}, this.storageError(ctx, err)
 	}
-	if e.OwnerID != owner {
-		c.mu.Unlock()
+	if enrollment.OwnerID != owner {
+		this.mu.Unlock()
 		return domain.Status{}, ErrDenied
 	}
-	now := c.clock.Now()
-	status := cached(e.Observation)
-	if now.Before(e.Observation.CheckedAt.Add(time.Minute)) {
-		status.NextEligibleAt, err = c.checkEligibility(ctx, owner, e.ID, manual)
-		status.NextEligibleAt = later(status.NextEligibleAt, e.Observation.CheckedAt.Add(time.Minute))
-		c.mu.Unlock()
-		return status, c.storageError(ctx, err)
+	now := this.clock.Now()
+	status := cached(enrollment.Observation)
+	if now.Before(enrollment.Observation.CheckedAt.Add(time.Minute)) {
+		status.NextEligibleAt, err = this.checkEligibility(ctx, owner, enrollment.ID, manual)
+		status.NextEligibleAt = later(status.NextEligibleAt, enrollment.Observation.CheckedAt.Add(time.Minute))
+		this.mu.Unlock()
+		return status, this.storageError(ctx, err)
 	}
-	reservation, err := c.reserveCheck(ctx, owner, e.ID, manual, now)
+	reservation, err := this.reserveCheck(ctx, owner, enrollment.ID, manual, now)
 	if err != nil {
-		c.mu.Unlock()
-		return status, c.storageError(ctx, err)
+		this.mu.Unlock()
+		return status, this.storageError(ctx, err)
 	}
 	status.NextEligibleAt = reservation.NextEligibleAt
 	if !reservation.Reserved {
-		c.mu.Unlock()
+		this.mu.Unlock()
 		return status, nil
 	}
 	work, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	f := &check{cancel: cancel, done: make(chan struct{}), waiters: 1, status: status}
-	s.check = f
-	c.mu.Unlock()
-	go c.refresh(work, owner, s, f, e)
-	return c.wait(ctx, f, !manual)
+	check := &check{cancel: cancel, done: make(chan struct{}), waiters: 1, status: status}
+	state.check = check
+	this.mu.Unlock()
+	go this.refresh(work, owner, state, check, enrollment)
+	return this.wait(ctx, check, !manual)
 }
 
 // Scheduled calls wait for their canceled check to finish before returning.
-func (c *Service) wait(ctx context.Context, f *check, drain bool) (domain.Status, error) {
+func (this *Service) wait(
+	ctx context.Context,
+	check *check,
+	drain bool,
+) (domain.Status, error) {
 	defer func() {
 		if drain && ctx.Err() != nil {
-			<-f.done
+			<-check.done
 		}
 	}()
+
 	select {
-	case <-f.done:
-		return copyStatus(f.status), f.err
-	case <-ctx.Done():
-		c.mu.Lock()
-		f.waiters--
-		if f.waiters == 0 {
-			f.cancel()
+	case <-check.done:
+		{
+			return copyStatus(check.status), check.err
 		}
-		status := copyStatus(f.status)
-		status.InProgress = true
-		c.mu.Unlock()
-		return status, ctx.Err()
+
+	case <-ctx.Done():
+		{
+			this.mu.Lock()
+			check.waiters--
+			if check.waiters == 0 {
+				check.cancel()
+			}
+			status := copyStatus(check.status)
+			status.InProgress = true
+			this.mu.Unlock()
+			return status, ctx.Err()
+		}
 	}
 }
 
@@ -391,35 +406,47 @@ func later(a, b time.Time) time.Time {
 	return b
 }
 
-func copyStatus(s domain.Status) domain.Status {
-	if s.Observation != nil {
-		o := *s.Observation
-		s.Observation = &o
+// WTF?!
+func copyStatus(status domain.Status) domain.Status {
+	if status.Observation != nil {
+		observation := *status.Observation
+		status.Observation = &observation
 	}
-	return s
+	return status
 }
 
-func (c *Service) refresh(ctx context.Context, owner int64, s *ownerState, f *check, e repositories.Enrollment) {
-	credentials := e.Credentials
-	o, err := c.baseline(ctx, credentials)
+func (this *Service) refresh(
+	ctx context.Context,
+	owner int64,
+	state *ownerState,
+	check *check,
+	enrollment repositories.Enrollment,
+) {
+	credentials := enrollment.Credentials
+	observation, err := this.baseline(ctx, credentials)
 	credentials = domain.Credentials{}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	defer f.cancel()
-	if s.removing {
+	this.mu.Lock()
+
+	defer this.mu.Unlock()
+	defer check.cancel()
+
+	if state.removing {
 		err = ErrRemoving
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		err = c.storageError(ctx, c.saveObservation(ctx, owner, e.ID, o))
+		err = this.storageError(ctx, this.saveObservation(ctx, owner, enrollment.ID, observation))
+
 		if err == nil {
-			next := f.status.NextEligibleAt
-			f.status = cached(o)
-			f.status.Fresh = true
-			f.status.NextEligibleAt = later(next, o.CheckedAt.Add(time.Minute))
+			next := check.status.NextEligibleAt
+			check.status = cached(observation)
+			check.status.Fresh = true
+			check.status.NextEligibleAt = later(next, observation.CheckedAt.Add(time.Minute))
 		}
 	}
-	f.err = err
-	s.check = nil
-	close(f.done)
+
+	check.err = err
+	state.check = nil
+
+	close(check.done)
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/arhor/case-watch/internal/config"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/scheduler"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/arhor/case-watch/internal/services/cases/portal"
@@ -24,26 +23,13 @@ var (
 )
 
 func Run(ctx context.Context) error {
-	return run(
-		ctx,
-		os.LookupEnv,
-		nil,
-		bot.NewClient,
-	)
+	return run(ctx)
 }
 
-func run[T interface {
-	bot.Transport
-	Validate(context.Context) error
-}](
-	ctx context.Context,
-	lookup func(string) (string, bool),
-	newPortal func() domain.Portal,
-	newClient func(bot.ClientConfig) (T, error),
-) (result error) {
+func run(ctx context.Context) (result error) {
 	clock := utils.NewClock()
 
-	cfg, err := config.Load(lookup)
+	cfg, err := config.Load(os.LookupEnv)
 	if err != nil {
 		return err
 	}
@@ -61,8 +47,11 @@ func run[T interface {
 	storage := store.New(db)
 
 	work, stop := context.WithCancelCause(ctx)
+
 	defer stop(nil)
+
 	fail := func() { stop(errService) }
+
 	diagnostic := func(category string) {
 		log.Print(category)
 		if category == "telegram_invalid_token" || category == "inventory_failed" {
@@ -70,10 +59,8 @@ func run[T interface {
 		}
 	}
 
-	var portalClient domain.Portal = portal.NewClient(portal.Options{Clock: clock})
-	if newPortal != nil {
-		portalClient = newPortal()
-	}
+	portalClient := portal.NewClient(portal.Options{Clock: clock})
+
 	caseService := cases.New(cases.Config{
 		DB:             storage,
 		Portal:         portalClient,
@@ -82,7 +69,7 @@ func run[T interface {
 	})
 	defer caseService.Shutdown()
 
-	client, err := newClient(bot.ClientConfig{
+	client, err := bot.NewClient(bot.ClientConfig{
 		Token:      cfg.TelegramBotToken,
 		Diagnostic: diagnostic,
 	})
