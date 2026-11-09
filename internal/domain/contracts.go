@@ -1,5 +1,3 @@
-// Package domain defines values and the small collaborator interfaces shared by
-// Case Watch services, repositories, and entry points.
 package domain
 
 import (
@@ -23,7 +21,7 @@ type Observation struct {
 
 // Portal performs one bounded logical check without automatic retries.
 type Portal interface {
-	Check(context.Context, Credentials) (Observation, error)
+	Check(ctx context.Context, credentials Credentials) (Observation, error)
 }
 
 // Status separates successful cache age from attempt eligibility. A failed refresh

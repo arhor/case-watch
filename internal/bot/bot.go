@@ -17,17 +17,16 @@ import (
 )
 
 type Cases interface {
-	Enroll(context.Context, int64, domain.Credentials) (domain.Observation, error)
-	Status(context.Context, int64) (domain.Status, error)
-	Remove(context.Context, int64) error
-	HasEnrollment(context.Context, int64) (bool, error)
+	Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error)
+	Status(ctx context.Context, owner int64) (domain.Status, error)
+	Remove(ctx context.Context, owner int64) error
+	HasEnrollment(ctx context.Context, owner int64) (bool, error)
 }
 
-// Transport supplies Telegram polling, replies and credential-message deletion.
 type Transport interface {
 	domain.Sender
-	Poll(context.Context, func(context.Context, *models.Update)) error
-	DeleteMessage(context.Context, int64, int) error
+	Poll(ctx context.Context, handler func(context.Context, *models.Update)) error
+	DeleteMessage(ctx context.Context, owner int64, message int) error
 }
 
 type Config struct {
@@ -91,38 +90,46 @@ func (a *Bot) Run(ctx context.Context) error {
 	return err
 }
 
+func withLock(mu *sync.Mutex, fn func()) {
+	mu.Lock()
+	defer mu.Unlock()
+	fn()
+}
+
 // Sweep drops expired plaintext drafts even when no further update arrives.
-func (a *Bot) Sweep() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := a.config.Clock.Now()
-	for _, s := range a.owners {
-		s.mu.Lock()
-		if !s.deadline.IsZero() && !now.Before(s.deadline) {
-			s.number = ""
-			s.deadline = time.Time{}
-		}
-		if !s.removal.IsZero() && !now.Before(s.removal) {
-			s.removal = time.Time{}
-		}
-		s.mu.Unlock()
+func (this *Bot) Sweep() {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+
+	now := this.config.Clock.Now()
+	for _, state := range this.owners {
+		withLock(&state.mu, func() {
+			if !state.deadline.IsZero() && !now.Before(state.deadline) {
+				state.number = ""
+				state.deadline = time.Time{}
+			}
+			if !state.removal.IsZero() && !now.Before(state.removal) {
+				state.removal = time.Time{}
+			}
+		})
 	}
 }
-func (a *Bot) Close() {
-	a.mu.Lock()
-	for _, s := range a.owners {
-		s.mu.Lock()
-		if s.cancel != nil {
-			s.cancel()
+
+func (this *Bot) Close() {
+	withLock(&this.mu, func() {
+		for _, state := range this.owners {
+			withLock(&state.mu, func() {
+				if state.cancel != nil {
+					state.cancel()
+				}
+				state.number = ""
+				state.deadline = time.Time{}
+				state.removal = time.Time{}
+			})
 		}
-		s.number = ""
-		s.deadline = time.Time{}
-		s.removal = time.Time{}
-		s.mu.Unlock()
-	}
-	a.mu.Unlock()
-	a.wg.Wait()
+	})
 }
+
 func (a *Bot) owner(id int64) *state {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -133,22 +140,28 @@ func (a *Bot) owner(id int64) *state {
 	}
 	return s
 }
-func (a *Bot) reply(ctx context.Context, id int64, text string) {
-	if _, err := a.replies.Send(ctx, id, text); err != nil {
-		a.diagnostic("telegram reply failure")
+
+func (this *Bot) reply(ctx context.Context, id int64, text string) {
+	if _, err := this.replies.Send(ctx, id, text); err != nil {
+		this.diagnostic("telegram reply failure")
 	}
 }
+
 func (a *Bot) erase(ctx context.Context, id int64, message int) {
 	err := a.client.DeleteMessage(ctx, id, message)
 	if err != nil && !errors.Is(err, ErrInvalidToken) {
 		a.diagnostic("telegram credential deletion failure")
 	}
 }
+
 func (a *Bot) exists(ctx context.Context, id int64) (bool, error) {
 	return a.config.Cases.HasEnrollment(ctx, id)
 }
 
-const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. Automatic checks run Monday–Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; platform copies may remain. Credential-message deletion is best effort."
+const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. " +
+	"Automatic checks run Monday-Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. " +
+	"Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; " +
+	"platform copies may remain. Credential-message deletion is best effort."
 
 // privateOwner binds conversations to Telegram transport metadata.
 func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
