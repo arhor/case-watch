@@ -1,4 +1,3 @@
-// Package application constructs the case service, bot and scheduler and runs them.
 package application
 
 import (
@@ -7,21 +6,22 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/arhor/case-watch/internal/bot"
 	"github.com/arhor/case-watch/internal/config"
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/scheduler"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/arhor/case-watch/internal/services/cases/portal"
+	"github.com/arhor/case-watch/internal/utils"
 )
 
-type clock struct{}
-
-func (clock) Now() time.Time { return time.Now() }
+var (
+	errStartup = errors.New("service startup validation failed")
+	errService = errors.New("service operation failed")
+)
 
 // Only external boundaries are replaceable in offline application tests.
 type telegramClient interface {
@@ -30,7 +30,6 @@ type telegramClient interface {
 }
 type dependencies struct {
 	lookup   func(string) (string, bool)
-	report   func(string)
 	portal   func() domain.Portal
 	telegram func(bot.ClientConfig) (telegramClient, error)
 }
@@ -40,6 +39,9 @@ func Run(ctx context.Context) error {
 }
 
 func run(ctx context.Context, d dependencies) (result error) {
+
+	clock := utils.NewClock()
+
 	cfg, err := config.Load(d.lookup)
 	if err != nil {
 		return err
@@ -59,17 +61,12 @@ func run(ctx context.Context, d dependencies) (result error) {
 	work, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
 	fail := func() { stop(errService) }
-	report := d.report
-	if report == nil {
-		report = func(category string) { log.Print(category) }
-	}
 	diagnostic := func(category string) {
-		report(category)
+		log.Print(category)
 		if category == "telegram_invalid_token" || category == "inventory_failed" {
 			fail()
 		}
 	}
-	clock := clock{}
 	var portalClient domain.Portal = portal.NewClient(portal.Options{Now: clock.Now})
 	if d.portal != nil {
 		portalClient = d.portal()
@@ -126,8 +123,3 @@ func run(ctx context.Context, d dependencies) (result error) {
 	}
 	return nil
 }
-
-var (
-	errStartup = errors.New("service startup validation failed")
-	errService = errors.New("service operation failed")
-)

@@ -69,7 +69,16 @@ func NewClient(options Options) *Client {
 	if wait == nil {
 		wait = waitContext
 	}
-	return &Client{base: strings.TrimRight(base, "/"), transport: options.Transport, now: now, wait: wait, interval: 2 * time.Second, overall: 60 * time.Second, perRequest: 10 * time.Second, budget: 6}
+	return &Client{
+		base:       strings.TrimRight(base, "/"),
+		transport:  options.Transport,
+		now:        now,
+		wait:       wait,
+		interval:   2 * time.Second,
+		overall:    60 * time.Second,
+		perRequest: 10 * time.Second,
+		budget:     6,
+	}
 }
 
 func (c *Client) Check(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {

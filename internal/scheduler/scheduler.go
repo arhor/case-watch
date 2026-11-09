@@ -11,6 +11,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/utils"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
@@ -23,7 +24,7 @@ type Cases interface {
 
 type Config struct {
 	Cases Cases
-	Clock domain.Clock
+	Clock utils.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error

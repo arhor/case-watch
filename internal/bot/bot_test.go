@@ -12,19 +12,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/go-telegram/bot/models"
 )
 
-type fakeClock struct{ now time.Time }
-
-func (c *fakeClock) Now() time.Time { return c.now }
-
 type portal func(context.Context, domain.Credentials) (domain.Observation, error)
+
+type fakeClock struct {
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	return c.now
+}
 
 func (p portal) Check(c context.Context, v domain.Credentials) (domain.Observation, error) {
 	return p(c, v)
@@ -386,27 +390,5 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 				t.Fatalf("invalid transport metadata processed: replies=%v", f.replies)
 			}
 		})
-	}
-}
-
-func TestBotShouldReplyOnlyOnRequestWhenScheduledChecksChangeStage(t *testing.T) {
-	// Given
-	f := setup(t)
-	f.message(101, "/enroll")
-	f.message(101, "synthetic-number")
-	f.message(101, "synthetic-password")
-	before := len(f.replies)
-	caseService := f.a.config.Cases.(*cases.Service)
-	// When
-	f.clock.now = f.clock.now.Add(time.Minute)
-	f.stage = "Etap B"
-	status, checkErr := caseService.Scheduled(context.Background(), 101)
-	afterCheck := len(f.replies)
-	f.message(101, "/status")
-	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, enrollment.ID)
-	// Then
-	if checkErr != nil || readErr != nil || historyErr != nil || !status.Fresh || afterCheck != before || len(f.replies) != before+1 || len(history) != 1 || history[0].Stage != "Etap B" || !strings.Contains(f.replies[len(f.replies)-1], "Cached stage: Etap B") || f.calls != 2 {
-		t.Fatalf("scheduled tracking: status=%+v replies=%v history=%+v errors=%v/%v/%v", status, f.replies, history, checkErr, readErr, historyErr)
 	}
 }

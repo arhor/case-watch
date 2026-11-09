@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/utils"
 )
 
 var errReply = errors.New("reply operation failed")
 
 type replySender struct {
 	client     domain.Sender
-	clock      domain.Clock
+	clock      utils.Clock
 	diagnostic func(string)
 	send       sync.Mutex
 	rateUntil  time.Time

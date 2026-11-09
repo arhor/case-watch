@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/bot"
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -227,7 +227,7 @@ func TestRunShouldDrainNormallyWhenRateLimitedDirectSendIsCancelled(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// When
-	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(bot.ClientConfig) (telegramClient, error) {
+	err := f.run(ctx, dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 			handle(ctx, message(101, "/help"))
 			return ctx.Err()
@@ -295,7 +295,7 @@ func TestRunShouldFailAndDrainWhenRuntimeTokenIsRejected(t *testing.T) {
 			defer cancel()
 			stopped := false
 			// When
-			err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(c bot.ClientConfig) (telegramClient, error) {
+			err := f.run(ctx, dependencies{telegram: func(c bot.ClientConfig) (telegramClient, error) {
 				return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 					defer func() { stopped = true }()
 					if source == "polling" {
@@ -329,7 +329,7 @@ func TestRunShouldAvoidStartingLoopsWhenFatalFailureOccursDuringValidation(t *te
 	f := setup(t)
 	started := false
 	// When
-	err := f.run(context.Background(), dependencies{report: func(string) {}, telegram: func(c bot.ClientConfig) (telegramClient, error) {
+	err := f.run(context.Background(), dependencies{telegram: func(c bot.ClientConfig) (telegramClient, error) {
 		return &transport{validate: func(context.Context) error { c.Diagnostic("telegram_invalid_token"); return nil }, poll: func(context.Context, func(context.Context, *models.Update)) error { started = true; return nil }}, nil
 	}})
 	// Then
@@ -350,7 +350,7 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 	defer cancel()
 	stopped := false
 	// When
-	err := f.run(ctx, dependencies{report: func(string) {}, telegram: func(bot.ClientConfig) (telegramClient, error) {
+	err := f.run(ctx, dependencies{telegram: func(bot.ClientConfig) (telegramClient, error) {
 		return &transport{poll: func(ctx context.Context, handle func(context.Context, *models.Update)) error {
 			db, err := sql.Open("sqlite", f.db)
 			if err != nil {
@@ -371,4 +371,3 @@ func TestRunShouldStopWhenCaseServiceReportsStorageFailure(t *testing.T) {
 		t.Fatalf("storage failure: err=%v stopped=%t deadline=%v", err, stopped, ctx.Err())
 	}
 }
-

@@ -9,9 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/utils"
 )
 
 var (
@@ -47,13 +48,13 @@ type Service struct {
 	db             *store.Store
 	onStorageError func()
 	portal         domain.Portal
-	clock          domain.Clock
+	clock          utils.Clock
 }
 
 type Config struct {
 	DB             *store.Store
 	Portal         domain.Portal
-	Clock          domain.Clock
+	Clock          utils.Clock
 	OnStorageError func()
 }
 

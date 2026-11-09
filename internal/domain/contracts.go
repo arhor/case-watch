@@ -26,11 +26,6 @@ type Portal interface {
 	Check(context.Context, Credentials) (Observation, error)
 }
 
-// Clock lets case services and reply senders use deterministic time in tests.
-type Clock interface {
-	Now() time.Time
-}
-
 // Status separates successful cache age from attempt eligibility. A failed refresh
 // may return both a previous observation and an error; it must not relabel it fresh.
 type Status struct {

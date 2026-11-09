@@ -12,6 +12,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services/cases"
+	"github.com/arhor/case-watch/internal/utils"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -32,7 +33,7 @@ type Transport interface {
 type Config struct {
 	Client     Transport
 	Cases      Cases
-	Clock      domain.Clock
+	Clock      utils.Clock
 	Diagnostic func(string)
 }
 type state struct {

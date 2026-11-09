@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/scheduler"
 )
 
