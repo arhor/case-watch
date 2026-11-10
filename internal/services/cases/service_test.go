@@ -19,7 +19,8 @@ import (
 )
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-var plain = domain.Credentials{Number: "synthetic-number", Password: "synthetic-password"}
+
+const Number, Password = "synthetic-number", "synthetic-password"
 
 type clock struct {
 	mu  sync.Mutex
@@ -29,10 +30,10 @@ type clock struct {
 func (c *clock) Now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); return c.now }
 func (c *clock) set(t time.Time) { c.mu.Lock(); defer c.mu.Unlock(); c.now = t }
 
-type portalFunc func(context.Context, domain.Credentials) (domain.Observation, error)
+type portalFunc func(context.Context, string, string) (domain.Observation, error)
 
-func (f portalFunc) Check(ctx context.Context, p domain.Credentials) (domain.Observation, error) {
-	return f(ctx, p)
+func (f portalFunc) Check(ctx context.Context, Number, Password string) (domain.Observation, error) {
+	return f(ctx, Number, Password)
 }
 
 type fixture struct {
@@ -54,10 +55,10 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	}
 	f.s = store.New(f.db)
 	t.Cleanup(func() { f.db.Close() })
-	wrapped := portalFunc(func(ctx context.Context, creds domain.Credentials) (domain.Observation, error) {
+	wrapped := portalFunc(func(ctx context.Context, Number, Password string) (domain.Observation, error) {
 		f.calls.Add(1)
 		if p != nil {
-			return p(ctx, creds)
+			return p(ctx, Number, Password)
 		}
 		return domain.Observation{Stage: "A"}, nil
 	})
@@ -79,7 +80,7 @@ func (f *fixture) reopen(t *testing.T) {
 
 func (f *fixture) enroll(t *testing.T, owner int64) string {
 	t.Helper()
-	if _, err := f.c.Enroll(context.Background(), owner, plain); err != nil {
+	if _, err := f.c.Enroll(context.Background(), owner, Number, Password); err != nil {
 		t.Fatal(err)
 	}
 	e, err := f.s.Enrollments.FindByOwner(context.Background(), owner)
@@ -97,7 +98,7 @@ func obs(t *testing.T, s domain.Status, stage string, checked time.Time) {
 
 func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRecent(t *testing.T) {
 	// Given
-	f := setup(t, func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(context.Context, string, string) (domain.Observation, error) {
 		return domain.Observation{Stage: "A", CheckedAt: epoch.Add(-time.Hour)}, nil
 	})
 	f.enroll(t, 101)
@@ -119,7 +120,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *testing.T) {
 	// Given
 	var fail atomic.Bool
-	f := setup(t, func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(context.Context, string, string) (domain.Observation, error) {
 		if fail.Load() {
 			return domain.Observation{}, errors.New("secret remote details")
 		}
@@ -131,7 +132,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
 	f.reopen(t)
-	f.c = New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f.c = New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (domain.Observation, error) {
 		f.calls.Add(1)
 		return domain.Observation{}, errors.New("secret")
 	}), Clock: f.clock})
@@ -170,7 +171,7 @@ func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *t
 func TestScheduledShouldPreventManualRetryWhenScheduledAttemptFails(t *testing.T) {
 	// Given
 	var fail atomic.Bool
-	f := setup(t, func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(context.Context, string, string) (domain.Observation, error) {
 		if fail.Load() {
 			return domain.Observation{}, errors.New("private")
 		}
@@ -216,7 +217,7 @@ func TestStatusShouldShareSingleFlightAndKeepOtherWaitersWhenOneCallerCancels(t 
 	// Given
 	entered, release := make(chan struct{}), make(chan struct{})
 	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		if block.Load() {
 			close(entered)
 			select {
@@ -263,7 +264,7 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.
 	f := setup(t, nil)
 	f.enroll(t, 101)
 	// When
-	_, e1 := f.c.Enroll(context.Background(), 0, plain)
+	_, e1 := f.c.Enroll(context.Background(), 0, Number, Password)
 	_, e2 := f.c.Status(context.Background(), 0)
 	_, e3 := f.c.Scheduled(context.Background(), 0)
 	e4 := f.c.Remove(context.Background(), 0)
@@ -284,13 +285,13 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	// When
-	_, err := f.c.Enroll(context.Background(), 101, plain)
+	_, err := f.c.Enroll(context.Background(), 101, Number, Password)
 	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
 		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
 	}
-	if e.Credentials != plain {
+	if e.Number != Number || e.Password != Password {
 		t.Fatal("enrollment credentials missing")
 	}
 }
@@ -301,13 +302,13 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			// Given
 			f := setup(t, nil)
 			ctx := context.Background()
-			input := plain
-			p := portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+			password := Password
+			p := portalFunc(func(context.Context, string, string) (domain.Observation, error) {
 				return domain.Observation{Stage: "A"}, nil
 			})
 			switch kind {
 			case "portal":
-				p = func(context.Context, domain.Credentials) (domain.Observation, error) {
+				p = func(context.Context, string, string) (domain.Observation, error) {
 					return domain.Observation{}, errors.New("private remote detail")
 				}
 			case "storage":
@@ -317,11 +318,11 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 				cancel()
 				ctx = c
 			case "validation":
-				input.Password = ""
+				password = ""
 			}
 			c := New(Config{DB: f.s, Portal: p, Clock: f.clock})
 			// When
-			_, err := c.Enroll(ctx, 101, input)
+			_, err := c.Enroll(ctx, 101, Number, password)
 			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 			// Then
 			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
@@ -335,7 +336,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	// Given
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		if block.Load() {
 			close(entered)
 			<-ctx.Done()
@@ -356,7 +357,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	go func() { removed <- f.c.Remove(context.Background(), 101) }()
 	<-canceled
 	_, busyStatus := f.c.Status(context.Background(), 101)
-	_, busyEnroll := f.c.Enroll(context.Background(), 101, plain)
+	_, busyEnroll := f.c.Enroll(context.Background(), 101, Number, Password)
 	before, beforeErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
@@ -382,7 +383,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t *testing.T) {
 	// Given
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
@@ -390,13 +391,13 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 		return domain.Observation{Stage: "late"}, nil
 	})
 	enrolled := make(chan error, 1)
-	go func() { _, e := f.c.Enroll(context.Background(), 101, plain); enrolled <- e }()
+	go func() { _, e := f.c.Enroll(context.Background(), 101, Number, Password); enrolled <- e }()
 	<-entered
 	removed := make(chan error, 1)
 	// When
 	go func() { removed <- f.c.Remove(context.Background(), 101) }()
 	<-canceled
-	_, busy := f.c.Enroll(context.Background(), 101, plain)
+	_, busy := f.c.Enroll(context.Background(), 101, Number, Password)
 	close(release)
 	enrollErr, removeErr := <-enrolled, <-removed
 	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
@@ -410,7 +411,7 @@ func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
 	// Given
 	var block atomic.Bool
 	entered, canceled := make(chan struct{}), make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		if block.Load() {
 			close(entered)
 			<-ctx.Done()
@@ -444,7 +445,7 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		id := f.enroll(t, 101)
 		var calls atomic.Int32
 		rejectInsert(t, f.path, "history")
-		c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+		c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (domain.Observation, error) {
 			calls.Add(1)
 			return domain.Observation{Stage: "B"}, nil
 		}), Clock: f.clock})
@@ -465,7 +466,7 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	// Given
 	var stage atomic.Value
 	stage.Store("A")
-	f := setup(t, func(context.Context, domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(context.Context, string, string) (domain.Observation, error) {
 		return domain.Observation{Stage: stage.Load().(string)}, nil
 	})
 	id := f.enroll(t, 101)
@@ -487,7 +488,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	// Given
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		if block.Load() {
 			close(entered)
 			<-ctx.Done()
@@ -525,7 +526,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.reopen(t)
-	c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, domain.Credentials) (domain.Observation, error) {
+	c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (domain.Observation, error) {
 		t.Error("recent baseline triggered portal work")
 		return domain.Observation{}, nil
 	}), Clock: f.clock})
@@ -575,7 +576,7 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	started := make(chan struct{}, 2)
 	cancelled := make(chan struct{}, 2)
 	release := make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ domain.Credentials) (domain.Observation, error) {
+	f := setup(t, func(ctx context.Context, _ string, _ string) (domain.Observation, error) {
 		started <- struct{}{}
 		<-ctx.Done()
 		cancelled <- struct{}{}
@@ -585,7 +586,7 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	finished := make(chan error, 2)
 	for _, owner := range []int64{101, 202} {
 		go func(owner int64) {
-			_, err := f.c.Enroll(context.Background(), owner, plain)
+			_, err := f.c.Enroll(context.Background(), owner, Number, Password)
 			finished <- err
 		}(owner)
 	}
@@ -612,7 +613,7 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 		}
 	}
 	f.c.Shutdown()
-	if _, e := f.c.Enroll(context.Background(), 101, plain); !errors.Is(e, ErrClosed) {
+	if _, e := f.c.Enroll(context.Background(), 101, Number, Password); !errors.Is(e, ErrClosed) {
 		t.Fatal("enrollment admitted after shutdown")
 	}
 	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, ErrClosed) {

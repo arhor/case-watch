@@ -20,7 +20,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-type portal func(context.Context, domain.Credentials) (domain.Observation, error)
+type portal func(context.Context, string, string) (domain.Observation, error)
 
 type fakeClock struct {
 	now time.Time
@@ -30,8 +30,8 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
-func (p portal) Check(c context.Context, v domain.Credentials) (domain.Observation, error) {
-	return p(c, v)
+func (p portal) Check(c context.Context, Number, Password string) (domain.Observation, error) {
+	return p(c, Number, Password)
 }
 
 type fixture struct {
@@ -75,14 +75,18 @@ func setup(t *testing.T) *fixture {
 	}
 	f.s = store.New(db)
 	t.Cleanup(func() { db.Close() })
-	caseService := cases.New(cases.Config{DB: f.s, Portal: portal(func(context.Context, domain.Credentials) (domain.Observation, error) {
-		f.calls++
-		stage := f.stage
-		if stage == "" {
-			stage = "Etap <A>"
-		}
-		return domain.Observation{Stage: stage}, nil
-	}), Clock: f.clock})
+	caseService := cases.New(cases.Config{
+		DB: f.s,
+		Portal: portal(func(context.Context, string, string) (domain.Observation, error) {
+			f.calls++
+			stage := f.stage
+			if stage == "" {
+				stage = "Etap <A>"
+			}
+			return domain.Observation{Stage: stage}, nil
+		}),
+		Clock: f.clock,
+	})
 	f.a = f.bot(t, server, Config{Cases: caseService, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
 	return f
 }
@@ -124,6 +128,9 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, repositories.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
+	}
+	if e.Number != "synthetic-number" || e.Password != "synthetic-password" {
+		t.Fatal("enrollment did not preserve the submitted case number and password")
 	}
 	combined := strings.Join(append(f.replies, f.logs...), "\n")
 	if strings.Contains(combined, "synthetic-password") || strings.Contains(combined, "synthetic-number") || strings.Contains(combined, "synthetic-token") {
@@ -183,7 +190,7 @@ func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f
 
 type cancelTracking struct{ started, done chan struct{} }
 
-func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ domain.Credentials) (domain.Observation, error) {
+func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ string, _ string) (domain.Observation, error) {
 	close(c.started)
 	<-ctx.Done()
 	close(c.done)
@@ -208,6 +215,7 @@ func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActi
 	f.message(101, "/cancel")
 	<-work.done
 	f.a.Close()
+	f.a.wg.Wait()
 	// Then
 	if f.deletes != 3 || strings.Contains(strings.Join(f.replies, " "), "synthetic-secret") {
 		t.Fatal("credential deletion or cancellation failed")

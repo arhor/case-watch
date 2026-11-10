@@ -7,10 +7,10 @@ import (
 )
 
 type Enrollment struct {
-	ID          string
-	OwnerID     int64
-	Credentials domain.Credentials
-	Observation domain.Observation
+	ID               string
+	OwnerID          int64
+	Number, Password string
+	Observation      domain.Observation
 }
 
 type Transition struct {

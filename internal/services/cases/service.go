@@ -100,15 +100,14 @@ func (this *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-func (this *Service) Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error) {
-	defer func() { credentials = domain.Credentials{} }()
+func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password string) (domain.Observation, error) {
 	if owner <= 0 {
 		return domain.Observation{}, ErrDenied
 	}
 	if ctx.Err() != nil {
 		return domain.Observation{}, ctx.Err()
 	}
-	if strings.TrimSpace(credentials.Number) == "" || strings.TrimSpace(credentials.Password) == "" {
+	if strings.TrimSpace(Number) == "" || strings.TrimSpace(Password) == "" {
 		return domain.Observation{}, ErrInvalid
 	}
 	this.mu.Lock()
@@ -143,7 +142,7 @@ func (this *Service) Enroll(ctx context.Context, owner int64, credentials domain
 	if err != nil {
 		return domain.Observation{}, ErrStorage
 	}
-	o, err := this.baseline(work, credentials)
+	o, err := this.baseline(work, Number, Password)
 	if err != nil {
 		return domain.Observation{}, err
 	}
@@ -155,7 +154,7 @@ func (this *Service) Enroll(ctx context.Context, owner int64, credentials domain
 	if work.Err() != nil {
 		return domain.Observation{}, work.Err()
 	}
-	if err = this.saveEnrollment(work, owner, id, credentials, o); err != nil {
+	if err = this.saveEnrollment(work, owner, id, Number, Password, o); err != nil {
 		return domain.Observation{}, this.storageError(ctx, err)
 	}
 	return o, nil
@@ -286,11 +285,10 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *Service) baseline(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
-	defer func() { credentials = domain.Credentials{} }()
+func (this *Service) baseline(ctx context.Context, Number, Password string) (domain.Observation, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	observation, err := this.portal.Check(bounded, credentials)
+	observation, err := this.portal.Check(bounded, Number, Password)
 	if err != nil {
 		return domain.Observation{}, canceled(bounded, ErrCheck)
 	}
@@ -422,9 +420,7 @@ func (this *Service) refresh(
 	check *check,
 	enrollment repositories.Enrollment,
 ) {
-	credentials := enrollment.Credentials
-	observation, err := this.baseline(ctx, credentials)
-	credentials = domain.Credentials{}
+	observation, err := this.baseline(ctx, enrollment.Number, enrollment.Password)
 	this.mu.Lock()
 
 	defer this.mu.Unlock()

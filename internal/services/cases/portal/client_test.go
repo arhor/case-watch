@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 type fakeClock struct {
@@ -70,8 +68,8 @@ func TestClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenReused(t *test
 		return ctx.Err()
 	}})
 	// When
-	first, err := c.Check(context.Background(), domain.Credentials{Number: "synthetic-case", Password: "synthetic-password"})
-	second, err2 := c.Check(context.Background(), domain.Credentials{})
+	first, err := c.Check(context.Background(), "synthetic-case", "synthetic-password")
+	second, err2 := c.Check(context.Background(), "", "")
 	// Then
 	if err != nil || err2 != nil || calls != 10 || waits != 8 || first.Stage != "Synthetic stage" || second.Stage != first.Stage || !second.CheckedAt.Equal(clock.now) || !first.CheckedAt.Before(second.CheckedAt) {
 		t.Fatalf("observations=%+v %+v errors=%v %v calls=%d waits=%d", first, second, err, err2, calls, waits)
@@ -99,7 +97,7 @@ func TestClientShouldReturnSanitizedClassificationWhenExchangeFails(t *testing.T
 			// Given
 			c := NewClient(Options{Transport: tc.transport})
 			// When
-			observation, err := c.Check(context.Background(), domain.Credentials{Password: "secret-password"})
+			observation, err := c.Check(context.Background(), "", "secret-password")
 			// Then
 			var safe *Error
 			if !errors.As(err, &safe) || safe.Kind != tc.kind || strings.Contains(err.Error(), "secret") || observation.Stage != "" || !observation.CheckedAt.IsZero() {
@@ -118,7 +116,7 @@ func TestClientShouldStopWithoutRetryWhenOwnedDeadlineExpires(t *testing.T) {
 	})})
 	c.overall = time.Millisecond
 	// When
-	_, err := c.Check(context.Background(), domain.Credentials{})
+	_, err := c.Check(context.Background(), "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -131,7 +129,7 @@ func TestClientShouldMakeNoRequestWhenAlreadyCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	// When
-	_, err := c.Check(ctx, domain.Credentials{})
+	_, err := c.Check(ctx, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 0 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -148,7 +146,7 @@ func TestClientShouldStopWhenPerRequestDeadlineExpires(t *testing.T) {
 	})})
 	c.perRequest = time.Millisecond
 	// When
-	_, err := c.Check(context.Background(), domain.Credentials{})
+	_, err := c.Check(context.Background(), "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -165,7 +163,7 @@ func TestClientShouldCancelBetweenRequestsWhenWaitIsCanceled(t *testing.T) {
 		return reply(string(b)), nil
 	}), Wait: func(ctx context.Context, d time.Duration) error { cancel(); return ctx.Err() }})
 	// When
-	_, err := c.Check(ctx, domain.Credentials{})
+	_, err := c.Check(ctx, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)

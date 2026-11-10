@@ -72,8 +72,8 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, er
 	return result, nil
 }
 
-func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id string, c domain.Credentials, o domain.Observation) error {
-	if owner <= 0 || !validID(id) || strings.TrimSpace(c.Number) == "" || strings.TrimSpace(c.Password) == "" || !validObservation(o) {
+func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id string, Number, Password string, o domain.Observation) error {
+	if owner <= 0 || !validID(id) || strings.TrimSpace(Number) == "" || strings.TrimSpace(Password) == "" || !validObservation(o) {
 		return ErrInvalid
 	}
 	var exists bool
@@ -99,7 +99,7 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id st
 			id, owner_id, case_number, password, stage, checked_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, owner, c.Number, c.Password, o.Stage, stamp(o.CheckedAt))
+	`, id, owner, Number, Password, o.Stage, stamp(o.CheckedAt))
 	if err != nil {
 		return ErrStorage
 	}
@@ -152,7 +152,7 @@ func scanEnrollment(
 ) (Enrollment, error) {
 	var e Enrollment
 	var checked string
-	err := row.Scan(&e.ID, &e.OwnerID, &e.Credentials.Number, &e.Credentials.Password, &e.Observation.Stage, &checked)
+	err := row.Scan(&e.ID, &e.OwnerID, &e.Number, &e.Password, &e.Observation.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
 	}

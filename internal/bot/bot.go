@@ -17,7 +17,7 @@ import (
 )
 
 type Cases interface {
-	Enroll(ctx context.Context, owner int64, credentials domain.Credentials) (domain.Observation, error)
+	Enroll(ctx context.Context, owner int64, Number, Password string) (domain.Observation, error)
 	Status(ctx context.Context, owner int64) (domain.Status, error)
 	Remove(ctx context.Context, owner int64) error
 	HasEnrollment(ctx context.Context, owner int64) (bool, error)
@@ -309,7 +309,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		a.reply(ctx, id, "Invalid password. Send a nonempty password separately.")
 		return
 	}
-	credentials := domain.Credentials{Number: s.number, Password: text}
+	number := s.number
 	s.number = ""
 	s.deadline = time.Time{}
 	work, cancel := context.WithCancel(ctx)
@@ -317,10 +317,9 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	// The intake handler remains ordered while collection can be cancelled by
 	// a later command. The case service owns bounded work and commit fencing.
 	a.wg.Add(1)
-	go func() {
+	go func(number, password string) {
 		defer a.wg.Done()
-		_, e := a.config.Cases.Enroll(work, id, credentials)
-		credentials = domain.Credentials{}
+		_, e := a.config.Cases.Enroll(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -330,7 +329,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 			return
 		}
 		a.reply(ctx, id, "Tracking enrolled. Use /status to view your case.")
-	}()
+	}(number, text)
 }
 func formatStatus(s domain.Status, err error) string {
 	text := ""

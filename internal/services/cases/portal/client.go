@@ -82,8 +82,8 @@ func NewClient(options Options) *Client {
 	}
 }
 
-func (c *Client) Check(ctx context.Context, credentials domain.Credentials) (domain.Observation, error) {
-	result, err := c.run(ctx, credentials.Number, credentials.Password)
+func (c *Client) Check(ctx context.Context, Number, Password string) (domain.Observation, error) {
+	result, err := c.run(ctx, Number, Password)
 	if err != nil {
 		return domain.Observation{}, err
 	}

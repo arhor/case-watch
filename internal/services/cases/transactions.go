@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
 const (
@@ -20,11 +20,11 @@ func (this *Service) saveEnrollment(
 	ctx context.Context,
 	owner int64,
 	id string,
-	credentials domain.Credentials,
+	Number, Password string,
 	observation domain.Observation,
 ) error {
 	return this.db.RunInTx(ctx, func(store *store.Store) error {
-		return store.Enrollments.Create(ctx, owner, id, credentials, observation)
+		return store.Enrollments.Create(ctx, owner, id, Number, Password, observation)
 	})
 }
 
