@@ -18,19 +18,13 @@ import (
 )
 
 type Bot struct {
-	client  Transport
-	replies *replySender
-	config  Config
-	mu      sync.Mutex
-	owners  map[int64]*state
-	wg      sync.WaitGroup
-}
-
-type Cases interface {
-	Enroll(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error)
-	Status(ctx context.Context, owner int64) (models.Status, error)
-	Remove(ctx context.Context, owner int64) error
-	HasEnrollment(ctx context.Context, owner int64) (bool, error)
+	client      Transport
+	caseService *cases.Service
+	replies     *replySender
+	config      Config
+	mu          sync.Mutex
+	owners      map[int64]*state
+	wg          sync.WaitGroup
 }
 
 type Transport interface {
@@ -40,10 +34,10 @@ type Transport interface {
 }
 
 type Config struct {
-	Client     Transport
-	Cases      Cases
-	Clock      utils.Clock
-	Diagnostic func(string)
+	Client      Transport
+	CaseService *cases.Service
+	Clock       utils.Clock
+	Diagnostic  func(string)
 }
 
 type state struct {
@@ -54,11 +48,17 @@ type state struct {
 }
 
 func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.Cases == nil || c.Clock == nil {
+	if c.Client == nil || c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
 	sender := &replySender{client: c.Client, clock: c.Clock, diagnostic: c.Diagnostic}
-	return &Bot{client: c.Client, replies: sender, config: c, owners: make(map[int64]*state)}, nil
+	return &Bot{
+		client:      c.Client,
+		caseService: c.CaseService,
+		replies:     sender,
+		config:      c,
+		owners:      make(map[int64]*state),
+	}, nil
 }
 
 // Run must only be called after token validation.
@@ -158,7 +158,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		return
 	case "/status":
 		s.mu.Unlock()
-		status, e := this.config.Cases.Status(ctx, id)
+		status, e := this.caseService.Status(ctx, id)
 		s.mu.Lock()
 		if errors.Is(e, cases.ErrNotFound) {
 			this.reply(ctx, id, "No tracked case. Use /enroll.")
@@ -199,7 +199,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		e := this.config.Cases.Remove(ctx, id)
+		e := this.caseService.Remove(ctx, id)
 		s.mu.Lock()
 		if e != nil {
 			this.reply(ctx, id, "Removal failed. Use /remove to try again.")
@@ -237,7 +237,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	this.wg.Add(1)
 	go func(number, password string) {
 		defer this.wg.Done()
-		_, _, e := this.config.Cases.Enroll(work, id, number, password)
+		_, _, e := this.caseService.Enroll(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -314,7 +314,7 @@ func (this *Bot) diagnostic(s string) {
 }
 
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
-	return this.config.Cases.HasEnrollment(ctx, id)
+	return this.caseService.HasEnrollment(ctx, id)
 }
 
 const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. " +

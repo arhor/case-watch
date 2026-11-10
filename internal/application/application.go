@@ -78,10 +78,10 @@ func run(ctx context.Context) (result error) {
 	}
 
 	telegramBot, err := bot.New(bot.Config{
-		Client:     client,
-		Cases:      caseService,
-		Clock:      clock,
-		Diagnostic: diagnostic,
+		Client:      client,
+		CaseService: caseService,
+		Clock:       clock,
+		Diagnostic:  diagnostic,
 	})
 	if err != nil {
 		return errStartup

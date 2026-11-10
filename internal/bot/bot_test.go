@@ -88,7 +88,11 @@ func setup(t *testing.T) *fixture {
 		}),
 		Clock: f.clock,
 	})
-	f.a = f.bot(t, server, Config{Cases: caseService, Clock: f.clock, Diagnostic: func(s string) { f.logs = append(f.logs, s) }})
+	f.a = f.bot(t, server, Config{
+		CaseService: caseService,
+		Clock:       f.clock,
+		Diagnostic:  func(s string) { f.logs = append(f.logs, s) },
+	})
 	return f
 }
 func (f *fixture) message(id int64, text string) {
@@ -233,32 +237,28 @@ type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-type cancelTracking struct{ started, done chan struct{} }
-
-func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ string, _ string) (string, time.Time, error) {
-	close(c.started)
-	<-ctx.Done()
-	close(c.done)
-	return "", time.Time{}, ctx.Err()
-}
-func (c *cancelTracking) Status(context.Context, int64) (models.Status, error) {
-	return models.Status{}, nil
-}
-func (c *cancelTracking) HasEnrollment(context.Context, int64) (bool, error) { return false, nil }
-func (c *cancelTracking) Remove(context.Context, int64) error                { return nil }
 func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActive(t *testing.T) {
 	// Given
 	f := setup(t)
-	work := &cancelTracking{make(chan struct{}), make(chan struct{})}
-	f.a.config.Cases = work
+	started, done := make(chan struct{}), make(chan struct{})
+	f.a.caseService = cases.New(cases.Config{
+		DB: f.s,
+		Portal: portal(func(ctx context.Context, _, _ string) (string, time.Time, error) {
+			close(started)
+			<-ctx.Done()
+			close(done)
+			return "", time.Time{}, ctx.Err()
+		}),
+		Clock: f.clock,
+	})
 	// When
 	f.message(101, "/enroll")
 	f.message(101, "/synthetic-secret")
 	f.message(101, "synthetic-number")
 	f.message(101, "other-password")
-	<-work.started
+	<-started
 	f.message(101, "/cancel")
-	<-work.done
+	<-done
 	f.a.Close()
 	f.a.wg.Wait()
 	// Then
@@ -300,7 +300,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.bot(t, server, Config{Cases: f.a.config.Cases, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, Config{CaseService: f.a.config.CaseService, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -349,7 +349,7 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 			case "client":
 				c.Client = nil
 			case "case service":
-				c.Cases = nil
+				c.CaseService = nil
 			case "clock":
 				c.Clock = nil
 			}
