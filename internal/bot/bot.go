@@ -18,7 +18,7 @@ import (
 )
 
 type Bot struct {
-	client      Transport
+	client      *Client
 	caseService *cases.Service
 	replies     *replySender
 	config      Config
@@ -27,14 +27,8 @@ type Bot struct {
 	wg          sync.WaitGroup
 }
 
-type Transport interface {
-	Sender
-	Poll(ctx context.Context, handler func(context.Context, *telegramModels.Update)) error
-	DeleteMessage(ctx context.Context, owner int64, message int) error
-}
-
 type Config struct {
-	Client      Transport
+	Client      *Client
 	CaseService *cases.Service
 	Clock       utils.Clock
 	Diagnostic  func(string)
