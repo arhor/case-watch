@@ -41,10 +41,6 @@ type SendOutcome struct {
 	Category SendCategory
 }
 
-type Sender interface {
-	Send(context.Context, int64, string) (SendOutcome, error)
-}
-
 func NewClient(c ClientConfig) (*Client, error) {
 	client := &Client{diagnostic: c.Diagnostic}
 	opts := []telegramApi.Option{

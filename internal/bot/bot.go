@@ -18,13 +18,14 @@ import (
 )
 
 type Bot struct {
-	client      *Client
-	caseService *cases.Service
-	replies     *replySender
-	config      Config
-	mu          sync.Mutex
-	owners      map[int64]*state
-	wg          sync.WaitGroup
+	client        *Client
+	caseService   *cases.Service
+	replyMu       sync.Mutex
+	repliesFailed bool
+	config        Config
+	mu            sync.Mutex
+	owners        map[int64]*state
+	wg            sync.WaitGroup
 }
 
 type Config struct {
@@ -45,11 +46,9 @@ func New(c Config) (*Bot, error) {
 	if c.Client == nil || c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	sender := &replySender{client: c.Client, diagnostic: c.Diagnostic}
 	return &Bot{
 		client:      c.Client,
 		caseService: c.CaseService,
-		replies:     sender,
 		config:      c,
 		owners:      make(map[int64]*state),
 	}, nil
@@ -288,8 +287,26 @@ func (this *Bot) owner(id int64) *state {
 	return s
 }
 
+// reply makes one bounded attempt for a user interaction. Replies are never queued.
 func (this *Bot) reply(ctx context.Context, id int64, text string) {
-	if _, err := this.replies.Send(ctx, id, text); err != nil {
+	this.replyMu.Lock()
+	defer this.replyMu.Unlock()
+	if this.repliesFailed || ctx.Err() != nil {
+		this.diagnostic("telegram reply failure")
+		return
+	}
+	if id <= 0 {
+		return
+	}
+	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	out, err := this.client.Send(bounded, id, text)
+	cancel()
+	if out.Category == SendInvalidToken {
+		this.repliesFailed = true
+		this.diagnostic("telegram_invalid_token")
+		return
+	}
+	if err != nil {
 		this.diagnostic("telegram reply failure")
 	}
 }
@@ -351,39 +368,4 @@ func withLock(mu *sync.Mutex, fn func()) {
 	mu.Lock()
 	defer mu.Unlock()
 	fn()
-}
-
-var errReply = errors.New("reply operation failed")
-
-type replySender struct {
-	client     Sender
-	diagnostic func(string)
-	send       sync.Mutex
-	failed     bool
-}
-
-// Send makes one bounded attempt for a user interaction. Replies are never queued.
-func (s *replySender) Send(ctx context.Context, owner int64, text string) (SendOutcome, error) {
-	s.send.Lock()
-	defer s.send.Unlock()
-	if s.failed {
-		return SendOutcome{}, errReply
-	}
-	if ctx.Err() != nil {
-		return SendOutcome{}, ctx.Err()
-	}
-	if owner <= 0 {
-		return SendOutcome{}, nil
-	}
-	c, cancel := context.WithTimeout(ctx, 15*time.Second)
-	out, sendErr := s.client.Send(c, owner, text)
-	cancel()
-	if out.Category == SendInvalidToken {
-		s.failed = true
-		if s.diagnostic != nil {
-			s.diagnostic("telegram_invalid_token")
-		}
-		return out, errReply
-	}
-	return out, sendErr
 }

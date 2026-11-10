@@ -445,3 +445,78 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 		})
 	}
 }
+
+func TestReplyShouldSuppressConcurrentSendsWhenTokenIsRejected(t *testing.T) {
+	// Given
+	f := setup(t)
+	calls, rejected, failures := 0, 0, 0
+	server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
+	}))
+	config := f.a.config
+	config.Diagnostic = func(category string) {
+		switch category {
+		case "telegram_invalid_token":
+			rejected++
+		case "telegram reply failure":
+			failures++
+		}
+	}
+	a := f.bot(t, server, config)
+	var wg sync.WaitGroup
+	// When
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.reply(context.Background(), 101, "test")
+		}()
+	}
+	wg.Wait()
+	// Then
+	if calls != 1 || rejected != 1 || failures != 9 {
+		t.Fatalf("calls=%d rejected=%d failures=%d", calls, rejected, failures)
+	}
+}
+
+func TestReplyShouldSkipSendWhenContextIsCanceledOrOwnerIsInvalid(t *testing.T) {
+	// Given
+	f := setup(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// When
+	f.a.reply(ctx, 101, "canceled")
+	f.a.reply(context.Background(), 0, "invalid")
+	f.a.reply(context.Background(), -1, "invalid")
+	// Then
+	if len(f.replies) != 0 || strings.Join(f.logs, ",") != "telegram reply failure" {
+		t.Fatalf("replies=%v logs=%v", f.replies, f.logs)
+	}
+}
+
+func TestReplyShouldBoundSendWhenContextHasNoDeadline(t *testing.T) {
+	// Given
+	f := setup(t)
+	var remaining time.Duration
+	client, err := NewClient(ClientConfig{
+		Token: "123:synthetic-token",
+		HTTPClient: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+			deadline, ok := r.Context().Deadline()
+			if ok {
+				remaining = time.Until(deadline)
+			}
+			return nil, errors.New("synthetic transport failure")
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.a.client = client
+	// When
+	f.a.reply(context.Background(), 101, "test")
+	// Then
+	if remaining <= 0 || remaining > 15*time.Second {
+		t.Fatalf("send deadline remaining=%v", remaining)
+	}
+}
