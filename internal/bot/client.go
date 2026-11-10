@@ -34,13 +34,11 @@ type SendCategory string
 const (
 	SendAccepted     SendCategory = "accepted"
 	SendFailed       SendCategory = "failed"
-	SendRateLimited  SendCategory = "rate_limited"
 	SendInvalidToken SendCategory = "invalid_token"
 )
 
 type SendOutcome struct {
-	Category   SendCategory
-	RetryAfter time.Duration
+	Category SendCategory
 }
 
 type Sender interface {
@@ -132,12 +130,7 @@ func (c *Client) Send(ctx context.Context, id int64, text string) (SendOutcome, 
 		return SendOutcome{Category: SendAccepted}, nil
 	}
 	out := SendOutcome{Category: SendFailed}
-	var rate *telegramApi.TooManyRequestsError
-	switch {
-	case errors.As(err, &rate):
-		out.Category = SendRateLimited
-		out.RetryAfter = time.Duration(rate.RetryAfter) * time.Second
-	case errors.Is(err, telegramApi.ErrorUnauthorized):
+	if errors.Is(err, telegramApi.ErrorUnauthorized) {
 		out.Category = SendInvalidToken
 	}
 	return out, errors.New("telegram send failed")

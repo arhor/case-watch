@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	telegramModels "github.com/go-telegram/bot/models"
 	telegrammodels "github.com/go-telegram/bot/models"
@@ -18,7 +17,7 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 		code        int
 		description string
 		category    SendCategory
-	}{{401, "synthetic-token", SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", SendFailed}, {403, "Forbidden: other reason", SendFailed}, {429, "synthetic-password", SendRateLimited}, {500, "synthetic-password", SendFailed}} {
+	}{{401, "synthetic-token", SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", SendFailed}, {403, "Forbidden: other reason", SendFailed}, {429, "synthetic-password", SendFailed}, {500, "synthetic-password", SendFailed}} {
 		t.Run(string(testCase.category)+testCase.description, func(t *testing.T) {
 			// Given
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +34,6 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 			// Then
 			if sendErr == nil || outcome.Category != testCase.category || strings.Contains(sendErr.Error(), "synthetic") {
 				t.Fatalf("classification: %+v %v", outcome, sendErr)
-			}
-			if testCase.code == 429 && outcome.RetryAfter != 9*time.Second {
-				t.Fatal("retry deadline lost")
 			}
 		})
 	}

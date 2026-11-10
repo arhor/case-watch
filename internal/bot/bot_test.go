@@ -319,7 +319,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 	}
 }
 
-func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
+func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
 	// Given
 	f := setup(t)
 	calls := 0
@@ -332,9 +332,9 @@ func TestReplyShouldUseSerializedDirectSendWhenRateLimitReported(t *testing.T) {
 	a := f.bot(t, server, f.a.config)
 	// When
 	a.reply(context.Background(), 101, "synthetic")
-	a.reply(context.Background(), 101, "synthetic")
+	a.reply(context.Background(), 202, "synthetic")
 	// Then
-	if calls != 1 {
+	if calls != 2 {
 		t.Fatalf("calls=%d", calls)
 	}
 }

@@ -4,12 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 )
-
-type clock struct{ now time.Time }
-
-func (c *clock) Now() time.Time { return c.now }
 
 type sendFunc func(context.Context, int64, string) (SendOutcome, error)
 
@@ -17,47 +12,34 @@ func (f sendFunc) Send(c context.Context, o int64, text string) (SendOutcome, er
 	return f(c, o, text)
 }
 
-func TestSenderShouldHonorCooldownAcrossRecipientsWhenTelegramRateLimitsReply(t *testing.T) {
-	for _, delay := range []time.Duration{0, time.Minute} {
-		t.Run(delay.String(), func(t *testing.T) {
-			// Given
-			c := &clock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
-			calls := 0
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			raw := sendFunc(func(context.Context, int64, string) (SendOutcome, error) {
-				calls++
-				if calls == 1 {
-					cancel()
-					return SendOutcome{Category: SendRateLimited, RetryAfter: delay}, nil
-				}
-				return SendOutcome{Category: SendAccepted}, nil
-			})
-			s := &replySender{clock: c, client: raw}
-			actual := delay
-			if actual <= 0 {
-				actual = 30 * time.Second
-			}
-			// When
-			_, first := s.Send(ctx, 101, "help")
-			c.now = c.now.Add(actual - time.Nanosecond)
-			_, suppressed := s.Send(context.Background(), 202, "help")
-			before := calls
-			c.now = c.now.Add(time.Nanosecond)
-			out, last := s.Send(context.Background(), 202, "help")
-			// Then
-			if first != nil || suppressed != nil || last != nil || before != 1 || calls != 2 || out.Category != SendAccepted {
-				t.Fatalf("cooldown: calls=%d before=%d outcome=%+v errors=%v/%v/%v", calls, before, out, first, suppressed, last)
-			}
-		})
+func TestSenderShouldAttemptSubsequentRepliesWhenSendFails(t *testing.T) {
+	// Given
+	failure := errors.New("send failed")
+	var recipients []int64
+	s := &replySender{client: sendFunc(func(_ context.Context, owner int64, _ string) (SendOutcome, error) {
+		recipients = append(recipients, owner)
+		if len(recipients) == 1 {
+			return SendOutcome{Category: SendFailed}, failure
+		}
+		return SendOutcome{Category: SendAccepted}, nil
+	})}
+	// When
+	_, first := s.Send(context.Background(), 101, "help")
+	same, second := s.Send(context.Background(), 101, "help")
+	other, third := s.Send(context.Background(), 202, "help")
+	// Then
+	if !errors.Is(first, failure) || second != nil || third != nil || same.Category != SendAccepted || other.Category != SendAccepted {
+		t.Fatalf("outcomes=%+v/%+v errors=%v/%v/%v", same, other, first, second, third)
+	}
+	if len(recipients) != 3 || recipients[0] != 101 || recipients[1] != 101 || recipients[2] != 202 {
+		t.Fatalf("recipients=%v", recipients)
 	}
 }
 
 func TestSenderShouldCloseAdmissionWhenTelegramRejectsToken(t *testing.T) {
 	// Given
-	c := &clock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
 	calls, reports := 0, 0
-	s := &replySender{clock: c, client: sendFunc(func(context.Context, int64, string) (SendOutcome, error) {
+	s := &replySender{client: sendFunc(func(context.Context, int64, string) (SendOutcome, error) {
 		calls++
 		return SendOutcome{Category: SendInvalidToken}, nil
 	}), diagnostic: func(category string) {

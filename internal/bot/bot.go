@@ -45,7 +45,7 @@ func New(c Config) (*Bot, error) {
 	if c.Client == nil || c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	sender := &replySender{client: c.Client, clock: c.Clock, diagnostic: c.Diagnostic}
+	sender := &replySender{client: c.Client, diagnostic: c.Diagnostic}
 	return &Bot{
 		client:      c.Client,
 		caseService: c.CaseService,
