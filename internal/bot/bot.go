@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
 
 	"github.com/arhor/case-watch/internal/models"
@@ -18,11 +20,17 @@ import (
 	"github.com/arhor/case-watch/internal/utils"
 )
 
+var (
+	ErrInvalidToken = errors.New("telegram token rejected")
+	errPolling      = errors.New("telegram polling already started")
+)
+
 type commandHandler func(context.Context, int64, *state, time.Time)
 
 type Bot struct {
 	handlers      map[string]commandHandler
-	client        *Client
+	client        *telegramApi.Bot
+	polling       atomic.Bool
 	caseService   *cases.Service
 	replyMu       sync.Mutex
 	repliesFailed bool
@@ -53,23 +61,40 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	if c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	client, err := NewClient(ClientConfig{
-		Token:      c.Token,
-		Endpoint:   c.Endpoint,
-		HTTPClient: c.HTTPClient,
-		Diagnostic: c.Diagnostic,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := client.Validate(ctx); err != nil {
-		return nil, err
-	}
 	bot := &Bot{
-		client:      client,
 		caseService: c.CaseService,
 		config:      c,
 		owners:      make(map[int64]*state),
+	}
+	opts := []telegramApi.Option{
+		telegramApi.WithSkipGetMe(),
+		telegramApi.WithNotAsyncHandlers(),
+		telegramApi.WithAllowedUpdates(telegramApi.AllowedUpdates{"message"}),
+		telegramApi.WithErrorsHandler(func(err error) {
+			if !bot.tokenRejected(err) {
+				bot.diagnostic("telegram polling failure")
+			}
+		}),
+	}
+	if c.Endpoint != "" {
+		opts = append(opts, telegramApi.WithServerURL(c.Endpoint))
+	}
+	if c.HTTPClient != nil {
+		opts = append(opts, telegramApi.WithHTTPClient(30*time.Second, c.HTTPClient))
+	}
+	client, err := telegramApi.New(c.Token, opts...)
+	if err != nil {
+		return nil, errors.New("invalid Telegram configuration")
+	}
+	bot.client = client
+	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if _, err := bot.client.GetMe(bounded); err != nil {
+		if bot.tokenRejected(err) {
+			return nil, ErrInvalidToken
+		}
+		bot.diagnostic("telegram validation failure")
+		return nil, errors.New("telegram validation failed")
 	}
 	bot.handlers = map[string]commandHandler{
 		"/cancel": bot.onCancel,
@@ -84,6 +109,13 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
 func (this *Bot) Run(ctx context.Context) error {
+	if !this.polling.CompareAndSwap(false, true) {
+		return errPolling
+	}
+	this.client.RegisterHandlerMatchFunc(
+		func(*telegramModels.Update) bool { return true },
+		func(ctx context.Context, _ *telegramApi.Bot, update *telegramModels.Update) { this.handle(ctx, update) },
+	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan struct{})
@@ -100,11 +132,11 @@ func (this *Bot) Run(ctx context.Context) error {
 			}
 		}
 	}()
-	err := this.client.Poll(ctx, this.handle)
+	this.client.Start(ctx)
 	cancel()
 	<-done
 	this.Close()
-	return err
+	return ctx.Err()
 }
 
 // -- Internal implementation ---------------------------------------------------------------------
@@ -343,9 +375,9 @@ func (this *Bot) reply(ctx context.Context, id int64, text string) {
 		return
 	}
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
-	out, err := this.client.Send(bounded, id, text)
+	_, err := this.client.SendMessage(bounded, &telegramApi.SendMessageParams{ChatID: id, Text: text})
 	cancel()
-	if out.Category == SendInvalidToken {
+	if errors.Is(err, telegramApi.ErrorUnauthorized) {
 		this.repliesFailed = true
 		this.diagnostic("telegram_invalid_token")
 		return
@@ -356,10 +388,18 @@ func (this *Bot) reply(ctx context.Context, id int64, text string) {
 }
 
 func (this *Bot) erase(ctx context.Context, id int64, message int) {
-	err := this.client.DeleteMessage(ctx, id, message)
-	if err != nil && !errors.Is(err, ErrInvalidToken) {
+	_, err := this.client.DeleteMessage(ctx, &telegramApi.DeleteMessageParams{ChatID: id, MessageID: message})
+	if err != nil && !this.tokenRejected(err) {
 		this.diagnostic("telegram credential deletion failure")
 	}
+}
+
+func (this *Bot) tokenRejected(err error) bool {
+	if errors.Is(err, telegramApi.ErrorUnauthorized) {
+		this.diagnostic("telegram_invalid_token")
+		return true
+	}
+	return false
 }
 
 func (this *Bot) diagnostic(s string) {

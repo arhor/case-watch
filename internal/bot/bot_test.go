@@ -13,11 +13,13 @@ import (
 	"testing"
 	"time"
 
+	telegramApi "github.com/go-telegram/bot"
+	telegramModels "github.com/go-telegram/bot/models"
+
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/services/cases"
-	telegramModels "github.com/go-telegram/bot/models"
 
 	"github.com/arhor/case-watch/internal/models"
 )
@@ -320,6 +322,22 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 	}
 }
 
+func TestRunShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
+	// Given
+	f := setup(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// When
+	first := f.a.Run(ctx)
+	second := f.a.Run(ctx)
+
+	// Then
+	if !errors.Is(first, context.Canceled) || !errors.Is(second, errPolling) {
+		t.Fatalf("first=%v second=%v", first, second)
+	}
+}
+
 func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
 	// Given
 	f := setup(t)
@@ -397,7 +415,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 	}
 }
 
-// bot mirrors the production client/reply/intake construction order while
+// bot mirrors the production reply/intake construction order while
 // supplying only synthetic HTTP exchanges and a deterministic clock.
 func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
@@ -501,20 +519,21 @@ func TestReplyShouldBoundSendWhenContextHasNoDeadline(t *testing.T) {
 	// Given
 	f := setup(t)
 	var remaining time.Duration
-	client, err := NewClient(ClientConfig{
-		Token: "123:synthetic-token",
-		HTTPClient: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+	telegram, err := telegramApi.New(
+		"123:synthetic-token",
+		telegramApi.WithSkipGetMe(),
+		telegramApi.WithHTTPClient(30*time.Second, &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 			deadline, ok := r.Context().Deadline()
 			if ok {
 				remaining = time.Until(deadline)
 			}
 			return nil, errors.New("synthetic transport failure")
-		})},
-	})
+		})}),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.a.client = client
+	f.a.client = telegram
 	// When
 	f.a.reply(context.Background(), 101, "test")
 	// Then
