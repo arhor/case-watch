@@ -111,14 +111,12 @@ func run(ctx context.Context) (result error) {
 	if work.Err() == nil {
 		var running sync.WaitGroup
 		start := func(loop func(context.Context) error) {
-			running.Add(1)
-			go func() {
-				defer running.Done()
+			running.Go(func() {
 				_ = loop(work)
 				if work.Err() == nil {
 					fail()
 				}
-			}()
+			})
 		}
 		start(telegramBot.Run)
 		start(scheduled.Run)
