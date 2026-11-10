@@ -17,14 +17,17 @@ import (
 	"github.com/arhor/case-watch/internal/utils"
 )
 
+type commandHandler func(context.Context, int64, *state, time.Time)
+
 type Bot struct {
+	handlers      map[string]commandHandler
 	client        *Client
 	caseService   *cases.Service
 	replyMu       sync.Mutex
 	repliesFailed bool
 	config        Config
-	mu            sync.Mutex
 	owners        map[int64]*state
+	mu            sync.Mutex
 	wg            sync.WaitGroup
 }
 
@@ -46,12 +49,21 @@ func New(c Config) (*Bot, error) {
 	if c.Client == nil || c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	return &Bot{
+	b := &Bot{
 		client:      c.Client,
 		caseService: c.CaseService,
 		config:      c,
 		owners:      make(map[int64]*state),
-	}, nil
+	}
+	b.handlers = map[string]commandHandler{
+		"/cancel": b.onCancel,
+		"/start":  b.onHelp,
+		"/help":   b.onHelp,
+		"/enroll": b.onEnroll,
+		"/status": b.onStatus,
+		"/remove": b.onRemove,
+	}
+	return b, nil
 }
 
 // Run must only be called after token validation.
@@ -115,76 +127,93 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		this.reply(ctx, id, "Commands take no arguments. Send /enroll to restart enrollment.")
 		return
 	}
-	switch command {
-	case "/cancel":
-		if s.cancel != nil {
-			s.cancel()
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		s.removal = time.Time{}
-		this.reply(ctx, id, "Conversation cancelled.")
-		return
-	case "/start", "/help":
-		this.reply(ctx, id, help)
-		return
-	case "/enroll":
-		if s.cancel != nil {
-			s.cancel()
-			this.reply(ctx, id, "Enrollment cancellation requested. Send /enroll again after it finishes.")
-			return
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		s.removal = time.Time{}
-		exists, e := this.exists(ctx, id)
-		if e != nil {
-			this.reply(ctx, id, "Unable to read tracking repositories. Try again later.")
-			return
-		}
-		if exists {
-			this.reply(ctx, id, "You already track a case. Use /remove before enrolling another.")
-			return
-		}
-		s.deadline = now.Add(10 * time.Minute)
-		this.reply(ctx, id, "Send the case number in a separate text message. Telegram is not end-to-end encrypted; copies may remain. Deletion is best effort. Use /cancel to stop.")
-		return
-	case "/status":
-		s.mu.Unlock()
-		status, e := this.caseService.Status(ctx, id)
-		s.mu.Lock()
-		if errors.Is(e, cases.ErrNotFound) {
-			this.reply(ctx, id, "No tracked case. Use /enroll.")
-			return
-		}
-		this.reply(ctx, id, formatStatus(status, e))
-		return
-	case "/remove":
-		if s.cancel != nil {
-			s.cancel()
-		}
-		s.number = ""
-		s.deadline = time.Time{}
-		exists, e := this.exists(ctx, id)
-		if e != nil {
-			this.reply(ctx, id, "Unable to read tracking repositories.")
-			return
-		}
-		if !exists {
-			this.reply(ctx, id, "No tracked case. Use /enroll.")
-			return
-		}
-		s.removal = now.Add(10 * time.Minute)
-		this.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials and history. They cannot be reconstructed. Use /cancel to stop.")
-		return
-	case "":
-	default:
-		if !s.deadline.IsZero() {
-			this.erase(ctx, id, m.ID)
-		}
-		this.reply(ctx, id, "Unknown command. Use /help.")
+	if handler, ok := this.handlers[command]; ok {
+		handler(ctx, id, s, now)
 		return
 	}
+	if command != "" {
+		this.onUnknownCommand(ctx, m, s)
+		return
+	}
+	this.onText(ctx, m, s, now)
+}
+
+// Command and conversation handlers run with the owner's state locked.
+func (this *Bot) onCancel(ctx context.Context, id int64, s *state, now time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	s.removal = time.Time{}
+	this.reply(ctx, id, "Conversation cancelled.")
+}
+
+func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) {
+	this.reply(ctx, id, help)
+}
+
+func (this *Bot) onEnroll(ctx context.Context, id int64, s *state, now time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+		this.reply(ctx, id, "Enrollment cancellation requested. Send /enroll again after it finishes.")
+		return
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	s.removal = time.Time{}
+	exists, e := this.exists(ctx, id)
+	if e != nil {
+		this.reply(ctx, id, "Unable to read tracking repositories. Try again later.")
+		return
+	}
+	if exists {
+		this.reply(ctx, id, "You already track a case. Use /remove before enrolling another.")
+		return
+	}
+	s.deadline = now.Add(10 * time.Minute)
+	this.reply(ctx, id, "Send the case number in a separate text message. Telegram is not end-to-end encrypted; copies may remain. Deletion is best effort. Use /cancel to stop.")
+}
+
+func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
+	s.mu.Unlock()
+	status, e := this.caseService.Status(ctx, id)
+	s.mu.Lock()
+	if errors.Is(e, cases.ErrNotFound) {
+		this.reply(ctx, id, "No tracked case. Use /enroll.")
+		return
+	}
+	this.reply(ctx, id, formatStatus(status, e))
+}
+
+func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time) {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.number = ""
+	s.deadline = time.Time{}
+	exists, e := this.exists(ctx, id)
+	if e != nil {
+		this.reply(ctx, id, "Unable to read tracking repositories.")
+		return
+	}
+	if !exists {
+		this.reply(ctx, id, "No tracked case. Use /enroll.")
+		return
+	}
+	s.removal = now.Add(10 * time.Minute)
+	this.reply(ctx, id, "Send the exact separate text REMOVE within 10 minutes to delete your credentials and history. They cannot be reconstructed. Use /cancel to stop.")
+}
+
+func (this *Bot) onUnknownCommand(ctx context.Context, m *telegramModels.Message, s *state) {
+	if !s.deadline.IsZero() {
+		this.erase(ctx, m.Chat.ID, m.ID)
+	}
+	this.reply(ctx, m.Chat.ID, "Unknown command. Use /help.")
+}
+
+func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state, now time.Time) {
+	id, text := m.Chat.ID, m.Text
 	if !s.removal.IsZero() {
 		if text != "REMOVE" {
 			this.reply(ctx, id, "Send REMOVE exactly to confirm, or /cancel.")
