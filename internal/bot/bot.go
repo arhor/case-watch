@@ -197,7 +197,14 @@ func (this *Bot) onCancel(ctx context.Context, id int64, s *state, now time.Time
 }
 
 func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) {
-	this.reply(ctx, id, help)
+	this.reply(
+		ctx,
+		id,
+		"Track one case privately. Commands: /enroll /status /remove /cancel /help. "+
+			"Automatic checks run Monday-Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. "+
+			"Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; "+
+			"platform copies may remain. Credential-message deletion is best effort.",
+	)
 }
 
 func (this *Bot) onEnroll(ctx context.Context, id int64, s *state, now time.Time) {
@@ -411,11 +418,6 @@ func (this *Bot) diagnostic(s string) {
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
 	return this.caseService.HasEnrollment(ctx, id)
 }
-
-const help = "Track one case privately. Commands: /enroll /status /remove /cancel /help. " +
-	"Automatic checks run Monday-Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. " +
-	"Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; " +
-	"platform copies may remain. Credential-message deletion is best effort."
 
 // privateOwner binds conversations to Telegram transport metadata.
 func privateOwner(sender *telegramModels.User, chat telegramModels.Chat) (int64, bool) {
