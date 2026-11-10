@@ -6,15 +6,13 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 var (
-	ErrStorage     = errors.New("storage operation failed")
-	ErrNotFound    = errors.New("record not found")
-	ErrExists      = errors.New("owner already enrolled or identity already used")
-	ErrInvalid     = errors.New("invalid storage input")
+	ErrStorage  = errors.New("storage operation failed")
+	ErrNotFound = errors.New("record not found")
+	ErrExists   = errors.New("owner already enrolled or identity already used")
+	ErrInvalid  = errors.New("invalid storage input")
 )
 
 // NewEnrollmentID allocates an opaque identity used to fence late work.
@@ -29,10 +27,6 @@ func NewEnrollmentID() (string, error) {
 func validID(id string) bool {
 	b, e := hex.DecodeString(id)
 	return e == nil && len(b) == 16 && id == strings.ToLower(id)
-}
-
-func validObservation(o domain.Observation) bool {
-	return !o.CheckedAt.IsZero()
 }
 
 func stamp(t time.Time) string {

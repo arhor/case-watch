@@ -3,8 +3,6 @@ package repositories
 import (
 	"context"
 	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 type HistoryRepository struct {
@@ -51,14 +49,20 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 	return result, nil
 }
 
-func (this *HistoryRepository) Append(ctx context.Context, id string, previous string, o domain.Observation) error {
-	if !validID(id) || !validObservation(o) {
+func (this *HistoryRepository) Append(
+	ctx context.Context,
+	id string,
+	previous string,
+	stage string,
+	checkedAt time.Time,
+) error {
+	if !validID(id) || checkedAt.IsZero() {
 		return ErrInvalid
 	}
 	_, err := this.executor.ExecContext(ctx, `
 		INSERT INTO history (enrollment_id, previous_stage, stage, checked_at)
 		VALUES (?, ?, ?, ?)
-	`, id, previous, o.Stage, stamp(o.CheckedAt))
+	`, id, previous, stage, stamp(checkedAt))
 	if err != nil {
 		return ErrStorage
 	}

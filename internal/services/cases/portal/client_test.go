@@ -68,11 +68,11 @@ func TestClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenReused(t *test
 		return ctx.Err()
 	}})
 	// When
-	first, err := c.Check(context.Background(), "synthetic-case", "synthetic-password")
-	second, err2 := c.Check(context.Background(), "", "")
+	firstStage, firstCheckedAt, err := c.Check(context.Background(), "synthetic-case", "synthetic-password")
+	secondStage, secondCheckedAt, err2 := c.Check(context.Background(), "", "")
 	// Then
-	if err != nil || err2 != nil || calls != 10 || waits != 8 || first.Stage != "Synthetic stage" || second.Stage != first.Stage || !second.CheckedAt.Equal(clock.now) || !first.CheckedAt.Before(second.CheckedAt) {
-		t.Fatalf("observations=%+v %+v errors=%v %v calls=%d waits=%d", first, second, err, err2, calls, waits)
+	if err != nil || err2 != nil || calls != 10 || waits != 8 || firstStage != "Synthetic stage" || secondStage != firstStage || !secondCheckedAt.Equal(clock.now) || !firstCheckedAt.Before(secondCheckedAt) {
+		t.Fatalf("stages=%q/%q checkedAt=%v/%v errors=%v %v calls=%d waits=%d", firstStage, secondStage, firstCheckedAt, secondCheckedAt, err, err2, calls, waits)
 	}
 }
 
@@ -97,11 +97,11 @@ func TestClientShouldReturnSanitizedClassificationWhenExchangeFails(t *testing.T
 			// Given
 			c := NewClient(Options{Transport: tc.transport})
 			// When
-			observation, err := c.Check(context.Background(), "", "secret-password")
+			stage, checkedAt, err := c.Check(context.Background(), "", "secret-password")
 			// Then
 			var safe *Error
-			if !errors.As(err, &safe) || safe.Kind != tc.kind || strings.Contains(err.Error(), "secret") || observation.Stage != "" || !observation.CheckedAt.IsZero() {
-				t.Fatalf("observation=%+v error=%v", observation, err)
+			if !errors.As(err, &safe) || safe.Kind != tc.kind || strings.Contains(err.Error(), "secret") || stage != "" || !checkedAt.IsZero() {
+				t.Fatalf("stage=%q checkedAt=%v error=%v", stage, checkedAt, err)
 			}
 		})
 	}
@@ -116,7 +116,7 @@ func TestClientShouldStopWithoutRetryWhenOwnedDeadlineExpires(t *testing.T) {
 	})})
 	c.overall = time.Millisecond
 	// When
-	_, err := c.Check(context.Background(), "", "")
+	_, _, err := c.Check(context.Background(), "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -129,7 +129,7 @@ func TestClientShouldMakeNoRequestWhenAlreadyCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	// When
-	_, err := c.Check(ctx, "", "")
+	_, _, err := c.Check(ctx, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 0 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -146,7 +146,7 @@ func TestClientShouldStopWhenPerRequestDeadlineExpires(t *testing.T) {
 	})})
 	c.perRequest = time.Millisecond
 	// When
-	_, err := c.Check(context.Background(), "", "")
+	_, _, err := c.Check(context.Background(), "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -163,7 +163,7 @@ func TestClientShouldCancelBetweenRequestsWhenWaitIsCanceled(t *testing.T) {
 		return reply(string(b)), nil
 	}), Wait: func(ctx context.Context, d time.Duration) error { cancel(); return ctx.Err() }})
 	// When
-	_, err := c.Check(ctx, "", "")
+	_, _, err := c.Check(ctx, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)

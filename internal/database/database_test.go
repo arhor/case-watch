@@ -9,7 +9,6 @@ import (
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.T) {
@@ -23,11 +22,11 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	initial := store.New(db)
 	id := "0123456789abcdef0123456789abcdef"
 	checked := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
-	observation := domain.Observation{Stage: "B", CheckedAt: checked}
-	if err = initial.Enrollments.Create(ctx, 101, id, "synthetic-number", "synthetic-password", observation); err != nil {
+	stage := "B"
+	if err = initial.Enrollments.Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked); err != nil {
 		t.Fatal(err)
 	}
-	if err := initial.History.Append(ctx, id, "A", observation); err != nil {
+	if err := initial.History.Append(ctx, id, "A", stage, checked); err != nil {
 		t.Fatal(err)
 	}
 	guard := repositories.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
@@ -58,7 +57,7 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	var obsolete int
 	schemaErr := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name IN ('pending','recipients','pending_recipient')").Scan(&obsolete)
 	// Then
-	if readErr != nil || historyErr != nil || guardErr != nil || caseGuardErr != nil || versionErr != nil || version != 1 || dirty || schemaErr != nil || enrollment.ID != id || enrollment.Number != "synthetic-number" || enrollment.Password != "synthetic-password" || enrollment.Observation != observation || len(history) != 1 || history[0].Stage != "B" || !cooldown.StartedAt.Equal(checked) || !caseCooldown.StartedAt.Equal(checked) || obsolete != 0 {
+	if readErr != nil || historyErr != nil || guardErr != nil || caseGuardErr != nil || versionErr != nil || version != 1 || dirty || schemaErr != nil || enrollment.ID != id || enrollment.Number != "synthetic-number" || enrollment.Password != "synthetic-password" || enrollment.Stage != stage || !enrollment.CheckedAt.Equal(checked) || len(history) != 1 || history[0].Stage != "B" || !cooldown.StartedAt.Equal(checked) || !caseCooldown.StartedAt.Equal(checked) || obsolete != 0 {
 		t.Fatalf("reopening lost tracking: enrollment=%+v history=%+v guard=%+v caseGuard=%+v version=%d dirty=%t obsolete=%d errors=%v/%v/%v/%v/%v/%v", enrollment, history, cooldown, caseCooldown, version, dirty, obsolete, readErr, historyErr, guardErr, caseGuardErr, versionErr, schemaErr)
 	}
 }

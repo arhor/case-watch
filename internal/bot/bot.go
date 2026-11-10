@@ -17,7 +17,7 @@ import (
 )
 
 type Cases interface {
-	Enroll(ctx context.Context, owner int64, Number, Password string) (domain.Observation, error)
+	Enroll(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error)
 	Status(ctx context.Context, owner int64) (domain.Status, error)
 	Remove(ctx context.Context, owner int64) error
 	HasEnrollment(ctx context.Context, owner int64) (bool, error)
@@ -319,7 +319,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 	a.wg.Add(1)
 	go func(number, password string) {
 		defer a.wg.Done()
-		_, e := a.config.Cases.Enroll(work, id, number, password)
+		_, _, e := a.config.Cases.Enroll(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -336,14 +336,14 @@ func formatStatus(s domain.Status, err error) string {
 	if err != nil {
 		text = "Refresh failed. "
 	}
-	if s.Observation == nil {
+	if s.CheckedAt.IsZero() {
 		text += "No successful observation available."
 	} else {
 		kind := "Cached"
 		if s.Fresh && err == nil {
 			kind = "Fresh"
 		}
-		text += fmt.Sprintf("%s stage: %s\nLast successful check: %s", kind, s.Observation.Stage, s.Observation.CheckedAt.UTC().Format(time.RFC3339))
+		text += fmt.Sprintf("%s stage: %s\nLast successful check: %s", kind, s.Stage, s.CheckedAt.UTC().Format(time.RFC3339))
 	}
 	if s.InProgress {
 		text += "\nA check is in progress."

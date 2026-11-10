@@ -100,38 +100,38 @@ func (this *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password string) (domain.Observation, error) {
+func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
 	if owner <= 0 {
-		return domain.Observation{}, ErrDenied
+		return "", time.Time{}, ErrDenied
 	}
 	if ctx.Err() != nil {
-		return domain.Observation{}, ctx.Err()
+		return "", time.Time{}, ctx.Err()
 	}
 	if strings.TrimSpace(Number) == "" || strings.TrimSpace(Password) == "" {
-		return domain.Observation{}, ErrInvalid
+		return "", time.Time{}, ErrInvalid
 	}
 	this.mu.Lock()
 	if this.closed {
 		this.mu.Unlock()
-		return domain.Observation{}, ErrClosed
+		return "", time.Time{}, ErrClosed
 	}
 	s := this.state(owner)
 	if s.removing {
 		this.mu.Unlock()
-		return domain.Observation{}, ErrRemoving
+		return "", time.Time{}, ErrRemoving
 	}
 	if s.check != nil {
 		this.mu.Unlock()
-		return domain.Observation{}, ErrBusy
+		return "", time.Time{}, ErrBusy
 	}
 	_, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if err == nil {
 		this.mu.Unlock()
-		return domain.Observation{}, repositories.ErrExists
+		return "", time.Time{}, repositories.ErrExists
 	}
 	if !errors.Is(err, repositories.ErrNotFound) {
 		this.mu.Unlock()
-		return domain.Observation{}, this.storageError(ctx, err)
+		return "", time.Time{}, this.storageError(ctx, err)
 	}
 	work, cancel := context.WithCancel(ctx)
 	f := &check{cancel: cancel, done: make(chan struct{}), enrollment: true}
@@ -140,24 +140,24 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	defer func() { cancel(); this.mu.Lock(); s.check = nil; close(f.done); this.mu.Unlock() }()
 	id, err := repositories.NewEnrollmentID()
 	if err != nil {
-		return domain.Observation{}, ErrStorage
+		return "", time.Time{}, ErrStorage
 	}
-	o, err := this.baseline(work, Number, Password)
+	stage, checkedAt, err := this.baseline(work, Number, Password)
 	if err != nil {
-		return domain.Observation{}, err
+		return "", time.Time{}, err
 	}
 	this.mu.Lock()
 	defer this.mu.Unlock()
 	if s.removing {
-		return domain.Observation{}, ErrRemoving
+		return "", time.Time{}, ErrRemoving
 	}
 	if work.Err() != nil {
-		return domain.Observation{}, work.Err()
+		return "", time.Time{}, work.Err()
 	}
-	if err = this.saveEnrollment(work, owner, id, Number, Password, o); err != nil {
-		return domain.Observation{}, this.storageError(ctx, err)
+	if err = this.saveEnrollment(work, owner, id, Number, Password, stage, checkedAt); err != nil {
+		return "", time.Time{}, this.storageError(ctx, err)
 	}
-	return o, nil
+	return stage, checkedAt, nil
 }
 
 func (this *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
@@ -285,22 +285,21 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *Service) baseline(ctx context.Context, Number, Password string) (domain.Observation, error) {
+func (this *Service) baseline(ctx context.Context, Number, Password string) (string, time.Time, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	observation, err := this.portal.Check(bounded, Number, Password)
+	stage, _, err := this.portal.Check(bounded, Number, Password)
 	if err != nil {
-		return domain.Observation{}, canceled(bounded, ErrCheck)
+		return "", time.Time{}, canceled(bounded, ErrCheck)
 	}
 	if err = bounded.Err(); err != nil {
-		return domain.Observation{}, err
+		return "", time.Time{}, err
 	}
-	observation.CheckedAt = this.clock.Now()
-	return observation, nil
+	return stage, this.clock.Now(), nil
 }
 
-func cached(observation domain.Observation) domain.Status {
-	return domain.Status{Observation: &observation}
+func cached(stage string, checkedAt time.Time) domain.Status {
+	return domain.Status{Stage: stage, CheckedAt: checkedAt}
 }
 
 func (this *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
@@ -339,10 +338,10 @@ func (this *Service) check(ctx context.Context, owner int64, manual bool) (domai
 		return domain.Status{}, ErrDenied
 	}
 	now := this.clock.Now()
-	status := cached(enrollment.Observation)
-	if now.Before(enrollment.Observation.CheckedAt.Add(time.Minute)) {
+	status := cached(enrollment.Stage, enrollment.CheckedAt)
+	if now.Before(enrollment.CheckedAt.Add(time.Minute)) {
 		status.NextEligibleAt, err = this.checkEligibility(ctx, owner, enrollment.ID, manual)
-		status.NextEligibleAt = later(status.NextEligibleAt, enrollment.Observation.CheckedAt.Add(time.Minute))
+		status.NextEligibleAt = later(status.NextEligibleAt, enrollment.CheckedAt.Add(time.Minute))
 		this.mu.Unlock()
 		return status, this.storageError(ctx, err)
 	}
@@ -379,7 +378,7 @@ func (this *Service) wait(
 	select {
 	case <-check.done:
 		{
-			return copyStatus(check.status), check.err
+			return check.status, check.err
 		}
 
 	case <-ctx.Done():
@@ -389,7 +388,7 @@ func (this *Service) wait(
 			if check.waiters == 0 {
 				check.cancel()
 			}
-			status := copyStatus(check.status)
+			status := check.status
 			status.InProgress = true
 			this.mu.Unlock()
 			return status, ctx.Err()
@@ -404,15 +403,6 @@ func later(a, b time.Time) time.Time {
 	return b
 }
 
-// WTF?!
-func copyStatus(status domain.Status) domain.Status {
-	if status.Observation != nil {
-		observation := *status.Observation
-		status.Observation = &observation
-	}
-	return status
-}
-
 func (this *Service) refresh(
 	ctx context.Context,
 	owner int64,
@@ -420,7 +410,7 @@ func (this *Service) refresh(
 	check *check,
 	enrollment repositories.Enrollment,
 ) {
-	observation, err := this.baseline(ctx, enrollment.Number, enrollment.Password)
+	stage, checkedAt, err := this.baseline(ctx, enrollment.Number, enrollment.Password)
 	this.mu.Lock()
 
 	defer this.mu.Unlock()
@@ -431,13 +421,13 @@ func (this *Service) refresh(
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		err = this.storageError(ctx, this.saveObservation(ctx, owner, enrollment.ID, observation))
+		err = this.storageError(ctx, this.saveObservation(ctx, owner, enrollment.ID, stage, checkedAt))
 
 		if err == nil {
 			next := check.status.NextEligibleAt
-			check.status = cached(observation)
+			check.status = cached(stage, checkedAt)
 			check.status.Fresh = true
-			check.status.NextEligibleAt = later(next, observation.CheckedAt.Add(time.Minute))
+			check.status.NextEligibleAt = later(next, checkedAt.Add(time.Minute))
 		}
 	}
 

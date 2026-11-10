@@ -82,15 +82,15 @@ func NewClient(options Options) *Client {
 	}
 }
 
-func (c *Client) Check(ctx context.Context, Number, Password string) (domain.Observation, error) {
+func (c *Client) Check(ctx context.Context, Number, Password string) (string, time.Time, error) {
 	result, err := c.run(ctx, Number, Password)
 	if err != nil {
-		return domain.Observation{}, err
+		return "", time.Time{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return domain.Observation{}, classify(err)
+		return "", time.Time{}, classify(err)
 	}
-	return domain.Observation{Stage: result.Stage, CheckedAt: c.clock.Now()}, nil
+	return result.Stage, c.clock.Now(), nil
 }
 
 // -- Internal implementation ---------------------------------------------------------------------

@@ -10,10 +10,10 @@ import (
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
 )
 
-func TestRunInTxShouldCommitAndRollback(t *testing.T) {
+func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
@@ -23,14 +23,17 @@ func TestRunInTxShouldCommitAndRollback(t *testing.T) {
 	storage := store.New(db)
 	id := "0123456789abcdef0123456789abcdef"
 	Number, Password := "synthetic-number", "synthetic-password"
-	observation := domain.Observation{Stage: "A", CheckedAt: time.Now().UTC()}
+	stage := "A"
+	checkedAt := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	abort := errors.New("abort transaction")
+	// When
 	err = storage.RunInTx(ctx, func(tx *store.Store) error {
-		if err := tx.Enrollments.Create(ctx, 101, id, Number, Password, observation); err != nil {
+		if err := tx.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt); err != nil {
 			return err
 		}
 		return abort
 	})
+	// Then
 	if !errors.Is(err, abort) {
 		t.Fatalf("rollback returned %v, want %v", err, abort)
 	}
@@ -38,7 +41,7 @@ func TestRunInTxShouldCommitAndRollback(t *testing.T) {
 		t.Fatalf("rolled-back record was visible: %v", err)
 	}
 	if err := storage.RunInTx(ctx, func(tx *store.Store) error {
-		return tx.Enrollments.Create(ctx, 101, id, Number, Password, observation)
+		return tx.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt)
 	}); err != nil {
 		t.Fatal(err)
 	}

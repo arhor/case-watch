@@ -8,7 +8,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 const (
@@ -21,10 +20,11 @@ func (this *Service) saveEnrollment(
 	owner int64,
 	id string,
 	Number, Password string,
-	observation domain.Observation,
+	stage string,
+	checkedAt time.Time,
 ) error {
 	return this.db.RunInTx(ctx, func(store *store.Store) error {
-		return store.Enrollments.Create(ctx, owner, id, Number, Password, observation)
+		return store.Enrollments.Create(ctx, owner, id, Number, Password, stage, checkedAt)
 	})
 }
 
@@ -32,20 +32,21 @@ func (this *Service) saveObservation(
 	ctx context.Context,
 	owner int64,
 	id string,
-	observation domain.Observation,
+	stage string,
+	checkedAt time.Time,
 ) error {
 	return this.db.RunInTx(ctx, func(store *store.Store) error {
 		e, err := store.Enrollments.FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
 		}
-		if err = store.Enrollments.UpdateObservation(ctx, owner, id, observation); err != nil {
+		if err = store.Enrollments.UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
 			return err
 		}
-		if e.Observation.Stage == observation.Stage {
+		if e.Stage == stage {
 			return nil
 		}
-		return store.History.Append(ctx, id, e.Observation.Stage, observation)
+		return store.History.Append(ctx, id, e.Stage, stage, checkedAt)
 	})
 }
 

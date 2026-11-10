@@ -6,8 +6,6 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 type EnrollmentRepository struct {
@@ -72,8 +70,16 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, er
 	return result, nil
 }
 
-func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id string, Number, Password string, o domain.Observation) error {
-	if owner <= 0 || !validID(id) || strings.TrimSpace(Number) == "" || strings.TrimSpace(Password) == "" || !validObservation(o) {
+func (this *EnrollmentRepository) Create(
+	ctx context.Context,
+	owner int64,
+	id string,
+	number string,
+	password string,
+	stage string,
+	checkedAt time.Time,
+) error {
+	if owner <= 0 || !validID(id) || strings.TrimSpace(number) == "" || strings.TrimSpace(password) == "" || checkedAt.IsZero() {
 		return ErrInvalid
 	}
 	var exists bool
@@ -99,15 +105,21 @@ func (this *EnrollmentRepository) Create(ctx context.Context, owner int64, id st
 			id, owner_id, case_number, password, stage, checked_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, owner, Number, Password, o.Stage, stamp(o.CheckedAt))
+	`, id, owner, number, password, stage, stamp(checkedAt))
 	if err != nil {
 		return ErrStorage
 	}
 	return nil
 }
 
-func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner int64, id string, o domain.Observation) error {
-	if owner <= 0 || !validID(id) || !validObservation(o) {
+func (this *EnrollmentRepository) UpdateObservation(
+	ctx context.Context,
+	owner int64,
+	id string,
+	stage string,
+	checkedAt time.Time,
+) error {
+	if owner <= 0 || !validID(id) || checkedAt.IsZero() {
 		return ErrInvalid
 	}
 	return rowAffected(
@@ -118,7 +130,7 @@ func (this *EnrollmentRepository) UpdateObservation(ctx context.Context, owner i
 			 WHERE owner_id = ?
 			   AND id = ?
 			   AND deleted_at IS NULL
-			`, o.Stage, stamp(o.CheckedAt), owner, id,
+			`, stage, stamp(checkedAt), owner, id,
 		),
 	)
 }
@@ -152,14 +164,14 @@ func scanEnrollment(
 ) (Enrollment, error) {
 	var e Enrollment
 	var checked string
-	err := row.Scan(&e.ID, &e.OwnerID, &e.Number, &e.Password, &e.Observation.Stage, &checked)
+	err := row.Scan(&e.ID, &e.OwnerID, &e.Number, &e.Password, &e.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
 	}
 	if err != nil {
 		return Enrollment{}, ErrStorage
 	}
-	e.Observation.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
+	e.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
 		return Enrollment{}, ErrStorage
 	}

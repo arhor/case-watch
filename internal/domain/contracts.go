@@ -5,21 +5,18 @@ import (
 	"time"
 )
 
-// Observation preserves the portal's stage text verbatim.
-type Observation struct {
-	Stage     string
-	CheckedAt time.Time
-}
-
-// Portal performs one bounded logical check without automatic retries.
+// Portal performs one bounded logical check without automatic retries and
+// returns the portal's stage text verbatim with its completion time.
 type Portal interface {
-	Check(ctx context.Context, Number, Password string) (Observation, error)
+	Check(ctx context.Context, Number, Password string) (stage string, checkedAt time.Time, err error)
 }
 
 // Status separates successful cache age from attempt eligibility. A failed refresh
 // may return both a previous observation and an error; it must not relabel it fresh.
+// A zero CheckedAt means no successful observation is available.
 type Status struct {
-	Observation    *Observation
+	Stage          string
+	CheckedAt      time.Time
 	Fresh          bool
 	InProgress     bool
 	NextEligibleAt time.Time

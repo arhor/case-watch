@@ -1,16 +1,13 @@
 package repositories
 
-import (
-	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
-)
+import "time"
 
 type Enrollment struct {
 	ID               string
 	OwnerID          int64
 	Number, Password string
-	Observation      domain.Observation
+	Stage            string
+	CheckedAt        time.Time
 }
 
 type Transition struct {

@@ -20,7 +20,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-type portal func(context.Context, string, string) (domain.Observation, error)
+type portal func(context.Context, string, string) (string, time.Time, error)
 
 type fakeClock struct {
 	now time.Time
@@ -30,7 +30,7 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
-func (p portal) Check(c context.Context, Number, Password string) (domain.Observation, error) {
+func (p portal) Check(c context.Context, Number, Password string) (string, time.Time, error) {
 	return p(c, Number, Password)
 }
 
@@ -77,13 +77,13 @@ func setup(t *testing.T) *fixture {
 	t.Cleanup(func() { db.Close() })
 	caseService := cases.New(cases.Config{
 		DB: f.s,
-		Portal: portal(func(context.Context, string, string) (domain.Observation, error) {
+		Portal: portal(func(context.Context, string, string) (string, time.Time, error) {
 			f.calls++
 			stage := f.stage
 			if stage == "" {
 				stage = "Etap <A>"
 			}
-			return domain.Observation{Stage: stage}, nil
+			return stage, time.Time{}, nil
 		}),
 		Clock: f.clock,
 	})
@@ -140,6 +140,50 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 		t.Fatal("missing plain cached stage")
 	}
 }
+
+func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailability(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		status domain.Status
+		err    error
+		want   string
+	}{
+		{
+			name: "no successful check",
+			want: "No successful observation available.",
+		},
+		{
+			name:   "successful check with empty stage",
+			status: domain.Status{CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)},
+			want:   "Cached stage: \nLast successful check: 2026-11-01T12:00:00Z",
+		},
+		{
+			name:   "fresh check",
+			status: domain.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			want:   "Fresh stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
+		},
+		{
+			name:   "failed refresh with cached check",
+			status: domain.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			err:    cases.ErrCheck,
+			want:   "Refresh failed. Cached stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			// Given
+			status := testCase.status
+
+			// When
+			got := formatStatus(status, testCase.err)
+
+			// Then
+			if got != testCase.want {
+				t.Fatalf("formatStatus() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(t *testing.T) {
 	// Given
 	f := setup(t)
@@ -190,11 +234,11 @@ func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f
 
 type cancelTracking struct{ started, done chan struct{} }
 
-func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ string, _ string) (domain.Observation, error) {
+func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ string, _ string) (string, time.Time, error) {
 	close(c.started)
 	<-ctx.Done()
 	close(c.done)
-	return domain.Observation{}, ctx.Err()
+	return "", time.Time{}, ctx.Err()
 }
 func (c *cancelTracking) Status(context.Context, int64) (domain.Status, error) {
 	return domain.Status{}, nil
