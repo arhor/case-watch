@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -340,21 +341,21 @@ func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
-	for _, missing := range []string{"client", "case service", "clock"} {
+	for _, missing := range []string{"token", "case service", "clock"} {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
 			c := f.a.config
 			switch missing {
-			case "client":
-				c.Client = nil
+			case "token":
+				c.Token = ""
 			case "case service":
 				c.CaseService = nil
 			case "clock":
 				c.Clock = nil
 			}
 			// When
-			a, err := New(c)
+			a, err := New(context.Background(), c)
 			// Then
 			if a != nil || err == nil {
 				t.Fatalf("accepted missing %s", missing)
@@ -400,15 +401,16 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 // supplying only synthetic HTTP exchanges and a deterministic clock.
 func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
-	client, err := NewClient(ClientConfig{
-		Token: "123:synthetic-token", Endpoint: server.URL,
-		HTTPClient: server.Client(), Diagnostic: c.Diagnostic,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Client = client
-	a, err := New(c)
+	c.Token = "123:synthetic-token"
+	c.Endpoint = server.URL
+	c.HTTPClient = (&fakeServer{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/getMe") {
+			w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+			return
+		}
+		server.handler.ServeHTTP(w, r)
+	}), server.URL}).Client()
+	a, err := New(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,5 +520,60 @@ func TestReplyShouldBoundSendWhenContextHasNoDeadline(t *testing.T) {
 	// Then
 	if remaining <= 0 || remaining > 15*time.Second {
 		t.Fatalf("send deadline remaining=%v", remaining)
+	}
+}
+
+func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
+	for _, code := range []int{200, 401, 500} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			// Given
+			f := setup(t)
+			calls := 0
+			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if !strings.HasSuffix(r.URL.Path, "/getMe") {
+					t.Error("unexpected API method")
+				}
+				if code == 200 {
+					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+				} else {
+					w.Write([]byte(fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"synthetic-secret"}`, code)))
+				}
+			}))
+			t.Cleanup(server.Close)
+			c := f.a.config
+			c.Endpoint = server.URL
+			c.HTTPClient = server.Client()
+			// When
+			a, err := New(context.Background(), c)
+			if a != nil {
+				t.Cleanup(a.Close)
+			}
+			// Then
+			if calls != 1 || (err == nil) != (code == 200) || errors.Is(err, ErrInvalidToken) != (code == 401) {
+				t.Fatalf("calls=%d error=%v", calls, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "synthetic") {
+				t.Fatal("secret leaked")
+			}
+		})
+	}
+}
+
+func TestNewShouldReturnNoBotWhenValidationIsCanceled(t *testing.T) {
+	// Given
+	f := setup(t)
+	c := f.a.config
+	c.HTTPClient = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	})}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// When
+	a, err := New(ctx, c)
+	// Then
+	if a != nil || err == nil {
+		t.Fatalf("bot=%v error=%v", a, err)
 	}
 }

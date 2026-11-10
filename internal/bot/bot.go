@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +33,9 @@ type Bot struct {
 }
 
 type Config struct {
-	Client      *Client
+	Token       string
+	Endpoint    string
+	HTTPClient  *http.Client
 	CaseService *cases.Service
 	Clock       utils.Clock
 	Diagnostic  func(string)
@@ -45,28 +48,40 @@ type state struct {
 	cancel            context.CancelFunc
 }
 
-func New(c Config) (*Bot, error) {
-	if c.Client == nil || c.CaseService == nil || c.Clock == nil {
+// New constructs the bot and validates its token using ctx before returning.
+func New(ctx context.Context, c Config) (*Bot, error) {
+	if c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	b := &Bot{
-		client:      c.Client,
+	client, err := NewClient(ClientConfig{
+		Token:      c.Token,
+		Endpoint:   c.Endpoint,
+		HTTPClient: c.HTTPClient,
+		Diagnostic: c.Diagnostic,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := client.Validate(ctx); err != nil {
+		return nil, err
+	}
+	bot := &Bot{
+		client:      client,
 		caseService: c.CaseService,
 		config:      c,
 		owners:      make(map[int64]*state),
 	}
-	b.handlers = map[string]commandHandler{
-		"/cancel": b.onCancel,
-		"/start":  b.onHelp,
-		"/help":   b.onHelp,
-		"/enroll": b.onEnroll,
-		"/status": b.onStatus,
-		"/remove": b.onRemove,
+	bot.handlers = map[string]commandHandler{
+		"/cancel": bot.onCancel,
+		"/start":  bot.onHelp,
+		"/help":   bot.onHelp,
+		"/enroll": bot.onEnroll,
+		"/status": bot.onStatus,
+		"/remove": bot.onRemove,
 	}
-	return b, nil
+	return bot, nil
 }
 
-// Run must only be called after token validation.
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
 func (this *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)

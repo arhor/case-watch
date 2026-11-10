@@ -69,21 +69,16 @@ func run(ctx context.Context) (result error) {
 	})
 	defer caseService.Shutdown()
 
-	client, err := bot.NewClient(bot.ClientConfig{
-		Token:      cfg.TelegramBotToken,
-		Diagnostic: diagnostic,
-	})
-	if err != nil {
-		return errStartup
-	}
-
-	telegramBot, err := bot.New(bot.Config{
-		Client:      client,
+	telegramBot, err := bot.New(work, bot.Config{
+		Token:       cfg.TelegramBotToken,
 		CaseService: caseService,
 		Clock:       clock,
 		Diagnostic:  diagnostic,
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return errStartup
 	}
 	defer telegramBot.Close()
@@ -99,13 +94,6 @@ func run(ctx context.Context) (result error) {
 
 	if ctx.Err() != nil {
 		return nil
-	}
-
-	if err := client.Validate(work); err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return errStartup
 	}
 
 	if work.Err() == nil {
