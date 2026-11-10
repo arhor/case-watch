@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -17,8 +16,8 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 	for _, tc := range []struct {
 		code        int
 		description string
-		category    domain.SendCategory
-	}{{401, "synthetic-token", domain.SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", domain.SendFailed}, {403, "Forbidden: other reason", domain.SendFailed}, {429, "synthetic-password", domain.SendRateLimited}, {500, "synthetic-password", domain.SendFailed}} {
+		category    SendCategory
+	}{{401, "synthetic-token", SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", SendFailed}, {403, "Forbidden: other reason", SendFailed}, {429, "synthetic-password", SendRateLimited}, {500, "synthetic-password", SendFailed}} {
 		t.Run(string(tc.category)+tc.description, func(t *testing.T) {
 			// Given
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

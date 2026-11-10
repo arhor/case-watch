@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	telegramapi "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -28,6 +27,24 @@ type Client struct {
 	polling    atomic.Bool
 	bot        *telegramapi.Bot
 	diagnostic func(string)
+}
+
+type SendCategory string
+
+const (
+	SendAccepted     SendCategory = "accepted"
+	SendFailed       SendCategory = "failed"
+	SendRateLimited  SendCategory = "rate_limited"
+	SendInvalidToken SendCategory = "invalid_token"
+)
+
+type SendOutcome struct {
+	Category   SendCategory
+	RetryAfter time.Duration
+}
+
+type Sender interface {
+	Send(context.Context, int64, string) (SendOutcome, error)
 }
 
 func NewClient(c ClientConfig) (*Client, error) {
@@ -107,19 +124,19 @@ func (c *Client) DeleteMessage(ctx context.Context, chatID int64, messageID int)
 }
 
 // Send makes exactly one API call and returns a sanitized outcome.
-func (c *Client) Send(ctx context.Context, id int64, text string) (domain.SendOutcome, error) {
+func (c *Client) Send(ctx context.Context, id int64, text string) (SendOutcome, error) {
 	_, err := c.bot.SendMessage(ctx, &telegramapi.SendMessageParams{ChatID: id, Text: text})
 	if err == nil {
-		return domain.SendOutcome{Category: domain.SendAccepted}, nil
+		return SendOutcome{Category: SendAccepted}, nil
 	}
-	out := domain.SendOutcome{Category: domain.SendFailed}
+	out := SendOutcome{Category: SendFailed}
 	var rate *telegramapi.TooManyRequestsError
 	switch {
 	case errors.As(err, &rate):
-		out.Category = domain.SendRateLimited
+		out.Category = SendRateLimited
 		out.RetryAfter = time.Duration(rate.RetryAfter) * time.Second
 	case errors.Is(err, telegramapi.ErrorUnauthorized):
-		out.Category = domain.SendInvalidToken
+		out.Category = SendInvalidToken
 	}
 	return out, errors.New("telegram send failed")
 }

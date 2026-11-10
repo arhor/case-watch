@@ -6,14 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
 var errReply = errors.New("reply operation failed")
 
 type replySender struct {
-	client     domain.Sender
+	client     Sender
 	clock      utils.Clock
 	diagnostic func(string)
 	send       sync.Mutex
@@ -23,8 +22,8 @@ type replySender struct {
 
 // recordRateLimit requires the send lock. Recording needs no context or storage,
 // so a known rate limit survives caller cancellation.
-func (s *replySender) recordRateLimit(out domain.SendOutcome) {
-	if out.Category != domain.SendRateLimited {
+func (s *replySender) recordRateLimit(out SendOutcome) {
+	if out.Category != SendRateLimited {
 		return
 	}
 	delay := out.RetryAfter
@@ -38,22 +37,22 @@ func (s *replySender) recordRateLimit(out domain.SendOutcome) {
 }
 
 // Send makes one bounded attempt for a user interaction. Replies are never queued.
-func (s *replySender) Send(ctx context.Context, owner int64, text string) (domain.SendOutcome, error) {
+func (s *replySender) Send(ctx context.Context, owner int64, text string) (SendOutcome, error) {
 	s.send.Lock()
 	defer s.send.Unlock()
 	if s.failed {
-		return domain.SendOutcome{}, errReply
+		return SendOutcome{}, errReply
 	}
 	if ctx.Err() != nil {
-		return domain.SendOutcome{}, ctx.Err()
+		return SendOutcome{}, ctx.Err()
 	}
 	if s.clock.Now().Before(s.rateUntil) || owner <= 0 {
-		return domain.SendOutcome{}, nil
+		return SendOutcome{}, nil
 	}
 	c, cancel := context.WithTimeout(ctx, 15*time.Second)
 	out, sendErr := s.client.Send(c, owner, text)
 	cancel()
-	if out.Category == domain.SendInvalidToken {
+	if out.Category == SendInvalidToken {
 		s.failed = true
 		if s.diagnostic != nil {
 			s.diagnostic("telegram_invalid_token")

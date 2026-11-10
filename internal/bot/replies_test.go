@@ -5,17 +5,15 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/arhor/case-watch/internal/domain"
 )
 
 type clock struct{ now time.Time }
 
 func (c *clock) Now() time.Time { return c.now }
 
-type sendFunc func(context.Context, int64, string) (domain.SendOutcome, error)
+type sendFunc func(context.Context, int64, string) (SendOutcome, error)
 
-func (f sendFunc) Send(c context.Context, o int64, text string) (domain.SendOutcome, error) {
+func (f sendFunc) Send(c context.Context, o int64, text string) (SendOutcome, error) {
 	return f(c, o, text)
 }
 
@@ -27,13 +25,13 @@ func TestSenderShouldHonorCooldownAcrossRecipientsWhenTelegramRateLimitsReply(t 
 			calls := 0
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			raw := sendFunc(func(context.Context, int64, string) (domain.SendOutcome, error) {
+			raw := sendFunc(func(context.Context, int64, string) (SendOutcome, error) {
 				calls++
 				if calls == 1 {
 					cancel()
-					return domain.SendOutcome{Category: domain.SendRateLimited, RetryAfter: delay}, nil
+					return SendOutcome{Category: SendRateLimited, RetryAfter: delay}, nil
 				}
-				return domain.SendOutcome{Category: domain.SendAccepted}, nil
+				return SendOutcome{Category: SendAccepted}, nil
 			})
 			s := &replySender{clock: c, client: raw}
 			actual := delay
@@ -48,7 +46,7 @@ func TestSenderShouldHonorCooldownAcrossRecipientsWhenTelegramRateLimitsReply(t 
 			c.now = c.now.Add(time.Nanosecond)
 			out, last := s.Send(context.Background(), 202, "help")
 			// Then
-			if first != nil || suppressed != nil || last != nil || before != 1 || calls != 2 || out.Category != domain.SendAccepted {
+			if first != nil || suppressed != nil || last != nil || before != 1 || calls != 2 || out.Category != SendAccepted {
 				t.Fatalf("cooldown: calls=%d before=%d outcome=%+v errors=%v/%v/%v", calls, before, out, first, suppressed, last)
 			}
 		})
@@ -59,9 +57,9 @@ func TestSenderShouldCloseAdmissionWhenTelegramRejectsToken(t *testing.T) {
 	// Given
 	c := &clock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
 	calls, reports := 0, 0
-	s := &replySender{clock: c, client: sendFunc(func(context.Context, int64, string) (domain.SendOutcome, error) {
+	s := &replySender{clock: c, client: sendFunc(func(context.Context, int64, string) (SendOutcome, error) {
 		calls++
-		return domain.SendOutcome{Category: domain.SendInvalidToken}, nil
+		return SendOutcome{Category: SendInvalidToken}, nil
 	}), diagnostic: func(category string) {
 		if category == "telegram_invalid_token" {
 			reports++

@@ -32,25 +32,3 @@ type Status struct {
 	InProgress     bool
 	NextEligibleAt time.Time
 }
-
-type SendCategory string
-
-const (
-	SendAccepted     SendCategory = "accepted"
-	SendFailed       SendCategory = "failed"
-	SendRateLimited  SendCategory = "rate_limited"
-	SendInvalidToken SendCategory = "invalid_token"
-)
-
-// SendOutcome carries sanitized classification, never raw transport errors.
-// RetryAfter is a minimum duration reported by the remote transport.
-type SendOutcome struct {
-	Category   SendCategory
-	RetryAfter time.Duration
-}
-
-// Sender makes one attempt without automatic retries.
-// Text contains no credentials and must not appear in diagnostics.
-type Sender interface {
-	Send(context.Context, int64, string) (SendOutcome, error)
-}

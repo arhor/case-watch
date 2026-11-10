@@ -24,7 +24,7 @@ type Cases interface {
 }
 
 type Transport interface {
-	domain.Sender
+	Sender
 	Poll(ctx context.Context, handler func(context.Context, *models.Update)) error
 	DeleteMessage(ctx context.Context, owner int64, message int) error
 }
