@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -47,7 +47,7 @@ type Client struct {
 	budget     int
 }
 
-var _ domain.Portal = (*Client)(nil)
+var _ models.Portal = (*Client)(nil)
 
 func (e *Error) Error() string {
 	return "portal check failed: " + string(e.Kind)

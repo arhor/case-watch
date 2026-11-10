@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	telegramapi "github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
+	telegramApi "github.com/go-telegram/bot"
+	telegramModels "github.com/go-telegram/bot/models"
 )
 
 var (
@@ -25,7 +25,7 @@ type ClientConfig struct {
 
 type Client struct {
 	polling    atomic.Bool
-	bot        *telegramapi.Bot
+	bot        *telegramApi.Bot
 	diagnostic func(string)
 }
 
@@ -49,23 +49,23 @@ type Sender interface {
 
 func NewClient(c ClientConfig) (*Client, error) {
 	client := &Client{diagnostic: c.Diagnostic}
-	opts := []telegramapi.Option{
-		telegramapi.WithSkipGetMe(),
-		telegramapi.WithNotAsyncHandlers(),
-		telegramapi.WithAllowedUpdates(telegramapi.AllowedUpdates{"message"}),
-		telegramapi.WithErrorsHandler(func(err error) {
+	opts := []telegramApi.Option{
+		telegramApi.WithSkipGetMe(),
+		telegramApi.WithNotAsyncHandlers(),
+		telegramApi.WithAllowedUpdates(telegramApi.AllowedUpdates{"message"}),
+		telegramApi.WithErrorsHandler(func(err error) {
 			if !client.tokenRejected(err) {
 				client.report("telegram polling failure")
 			}
 		}),
 	}
 	if c.Endpoint != "" {
-		opts = append(opts, telegramapi.WithServerURL(c.Endpoint))
+		opts = append(opts, telegramApi.WithServerURL(c.Endpoint))
 	}
 	if c.HTTPClient != nil {
-		opts = append(opts, telegramapi.WithHTTPClient(30*time.Second, c.HTTPClient))
+		opts = append(opts, telegramApi.WithHTTPClient(30*time.Second, c.HTTPClient))
 	}
-	b, err := telegramapi.New(c.Token, opts...)
+	b, err := telegramApi.New(c.Token, opts...)
 	if err != nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
@@ -80,7 +80,7 @@ func (c *Client) report(category string) {
 }
 
 func (c *Client) tokenRejected(err error) bool {
-	if errors.Is(err, telegramapi.ErrorUnauthorized) {
+	if errors.Is(err, telegramApi.ErrorUnauthorized) {
 		c.report("telegram_invalid_token")
 		return true
 	}
@@ -102,18 +102,20 @@ func (c *Client) Validate(ctx context.Context) error {
 
 // Poll binds the intake handler before starting ordered library polling. A client
 // supports one polling lifetime; raw sends and deletion use the same bot.
-func (c *Client) Poll(ctx context.Context, handle func(context.Context, *models.Update)) error {
+func (c *Client) Poll(ctx context.Context, handle func(context.Context, *telegramModels.Update)) error {
 	if handle == nil || !c.polling.CompareAndSwap(false, true) {
 		return errPolling
 	}
-	c.bot.RegisterHandlerMatchFunc(func(*models.Update) bool { return true },
-		func(ctx context.Context, _ *telegramapi.Bot, update *models.Update) { handle(ctx, update) })
+	c.bot.RegisterHandlerMatchFunc(
+		func(*telegramModels.Update) bool { return true },
+		func(ctx context.Context, _ *telegramApi.Bot, update *telegramModels.Update) { handle(ctx, update) },
+	)
 	c.bot.Start(ctx)
 	return ctx.Err()
 }
 
 func (c *Client) DeleteMessage(ctx context.Context, chatID int64, messageID int) error {
-	_, err := c.bot.DeleteMessage(ctx, &telegramapi.DeleteMessageParams{ChatID: chatID, MessageID: messageID})
+	_, err := c.bot.DeleteMessage(ctx, &telegramApi.DeleteMessageParams{ChatID: chatID, MessageID: messageID})
 	if err == nil {
 		return nil
 	}
@@ -125,17 +127,17 @@ func (c *Client) DeleteMessage(ctx context.Context, chatID int64, messageID int)
 
 // Send makes exactly one API call and returns a sanitized outcome.
 func (c *Client) Send(ctx context.Context, id int64, text string) (SendOutcome, error) {
-	_, err := c.bot.SendMessage(ctx, &telegramapi.SendMessageParams{ChatID: id, Text: text})
+	_, err := c.bot.SendMessage(ctx, &telegramApi.SendMessageParams{ChatID: id, Text: text})
 	if err == nil {
 		return SendOutcome{Category: SendAccepted}, nil
 	}
 	out := SendOutcome{Category: SendFailed}
-	var rate *telegramapi.TooManyRequestsError
+	var rate *telegramApi.TooManyRequestsError
 	switch {
 	case errors.As(err, &rate):
 		out.Category = SendRateLimited
 		out.RetryAfter = time.Duration(rate.RetryAfter) * time.Second
-	case errors.Is(err, telegramapi.ErrorUnauthorized):
+	case errors.Is(err, telegramApi.ErrorUnauthorized):
 		out.Category = SendInvalidToken
 	}
 	return out, errors.New("telegram send failed")

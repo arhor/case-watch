@@ -11,7 +11,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -29,7 +29,7 @@ var (
 type check struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
-	status     domain.Status
+	status     models.Status
 	err        error
 	waiters    int
 	enrollment bool
@@ -47,13 +47,13 @@ type Service struct {
 	owners         map[int64]*ownerState
 	db             *store.Store
 	onStorageError func()
-	portal         domain.Portal
+	portal         models.Portal
 	clock          utils.Clock
 }
 
 type Config struct {
 	DB             *store.Store
-	Portal         domain.Portal
+	Portal         models.Portal
 	Clock          utils.Clock
 	OnStorageError func()
 }
@@ -160,14 +160,14 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	return stage, checkedAt, nil
 }
 
-func (this *Service) Status(ctx context.Context, owner int64) (domain.Status, error) {
+func (this *Service) Status(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (this *Service) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
+func (this *Service) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, false)
 }
 
@@ -298,31 +298,31 @@ func (this *Service) baseline(ctx context.Context, Number, Password string) (str
 	return stage, this.clock.Now(), nil
 }
 
-func cached(stage string, checkedAt time.Time) domain.Status {
-	return domain.Status{Stage: stage, CheckedAt: checkedAt}
+func cached(stage string, checkedAt time.Time) models.Status {
+	return models.Status{Stage: stage, CheckedAt: checkedAt}
 }
 
-func (this *Service) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
+func (this *Service) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
 	if owner <= 0 {
-		return domain.Status{}, ErrDenied
+		return models.Status{}, ErrDenied
 	}
 	if ctx.Err() != nil {
-		return domain.Status{}, ctx.Err()
+		return models.Status{}, ctx.Err()
 	}
 	this.mu.Lock()
 	if this.closed {
 		this.mu.Unlock()
-		return domain.Status{}, ErrClosed
+		return models.Status{}, ErrClosed
 	}
 	state := this.state(owner)
 	if state.removing {
 		this.mu.Unlock()
-		return domain.Status{}, ErrRemoving
+		return models.Status{}, ErrRemoving
 	}
 	if check := state.check; check != nil {
 		if check.enrollment {
 			this.mu.Unlock()
-			return domain.Status{}, ErrBusy
+			return models.Status{}, ErrBusy
 		}
 		check.waiters++
 		this.mu.Unlock()
@@ -331,11 +331,11 @@ func (this *Service) check(ctx context.Context, owner int64, manual bool) (domai
 	enrollment, err := this.db.Enrollments.FindByOwner(ctx, owner)
 	if err != nil {
 		this.mu.Unlock()
-		return domain.Status{}, this.storageError(ctx, err)
+		return models.Status{}, this.storageError(ctx, err)
 	}
 	if enrollment.OwnerID != owner {
 		this.mu.Unlock()
-		return domain.Status{}, ErrDenied
+		return models.Status{}, ErrDenied
 	}
 	now := this.clock.Now()
 	status := cached(enrollment.Stage, enrollment.CheckedAt)
@@ -368,7 +368,7 @@ func (this *Service) wait(
 	ctx context.Context,
 	check *check,
 	drain bool,
-) (domain.Status, error) {
+) (models.Status, error) {
 	defer func() {
 		if drain && ctx.Err() != nil {
 			<-check.done
@@ -408,7 +408,7 @@ func (this *Service) refresh(
 	owner int64,
 	state *ownerState,
 	check *check,
-	enrollment repositories.Enrollment,
+	enrollment models.Enrollment,
 ) {
 	stage, checkedAt, err := this.baseline(ctx, enrollment.Number, enrollment.Password)
 	this.mu.Lock()

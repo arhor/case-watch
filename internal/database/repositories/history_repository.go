@@ -3,6 +3,8 @@ package repositories
 import (
 	"context"
 	"time"
+
+	"github.com/arhor/case-watch/internal/models"
 )
 
 type HistoryRepository struct {
@@ -14,7 +16,7 @@ func NewHistoryRepository(executor QueryExecutor) *HistoryRepository {
 }
 
 // FindByEnrollment returns transitions belonging to the supplied owner and identity.
-func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]Transition, error) {
+func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]models.Transition, error) {
 	rows, err := this.executor.QueryContext(ctx, `
 		SELECT h.sequence, h.enrollment_id, h.previous_stage, h.stage, h.checked_at
 		  FROM history AS h
@@ -29,9 +31,9 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 		return nil, ErrStorage
 	}
 	defer rows.Close()
-	result := []Transition{}
+	result := []models.Transition{}
 	for rows.Next() {
-		var t Transition
+		var t models.Transition
 		var identity, checked string
 		if rows.Scan(&t.Sequence, &identity, &t.PreviousStage, &t.Stage, &checked) != nil {
 			return nil, ErrStorage

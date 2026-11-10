@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
+	telegramModels "github.com/go-telegram/bot/models"
 )
 
 // -- Experimental code, don't touch --------------------------------------------------------------
 
-type commandHandler func(context.Context, *models.Message)
+type commandHandler func(context.Context, *telegramModels.Message)
 
 // Bot is an experimental command bot, separate from the application bot.
 type Bot struct {
@@ -48,13 +48,13 @@ func (b *Bot) Run(ctx context.Context) {
 	b.client.Start(ctx)
 }
 
-func (b *Bot) handleMessage(ctx context.Context, _ *bot.Bot, update *models.Update) {
+func (b *Bot) handleMessage(ctx context.Context, _ *bot.Bot, update *telegramModels.Update) {
 	if update.Message == nil {
 		return
 	}
 	message := update.Message
 	if message.From == nil || message.From.IsBot || message.From.ID <= 0 ||
-		message.Chat.Type != models.ChatTypePrivate || message.Chat.ID != message.From.ID {
+		message.Chat.Type != telegramModels.ChatTypePrivate || message.Chat.ID != message.From.ID {
 		return
 	}
 	if handler, ok := b.handlers[message.Text]; ok {
@@ -68,45 +68,45 @@ func (b *Bot) handleMessage(ctx context.Context, _ *bot.Bot, update *models.Upda
 	}
 }
 
-func (b *Bot) onHelp(ctx context.Context, message *models.Message) {
+func (b *Bot) onHelp(ctx context.Context, message *telegramModels.Message) {
 	b.reply(ctx, message.Chat.ID, "Case Watch experiment. Commands: /start, /help, /enroll (/setup), /status, /remove, /cancel. Tracking actions are stubs; do not send credentials. Send ping to receive pong.")
 }
 
-func (b *Bot) onStart(ctx context.Context, message *models.Message) {
+func (b *Bot) onStart(ctx context.Context, message *telegramModels.Message) {
 	b.onHelp(ctx, message)
 }
 
-func (b *Bot) onSetup(ctx context.Context, message *models.Message) {
+func (b *Bot) onSetup(ctx context.Context, message *telegramModels.Message) {
 	b.onEnroll(ctx, message)
 }
 
-func (b *Bot) onEnroll(ctx context.Context, message *models.Message) {
+func (b *Bot) onEnroll(ctx context.Context, message *telegramModels.Message) {
 	// TODO: Start an owner-bound conversation collecting case number and password separately.
 	b.reply(ctx, message.Chat.ID, "Enrollment is not implemented yet. Do not send credentials.")
 }
 
-func (b *Bot) onStatus(ctx context.Context, message *models.Message) {
+func (b *Bot) onStatus(ctx context.Context, message *telegramModels.Message) {
 	// TODO: Fetch the owner's status, respecting cache freshness and check cooldowns.
 	b.reply(ctx, message.Chat.ID, "Status is not implemented yet.")
 }
 
-func (b *Bot) onRemove(ctx context.Context, message *models.Message) {
+func (b *Bot) onRemove(ctx context.Context, message *telegramModels.Message) {
 	// TODO: Request expiring REMOVE confirmation before coordinated deletion.
 	b.reply(ctx, message.Chat.ID, "Removal is not implemented yet. No data has been deleted.")
 }
 
-func (b *Bot) onCancel(ctx context.Context, message *models.Message) {
+func (b *Bot) onCancel(ctx context.Context, message *telegramModels.Message) {
 	// TODO: Clear the owner's draft/confirmation and cancel enrollment work.
 	b.reply(ctx, message.Chat.ID, "Cancellation is not implemented yet. No conversation state is stored in this experiment.")
 }
 
-func (b *Bot) onText(ctx context.Context, message *models.Message) {
+func (b *Bot) onText(ctx context.Context, message *telegramModels.Message) {
 	// TODO: Route by the owner's conversation step: case number, password, or removal confirmation.
 	// Enforce expiry and attempt credential-message deletion without echoing input.
 	b.reply(ctx, message.Chat.ID, "Conversation input is not implemented yet. Use /help; do not send credentials.")
 }
 
-func (b *Bot) onUnknownCommand(ctx context.Context, message *models.Message) {
+func (b *Bot) onUnknownCommand(ctx context.Context, message *telegramModels.Message) {
 	b.reply(ctx, message.Chat.ID, "Unknown command. Use /help. Commands take no arguments.")
 }
 

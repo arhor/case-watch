@@ -10,7 +10,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -19,7 +19,7 @@ var ErrScheduler = errors.New("scheduler operation failed")
 type Cases interface {
 	ScheduledOwners(context.Context) ([]int64, error)
 	// Scheduled shares manual coordination and returns after canceled work drains.
-	Scheduled(context.Context, int64) (domain.Status, error)
+	Scheduled(context.Context, int64) (models.Status, error)
 }
 
 type Config struct {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/scheduler"
 )
 
@@ -17,10 +17,10 @@ func (c *clock) Now() time.Time { return c.now }
 
 type tracking struct {
 	owners    []int64
-	scheduled func(context.Context, int64) (domain.Status, error)
+	scheduled func(context.Context, int64) (models.Status, error)
 }
 
-func (f tracking) Scheduled(ctx context.Context, owner int64) (domain.Status, error) {
+func (f tracking) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return f.scheduled(ctx, owner)
 }
 func (f tracking) ScheduledOwners(context.Context) ([]int64, error) { return f.owners, nil }
@@ -41,7 +41,7 @@ func newScheduler(t *testing.T, c scheduler.Config) *scheduler.Scheduler {
 }
 func TestNextShouldReturnStrictWarsawSlotsWhenDatesCrossSeasonsWeekendsAndHolidays(t *testing.T) {
 	// Given
-	s := newScheduler(t, scheduler.Config{Cases: tracking{scheduled: func(context.Context, int64) (domain.Status, error) { return domain.Status{}, nil }}, Clock: &clock{}})
+	s := newScheduler(t, scheduler.Config{Cases: tracking{scheduled: func(context.Context, int64) (models.Status, error) { return models.Status{}, nil }}, Clock: &clock{}})
 	cases := []struct{ after, want string }{
 		{"2026-01-05T06:59:59Z", "2026-01-05T07:00:00Z"},
 		{"2026-07-06T05:59:59Z", "2026-07-06T06:00:00Z"},
@@ -77,12 +77,12 @@ func TestRunShouldSkipCrossedSlotsAndRecheckQueuedAuthorizationWhenFirstCheckIsS
 	defer cancel()
 	var calls []int64
 	var deadlines []time.Time
-	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (domain.Status, error) {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 		calls = append(calls, owner)
 		if owner == 1 {
 			c.now = parse("2026-07-06T10:30:00Z")
 		}
-		return domain.Status{}, errors.New("synthetic failure")
+		return models.Status{}, errors.New("synthetic failure")
 	}}, Wait: func(_ context.Context, deadline time.Time) error {
 		deadlines = append(deadlines, deadline)
 		if len(deadlines) == 2 {
@@ -106,7 +106,7 @@ func TestRunShouldWaitForFutureSlotWhenStartingAtBoundaryOrRestartingAfterMissed
 		c := &clock{now: parse(start)}
 		calls := 0
 		var deadline time.Time
-		s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
+		s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
 		// When
 		err := s.Run(ctx)
 		// Then
@@ -124,12 +124,12 @@ func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
 	canceled := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan error, 1)
-	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (domain.Status, error) {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return domain.Status{}, ctx.Err()
+		return models.Status{}, ctx.Err()
 	}}, Wait: func(_ context.Context, d time.Time) error { c.now = d; return nil }})
 	// When
 	go func() { done <- s.Run(ctx) }()
@@ -158,7 +158,7 @@ func TestRunShouldSkipMissedMinuteAndAcceptTimerJitterWhenWaitReturnsLate(t *tes
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	waits, calls := 0, 0
-	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (domain.Status, error) { calls++; return domain.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
+	s := newScheduler(t, scheduler.Config{Clock: c, Cases: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
 		waits++
 		switch waits {
 		case 1:

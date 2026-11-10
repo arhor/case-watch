@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/models"
 )
 
 func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.T) {
@@ -29,11 +29,11 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	if err := initial.History.Append(ctx, id, "A", stage, checked); err != nil {
 		t.Fatal(err)
 	}
-	guard := repositories.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
+	guard := models.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
 	if err = initial.Cooldowns.Upsert(ctx, guard); err != nil {
 		t.Fatal(err)
 	}
-	caseGuard := repositories.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
+	caseGuard := models.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
 	if err := initial.Cooldowns.Upsert(ctx, caseGuard); err != nil {
 		t.Fatal(err)
 	}

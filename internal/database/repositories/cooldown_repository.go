@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
-	"strings"
+	"github.com/arhor/case-watch/internal/models"
 )
 
 type CooldownRepository struct {
@@ -21,12 +22,12 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 	ctx context.Context,
 	subjectType string,
 	subjectID string,
-) (Cooldown, error) {
+) (models.Cooldown, error) {
 	if !validCooldownKey(subjectType, subjectID) {
-		return Cooldown{}, ErrInvalid
+		return models.Cooldown{}, ErrInvalid
 	}
 	var (
-		c       Cooldown
+		c       models.Cooldown
 		started int64
 	)
 	err := this.executor.QueryRowContext(
@@ -37,10 +38,10 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 	).Scan(&c.SubjectType, &c.SubjectID, &started)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return Cooldown{}, ErrNotFound
+		return models.Cooldown{}, ErrNotFound
 	}
 	if err != nil {
-		return Cooldown{}, ErrStorage
+		return models.Cooldown{}, ErrStorage
 	}
 
 	c.StartedAt = time.Unix(0, started).UTC()
@@ -50,7 +51,7 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 
 func (this *CooldownRepository) Upsert(
 	ctx context.Context,
-	c Cooldown,
+	c models.Cooldown,
 ) error {
 	if !validCooldownKey(c.SubjectType, c.SubjectID) || c.StartedAt.IsZero() {
 		return ErrInvalid

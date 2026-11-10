@@ -8,6 +8,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/models"
 )
 
 const (
@@ -87,11 +88,11 @@ func (this *Service) reserveCheck(
 	id string,
 	manual bool,
 	now time.Time,
-) (repositories.CheckReservation, error) {
+) (models.CheckReservation, error) {
 	if now.IsZero() {
-		return repositories.CheckReservation{}, repositories.ErrInvalid
+		return models.CheckReservation{}, repositories.ErrInvalid
 	}
-	var result repositories.CheckReservation
+	var result models.CheckReservation
 	err := this.db.RunInTx(ctx, func(store *store.Store) error {
 		next, err := eligibility(ctx, store, owner, id, manual)
 		if err != nil {
@@ -102,7 +103,7 @@ func (this *Service) reserveCheck(
 			return nil
 		}
 		if err = store.Cooldowns.Upsert(ctx,
-			repositories.Cooldown{
+			models.Cooldown{
 				SubjectType: caseCheckCooldown,
 				SubjectID:   id,
 				StartedAt:   now,
@@ -111,7 +112,7 @@ func (this *Service) reserveCheck(
 			return err
 		}
 		if manual {
-			if err = store.Cooldowns.Upsert(ctx, repositories.Cooldown{
+			if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
 				SubjectType: manualCheckCooldown,
 				SubjectID:   strconv.FormatInt(owner, 10),
 				StartedAt:   now,
@@ -119,14 +120,14 @@ func (this *Service) reserveCheck(
 				return err
 			}
 		}
-		result = repositories.CheckReservation{
+		result = models.CheckReservation{
 			Reserved:       true,
 			NextEligibleAt: now.Add(time.Minute),
 		}
 		return nil
 	})
 	if err != nil {
-		return repositories.CheckReservation{}, err
+		return models.CheckReservation{}, err
 	}
 	return result, nil
 }

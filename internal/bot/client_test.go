@@ -9,19 +9,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot/models"
+	telegramModels "github.com/go-telegram/bot/models"
+	telegrammodels "github.com/go-telegram/bot/models"
 )
 
 func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t *testing.T) {
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		code        int
 		description string
 		category    SendCategory
 	}{{401, "synthetic-token", SendInvalidToken}, {403, "Forbidden: bot was blocked by the user", SendFailed}, {403, "Forbidden: other reason", SendFailed}, {429, "synthetic-password", SendRateLimited}, {500, "synthetic-password", SendFailed}} {
-		t.Run(string(tc.category)+tc.description, func(t *testing.T) {
+		t.Run(string(testCase.category)+testCase.description, func(t *testing.T) {
 			// Given
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": tc.code, "description": tc.description, "parameters": map[string]int{"retry_after": 9}})
+				json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": testCase.code, "description": testCase.description, "parameters": map[string]int{"retry_after": 9}})
 			}))
 			defer server.Close()
 
@@ -32,10 +33,10 @@ func TestSenderShouldClassifyFailuresWithoutReturningSecretsWhenAPIRejectsSend(t
 			// When
 			outcome, sendErr := a.Send(context.Background(), 101, "synthetic-body")
 			// Then
-			if sendErr == nil || outcome.Category != tc.category || strings.Contains(sendErr.Error(), "synthetic") {
+			if sendErr == nil || outcome.Category != testCase.category || strings.Contains(sendErr.Error(), "synthetic") {
 				t.Fatalf("classification: %+v %v", outcome, sendErr)
 			}
-			if tc.code == 429 && outcome.RetryAfter != 9*time.Second {
+			if testCase.code == 429 && outcome.RetryAfter != 9*time.Second {
 				t.Fatal("retry deadline lost")
 			}
 		})
@@ -105,7 +106,7 @@ func TestPollShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	handle := func(context.Context, *models.Update) {}
+	handle := func(context.Context, *telegramModels.Update) {}
 	// When
 	first := client.Poll(ctx, handle)
 	second := client.Poll(ctx, handle)
@@ -125,7 +126,7 @@ func TestPollShouldKeepPollingAvailableWhenHandlerIsMissing(t *testing.T) {
 	cancel()
 	// When
 	missing := client.Poll(ctx, nil)
-	valid := client.Poll(ctx, func(context.Context, *models.Update) {})
+	valid := client.Poll(ctx, func(context.Context, *telegramModels.Update) {})
 	// Then
 	if !errors.Is(missing, errPolling) || !errors.Is(valid, context.Canceled) {
 		t.Fatalf("missing=%v valid=%v", missing, valid)
@@ -151,7 +152,7 @@ func TestPollShouldDispatchMessagesInOrderWhenUpdatesArrive(t *testing.T) {
 	}
 	var received []string
 	// When
-	err = client.Poll(ctx, func(_ context.Context, update *models.Update) {
+	err = client.Poll(ctx, func(_ context.Context, update *telegrammodels.Update) {
 		if update.Message != nil {
 			received = append(received, update.Message.Text)
 			if len(received) == 2 {

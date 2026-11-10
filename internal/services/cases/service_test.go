@@ -14,7 +14,7 @@ import (
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
+	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/scheduler"
 )
 
@@ -89,7 +89,7 @@ func (f *fixture) enroll(t *testing.T, owner int64) string {
 	}
 	return e.ID
 }
-func obs(t *testing.T, s domain.Status, stage string, checked time.Time) {
+func obs(t *testing.T, s models.Status, stage string, checked time.Time) {
 	t.Helper()
 	if s.CheckedAt.IsZero() || s.Stage != stage || !s.CheckedAt.Equal(checked) {
 		t.Fatalf("unexpected observation: %+v", s)
@@ -209,7 +209,7 @@ func waitingContext(ctx context.Context) *waitContext {
 }
 
 type answer struct {
-	s   domain.Status
+	s   models.Status
 	err error
 }
 

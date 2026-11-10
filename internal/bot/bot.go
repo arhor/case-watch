@@ -10,22 +10,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/arhor/case-watch/internal/utils"
-	"github.com/go-telegram/bot/models"
+	telegramModels "github.com/go-telegram/bot/models"
+
+	"github.com/arhor/case-watch/internal/models"
 )
 
 type Cases interface {
 	Enroll(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error)
-	Status(ctx context.Context, owner int64) (domain.Status, error)
+	Status(ctx context.Context, owner int64) (models.Status, error)
 	Remove(ctx context.Context, owner int64) error
 	HasEnrollment(ctx context.Context, owner int64) (bool, error)
 }
 
 type Transport interface {
 	Sender
-	Poll(ctx context.Context, handler func(context.Context, *models.Update)) error
+	Poll(ctx context.Context, handler func(context.Context, *telegramModels.Update)) error
 	DeleteMessage(ctx context.Context, owner int64, message int) error
 }
 
@@ -164,14 +165,14 @@ const help = "Track one case privately. Commands: /enroll /status /remove /cance
 	"platform copies may remain. Credential-message deletion is best effort."
 
 // privateOwner binds conversations to Telegram transport metadata.
-func privateOwner(sender *models.User, chat models.Chat) (int64, bool) {
-	if sender == nil || sender.IsBot || sender.ID <= 0 || chat.Type != models.ChatTypePrivate || chat.ID != sender.ID {
+func privateOwner(sender *telegramModels.User, chat telegramModels.Chat) (int64, bool) {
+	if sender == nil || sender.IsBot || sender.ID <= 0 || chat.Type != telegramModels.ChatTypePrivate || chat.ID != sender.ID {
 		return 0, false
 	}
 	return sender.ID, true
 }
 
-func (a *Bot) handle(ctx context.Context, u *models.Update) {
+func (a *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	m := u.Message
 	if m == nil || m.From == nil {
 		return
@@ -331,7 +332,7 @@ func (a *Bot) handle(ctx context.Context, u *models.Update) {
 		a.reply(ctx, id, "Tracking enrolled. Use /status to view your case.")
 	}(number, text)
 }
-func formatStatus(s domain.Status, err error) string {
+func formatStatus(s models.Status, err error) string {
 	text := ""
 	if err != nil {
 		text = "Refresh failed. "

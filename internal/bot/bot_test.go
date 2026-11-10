@@ -15,9 +15,10 @@ import (
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services/cases"
-	"github.com/go-telegram/bot/models"
+	telegramModels "github.com/go-telegram/bot/models"
+
+	"github.com/arhor/case-watch/internal/models"
 )
 
 type portal func(context.Context, string, string) (string, time.Time, error)
@@ -91,7 +92,7 @@ func setup(t *testing.T) *fixture {
 	return f
 }
 func (f *fixture) message(id int64, text string) {
-	f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: &models.User{ID: id}, Chat: models.Chat{ID: id, Type: models.ChatTypePrivate}, Text: text}})
+	f.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: &telegramModels.User{ID: id}, Chat: telegramModels.Chat{ID: id, Type: telegramModels.ChatTypePrivate}, Text: text}})
 	if text == "synthetic-password" {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
@@ -144,7 +145,7 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailability(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
-		status domain.Status
+		status models.Status
 		err    error
 		want   string
 	}{
@@ -154,17 +155,17 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 		},
 		{
 			name:   "successful check with empty stage",
-			status: domain.Status{CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)},
+			status: models.Status{CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)},
 			want:   "Cached stage: \nLast successful check: 2026-11-01T12:00:00Z",
 		},
 		{
 			name:   "fresh check",
-			status: domain.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			status: models.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
 			want:   "Fresh stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
 		},
 		{
 			name:   "failed refresh with cached check",
-			status: domain.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			status: models.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
 			err:    cases.ErrCheck,
 			want:   "Refresh failed. Cached stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
 		},
@@ -240,8 +241,8 @@ func (c *cancelTracking) Enroll(ctx context.Context, _ int64, _ string, _ string
 	close(c.done)
 	return "", time.Time{}, ctx.Err()
 }
-func (c *cancelTracking) Status(context.Context, int64) (domain.Status, error) {
-	return domain.Status{}, nil
+func (c *cancelTracking) Status(context.Context, int64) (models.Status, error) {
+	return models.Status{}, nil
 }
 func (c *cancelTracking) HasEnrollment(context.Context, int64) (bool, error) { return false, nil }
 func (c *cancelTracking) Remove(context.Context, int64) error                { return nil }
@@ -416,26 +417,26 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 }
 
 func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) {
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		name   string
-		sender *models.User
-		chat   models.Chat
+		sender *telegramModels.User
+		chat   telegramModels.Chat
 	}{
-		{"missing sender", nil, models.Chat{ID: 303, Type: models.ChatTypePrivate}},
-		{"bot sender", &models.User{ID: 303, IsBot: true}, models.Chat{ID: 303, Type: models.ChatTypePrivate}},
-		{"zero sender", &models.User{}, models.Chat{Type: models.ChatTypePrivate}},
-		{"negative sender", &models.User{ID: -303}, models.Chat{ID: -303, Type: models.ChatTypePrivate}},
-		{"mismatched chat", &models.User{ID: 303}, models.Chat{ID: 404, Type: models.ChatTypePrivate}},
-		{"group", &models.User{ID: 303}, models.Chat{ID: 303, Type: models.ChatTypeGroup}},
-		{"channel", &models.User{ID: 303}, models.Chat{ID: 303, Type: models.ChatTypeChannel}},
+		{"missing sender", nil, telegramModels.Chat{ID: 303, Type: telegramModels.ChatTypePrivate}},
+		{"bot sender", &telegramModels.User{ID: 303, IsBot: true}, telegramModels.Chat{ID: 303, Type: telegramModels.ChatTypePrivate}},
+		{"zero sender", &telegramModels.User{}, telegramModels.Chat{Type: telegramModels.ChatTypePrivate}},
+		{"negative sender", &telegramModels.User{ID: -303}, telegramModels.Chat{ID: -303, Type: telegramModels.ChatTypePrivate}},
+		{"mismatched chat", &telegramModels.User{ID: 303}, telegramModels.Chat{ID: 404, Type: telegramModels.ChatTypePrivate}},
+		{"group", &telegramModels.User{ID: 303}, telegramModels.Chat{ID: 303, Type: telegramModels.ChatTypeGroup}},
+		{"channel", &telegramModels.User{ID: 303}, telegramModels.Chat{ID: 303, Type: telegramModels.ChatTypeChannel}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			// Given
 			f := setup(t)
 			// When
-			f.a.handle(context.Background(), &models.Update{Message: &models.Message{ID: 7, From: tc.sender, Chat: tc.chat, Text: "/enroll"}})
-			if tc.sender != nil {
-				f.a.handle(context.Background(), &models.Update{MyChatMember: &models.ChatMemberUpdated{From: *tc.sender, Chat: tc.chat, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
+			f.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: testCase.sender, Chat: testCase.chat, Text: "/enroll"}})
+			if testCase.sender != nil {
+				f.a.handle(context.Background(), &telegramModels.Update{MyChatMember: &telegramModels.ChatMemberUpdated{From: *testCase.sender, Chat: testCase.chat, NewChatMember: telegramModels.ChatMember{Type: telegramModels.ChatMemberTypeBanned}}})
 			}
 			// Then
 			if len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {

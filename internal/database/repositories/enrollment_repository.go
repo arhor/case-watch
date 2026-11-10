@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/arhor/case-watch/internal/models"
 )
 
 type EnrollmentRepository struct {
@@ -16,9 +18,9 @@ func NewEnrollmentRepository(executor QueryExecutor) *EnrollmentRepository {
 	return &EnrollmentRepository{executor: executor}
 }
 
-func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) (Enrollment, error) {
+func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) (models.Enrollment, error) {
 	if owner <= 0 {
-		return Enrollment{}, ErrInvalid
+		return models.Enrollment{}, ErrInvalid
 	}
 	return scanEnrollment(
 		this.executor.QueryRowContext(ctx, `
@@ -31,21 +33,21 @@ func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) 
 	)
 }
 
-func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int64, id string) (Enrollment, error) {
+func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int64, id string) (models.Enrollment, error) {
 	if !validID(id) {
-		return Enrollment{}, ErrInvalid
+		return models.Enrollment{}, ErrInvalid
 	}
 	e, err := this.FindByOwner(ctx, owner)
 	if err != nil {
-		return Enrollment{}, err
+		return models.Enrollment{}, err
 	}
 	if e.ID != id {
-		return Enrollment{}, ErrNotFound
+		return models.Enrollment{}, ErrNotFound
 	}
 	return e, nil
 }
 
-func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, error) {
+func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]models.Enrollment, error) {
 	rows, err := this.executor.QueryContext(ctx, `
 		SELECT id, owner_id, case_number, password, stage, checked_at
 		FROM enrollments
@@ -56,7 +58,7 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]Enrollment, er
 		return nil, ErrStorage
 	}
 	defer rows.Close()
-	result := []Enrollment{}
+	result := []models.Enrollment{}
 	for rows.Next() {
 		e, err := scanEnrollment(rows)
 		if err != nil {
@@ -161,19 +163,19 @@ func scanEnrollment(
 	row interface {
 		Scan(...any) error
 	},
-) (Enrollment, error) {
-	var e Enrollment
+) (models.Enrollment, error) {
+	var e models.Enrollment
 	var checked string
 	err := row.Scan(&e.ID, &e.OwnerID, &e.Number, &e.Password, &e.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
 	}
 	if err != nil {
-		return Enrollment{}, ErrStorage
+		return models.Enrollment{}, ErrStorage
 	}
 	e.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
-		return Enrollment{}, ErrStorage
+		return models.Enrollment{}, ErrStorage
 	}
 	return e, nil
 }
