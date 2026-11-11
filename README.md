@@ -22,4 +22,11 @@ The application reads environment variables directly; it does not load `.env` fi
 
 ## Deployment
 
-A [Dockerfile](Dockerfile) and [Compose configuration](compose.yaml) are provided for Linux ARM64.
+To run with [Docker Compose](compose.yaml), copy the example configuration to `.env`, set your Telegram bot token, then build and start the service:
+
+```sh
+cp .env.example .env
+docker compose up --build -d
+```
+
+Compose passes variables from `.env` into the container.
