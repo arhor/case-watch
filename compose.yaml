@@ -3,9 +3,7 @@ services:
     build: .
     restart: unless-stopped
     stop_grace_period: 90s
-    environment:
-      CASE_WATCH_TELEGRAM_BOT_TOKEN: ${CASE_WATCH_TELEGRAM_BOT_TOKEN:?Set the bot token}
-      CASE_WATCH_DB_PATH: /data/case-watch.db
+    env_file: .env
     volumes:
       - data:/data
 
