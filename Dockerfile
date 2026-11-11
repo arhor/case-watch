@@ -21,4 +21,4 @@ RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=build /case-watch /case-watch
 
-ENTRYPOINT ["/case-watch"]
+CMD ["/case-watch"]
