@@ -1,17 +1,14 @@
 services:
   case-watch:
     image: ${CASE_WATCH_IMAGE:?Set a versioned image tag or immutable digest}
-    platform: linux/arm64
-    user: "10001:10001"
     restart: unless-stopped
     stop_grace_period: 90s
     environment:
       CASE_WATCH_TELEGRAM_BOT_TOKEN: ${CASE_WATCH_TELEGRAM_BOT_TOKEN:?Set the bot token}
       CASE_WATCH_DB_PATH: /data/case-watch.db
     volumes:
-      - type: volume
-        source: data
-        target: /data
+      - data:/data
+
 volumes:
   data:
     name: case-watch-data
