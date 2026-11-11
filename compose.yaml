@@ -4,9 +4,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 90s
     env_file: .env
-    mem_limit: 128m
-    cpus: 0.25
-    pids_limit: 64
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+          pids: 64
     volumes:
       - data:/data
 
