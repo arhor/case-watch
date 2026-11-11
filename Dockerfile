@@ -9,7 +9,4 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /case-watch .
 
-RUN mkdir /data && chown 10001:10001 /data
-USER 10001:10001
-
 CMD ["/case-watch"]
