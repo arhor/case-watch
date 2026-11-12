@@ -174,7 +174,12 @@ func (c *Client) run(ctx context.Context, number, password string) (result Resul
 		transport = owned
 		defer owned.CloseIdleConnections()
 	}
-	client := &http.Client{Transport: transport, Jar: jar, Timeout: c.perRequest, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{
+		Transport:     transport,
+		Jar:           jar,
+		Timeout:       c.perRequest,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	var last time.Time
 	request := func(method, path string, body any) ([]byte, error) {
 		if err := ctx.Err(); err != nil {
