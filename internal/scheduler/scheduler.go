@@ -23,8 +23,8 @@ type Cases interface {
 }
 
 type Config struct {
-	Cases Cases
-	Clock utils.Clock
+	CaseService Cases
+	Clock       utils.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
@@ -39,7 +39,7 @@ type Scheduler struct {
 }
 
 func New(c Config) (*Scheduler, error) {
-	if c.Cases == nil || c.Clock == nil {
+	if c.CaseService == nil || c.Clock == nil {
 		return nil, ErrScheduler
 	}
 	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
@@ -102,7 +102,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		if now := s.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := s.c.Cases.ScheduledOwners(ctx)
+		owners, err := s.c.CaseService.ScheduledOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -114,7 +114,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if _, err := s.c.Cases.Scheduled(ctx, owner); err != nil {
+			if _, err := s.c.CaseService.Scheduled(ctx, owner); err != nil {
 				s.report("check_failed")
 			}
 		}

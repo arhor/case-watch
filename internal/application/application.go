@@ -84,9 +84,9 @@ func run(ctx context.Context) (result error) {
 	defer telegramBot.Close()
 
 	scheduled, err := scheduler.New(scheduler.Config{
-		Cases:  caseService,
-		Clock:  clock,
-		Report: diagnostic,
+		CaseService: caseService,
+		Clock:       clock,
+		Report:      diagnostic,
 	})
 	if err != nil {
 		return errStartup
