@@ -32,7 +32,7 @@ func (c *clock) set(t time.Time) { c.mu.Lock(); defer c.mu.Unlock(); c.now = t }
 
 type portalFunc func(context.Context, string, string) (string, time.Time, error)
 
-func (f portalFunc) Check(ctx context.Context, Number, Password string) (string, time.Time, error) {
+func (f portalFunc) Check(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
 	return f(ctx, Number, Password)
 }
 
@@ -551,7 +551,7 @@ func TestSchedulerShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	waits := 0
-	s, err := scheduler.New(scheduler.Config{Cases: f.c, Clock: f.clock, Wait: func(_ context.Context, deadline time.Time) error {
+	s, err := scheduler.New(scheduler.Config{CaseService: f.c, Clock: f.clock, Wait: func(_ context.Context, deadline time.Time) error {
 		waits++
 		if waits == 2 {
 			cancel()
@@ -705,3 +705,5 @@ func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *tes
 		})
 	}
 }
+
+func (portalFunc) ForgetSession(int64) {}

@@ -8,7 +8,8 @@ import (
 // Portal performs one bounded logical check without automatic retries and
 // returns the portal's stage text verbatim with its completion time.
 type Portal interface {
-	Check(ctx context.Context, Number, Password string) (stage string, checkedAt time.Time, err error)
+	Check(ctx context.Context, ownerID int64, Number, Password string) (stage string, checkedAt time.Time, err error)
+	ForgetSession(ownerID int64)
 }
 
 // Status separates successful cache age from attempt eligibility. A failed refresh

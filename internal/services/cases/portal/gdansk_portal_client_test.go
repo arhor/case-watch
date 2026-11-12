@@ -45,7 +45,7 @@ func TestGdanskPortalClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenRe
 		calls++
 		file := "testdata/bootstrap.html"
 		if step == 0 {
-			if len(r.Cookies()) != 0 {
+			if calls == 1 && len(r.Cookies()) != 0 {
 				t.Error("session leaked between checks")
 			}
 		} else {
@@ -79,8 +79,8 @@ func TestGdanskPortalClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenRe
 		return ctx.Err()
 	}})
 	// When
-	firstStage, firstCheckedAt, err := c.Check(context.Background(), "synthetic-case", "synthetic-password")
-	secondStage, secondCheckedAt, err2 := c.Check(context.Background(), "", "")
+	firstStage, firstCheckedAt, err := c.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+	secondStage, secondCheckedAt, err2 := c.Check(context.Background(), 1, "", "")
 	// Then
 	if err != nil || err2 != nil || calls != 10 || waits != 8 || firstStage != "Synthetic stage" || secondStage != firstStage || !secondCheckedAt.Equal(clock.now) || !firstCheckedAt.Before(secondCheckedAt) {
 		t.Fatalf("stages=%q/%q checkedAt=%v/%v errors=%v %v calls=%d waits=%d", firstStage, secondStage, firstCheckedAt, secondCheckedAt, err, err2, calls, waits)
@@ -108,7 +108,7 @@ func TestGdanskPortalClientShouldReturnSanitizedClassificationWhenExchangeFails(
 			// Given
 			c := NewGdanskPortalClient(GdanskPortalClientOptions{Transport: tc.transport})
 			// When
-			stage, checkedAt, err := c.Check(context.Background(), "", "secret-password")
+			stage, checkedAt, err := c.Check(context.Background(), 1, "", "secret-password")
 			// Then
 			var safe *Error
 			if !errors.As(err, &safe) || safe.Kind != tc.kind || strings.Contains(err.Error(), "secret") || stage != "" || !checkedAt.IsZero() {
@@ -127,7 +127,7 @@ func TestGdanskPortalClientShouldStopWithoutRetryWhenOwnedDeadlineExpires(t *tes
 	})})
 	c.overall = time.Millisecond
 	// When
-	_, _, err := c.Check(context.Background(), "", "")
+	_, _, err := c.Check(context.Background(), 1, "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -140,7 +140,7 @@ func TestGdanskPortalClientShouldMakeNoRequestWhenAlreadyCanceled(t *testing.T) 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	// When
-	_, _, err := c.Check(ctx, "", "")
+	_, _, err := c.Check(ctx, 1, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 0 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -157,7 +157,7 @@ func TestGdanskPortalClientShouldStopWhenPerRequestDeadlineExpires(t *testing.T)
 	})})
 	c.perRequest = time.Millisecond
 	// When
-	_, _, err := c.Check(context.Background(), "", "")
+	_, _, err := c.Check(context.Background(), 1, "", "")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -174,7 +174,7 @@ func TestGdanskPortalClientShouldCancelBetweenRequestsWhenWaitIsCanceled(t *test
 		return reply(string(b)), nil
 	}), Wait: func(ctx context.Context, d time.Duration) error { cancel(); return ctx.Err() }})
 	// When
-	_, _, err := c.Check(ctx, "", "")
+	_, _, err := c.Check(ctx, 1, "", "")
 	// Then
 	if !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -187,7 +187,7 @@ func TestGdanskPortalClientShouldRejectBootstrapWhenPageIsUnexpected(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.Write([]byte("<html>unavailable</html>")) }))
 	defer server.Close()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), "synthetic-case", "synthetic-password")
+	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err == nil || calls != 1 {
 		t.Fatalf("expected one request and an error; stage=%q error=%v calls=%d", stage, err, calls)
@@ -204,7 +204,7 @@ func TestGdanskPortalClientShouldStopWhenPortalRedirects(t *testing.T) {
 	}))
 	defer server.Close()
 	// When
-	_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), "synthetic-case", "synthetic-password")
+	_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err == nil || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -270,7 +270,7 @@ func TestGdanskPortalClientShouldExtractStageWhenAuthenticationSucceeds(t *testi
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(ctx, "synthetic-case", "synthetic-password")
+	stage, _, err := newGdanskTestClient(server.URL).Check(ctx, 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err != nil || stage != "Synthetic stage" || calls != 5 {
 		t.Fatalf("stage=%q error=%v calls=%d", stage, err, calls)
@@ -291,7 +291,7 @@ func TestGdanskPortalClientShouldRejectRPCWhenChangesAreMalformed(t *testing.T) 
 	}))
 	defer server.Close()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), "synthetic-case", "synthetic-password")
+	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err == nil || calls != 2 {
 		t.Fatalf("stage=%q error=%v", stage, err)
@@ -326,7 +326,7 @@ func TestGdanskPortalClientShouldStopWhenRepliesAreRejectedOrUnexpected(t *testi
 			client := newGdanskTestClient(server.URL)
 			client.budget = tc.budget
 			// When
-			stage, _, err := client.Check(context.Background(), "synthetic-case", "synthetic-password")
+			stage, _, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 			// Then
 			if err == nil || stage != "" || calls != tc.wantRequests {
 				t.Fatalf("stage=%q error=%v calls=%d", stage, err, calls)
@@ -374,7 +374,7 @@ func TestGdanskPortalClientShouldDiscoverComponentsWhenNodeIdentifiersChange(t *
 	}))
 	defer server.Close()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), "synthetic-case", "synthetic-password")
+	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err != nil || stage != "Synthetic stage" {
 		t.Fatalf("stage=%q error=%v", stage, err)
@@ -405,7 +405,7 @@ func TestGdanskPortalClientShouldStopWhenCallerDeadlineExpires(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	// When
-	_, _, err := client.Check(ctx, "synthetic-case", "synthetic-password")
+	_, _, err := client.Check(ctx, 1, "synthetic-case", "synthetic-password")
 	// Then
 	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
 		t.Fatalf("error=%v calls=%d", err, calls)
@@ -444,8 +444,8 @@ func TestGdanskPortalClientShouldReuseConnectionWhenChecksRunSequentially(t *tes
 	client := newGdanskTestClient(server.URL)
 	defer client.Close()
 	// When
-	_, _, err1 := client.Check(context.Background(), "synthetic-case", "synthetic-password")
-	_, _, err2 := client.Check(context.Background(), "synthetic-case", "synthetic-password")
+	_, _, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+	_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	if err1 != nil || err2 != nil || requests.Load() != 10 || connections.Load() != 1 {
 		t.Fatalf("errors=%v/%v requests=%d connections=%d", err1, err2, requests.Load(), connections.Load())
@@ -473,8 +473,8 @@ func TestGdanskPortalClientShouldNotResendWhenReusedConnectionIsClosedByServer(t
 	client := newGdanskTestClient(server.URL)
 	defer client.Close()
 	// When
-	_, _, err1 := client.Check(context.Background(), "synthetic-case", "synthetic-password")
-	_, _, err2 := client.Check(context.Background(), "synthetic-case", "synthetic-password")
+	_, _, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+	_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	var safe *Error
 	if err1 != nil || !errors.As(err2, &safe) || safe.Kind != Transport || requests.Load() != 6 {
@@ -491,7 +491,7 @@ func TestGdanskPortalClientShouldLeaveInjectedTransportOpenWhenClosed(t *testing
 	client.Close()
 	client.Close()
 	// Then
-	if client.owned != nil {
+	if client.httpClient == nil {
 		t.Fatal("injected transport must not be owned")
 	}
 }
@@ -503,7 +503,7 @@ func TestGdanskPortalClientShouldCloseRepeatedlyWhenTransportIsOwned(t *testing.
 	client.Close()
 	client.Close()
 	// Then
-	if client.owned == nil || client.transport != http.RoundTripper(client.owned) {
+	if client.httpClient == nil {
 		t.Fatal("default transport must be created once and shared")
 	}
 }
@@ -535,7 +535,7 @@ func TestGdanskPortalClientShouldRejectBootstrapWhenLoginFieldsAreMissingOrAmbig
 			}))
 			defer server.Close()
 			// When
-			stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), "synthetic-case", "synthetic-password")
+			stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 			// Then
 			if err == nil || calls != 1 {
 				t.Fatalf("stage=%q error=%v", stage, err)

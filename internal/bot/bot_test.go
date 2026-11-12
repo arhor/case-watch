@@ -34,7 +34,7 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
-func (p portal) Check(c context.Context, Number, Password string) (string, time.Time, error) {
+func (p portal) Check(c context.Context, owner int64, Number, Password string) (string, time.Time, error) {
 	return p(c, Number, Password)
 }
 
@@ -596,3 +596,5 @@ func TestNewShouldReturnNoBotWhenValidationIsCanceled(t *testing.T) {
 		t.Fatalf("bot=%v error=%v", a, err)
 	}
 }
+
+func (portal) ForgetSession(int64) {}

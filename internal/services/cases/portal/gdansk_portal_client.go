@@ -10,8 +10,8 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,12 +45,11 @@ type GdanskPortalClientOptions struct {
 }
 
 // GdanskPortalClient checks case stages through the Gdańsk administration portal.
-// Each Check uses a fresh session (cookies and RPC state) over a shared connection
+// Each Check reuses user cookies with fresh RPC state over a shared connection
 // pool and performs no automatic retries. Call Close on shutdown to release idle connections.
 type GdanskPortalClient struct {
 	base       string
-	transport  http.RoundTripper
-	owned      *http.Transport
+	httpClient *utils.HttpClient
 	clock      utils.Clock
 	wait       func(context.Context, time.Duration) error
 	interval   time.Duration
@@ -75,17 +74,9 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 	if wait == nil {
 		wait = waitContext
 	}
-	transport := options.Transport
-	var owned *http.Transport
-	if transport == nil {
-		// Clone so the process-wide default transport is never modified or closed.
-		owned = http.DefaultTransport.(*http.Transport).Clone()
-		transport = owned
-	}
 	return &GdanskPortalClient{
 		base:       strings.TrimRight(base, "/"),
-		transport:  transport,
-		owned:      owned,
+		httpClient: utils.NewHttpClient(utils.HttpClientOptions{Transport: options.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}),
 		clock:      clock,
 		wait:       wait,
 		interval:   2 * time.Second,
@@ -96,17 +87,25 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 }
 
 // Check returns the portal's stage text and the completion time of one bounded check.
-func (c *GdanskPortalClient) Check(ctx context.Context, number, password string) (stage string, checkedAt time.Time, err error) {
+func (c *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.overall)
 	defer cancel()
 	defer func() { err = classify(err) }()
 
+	defer func() {
+		if err != nil {
+			c.ForgetSession(ownerID)
+		}
+	}()
 	session := c.newSession()
+	session.userID = strconv.FormatInt(ownerID, 10)
 	if err := session.bootstrap(ctx); err != nil {
 		return "", time.Time{}, err
 	}
-	if err := session.authenticate(ctx, number, password); err != nil {
-		return "", time.Time{}, err
+	if _, stageErr := session.state.stage(); stageErr != nil {
+		if err := session.authenticate(ctx, number, password); err != nil {
+			return "", time.Time{}, err
+		}
 	}
 	stage, err = session.state.stage()
 	if err != nil {
@@ -121,7 +120,7 @@ func (c *GdanskPortalClient) Check(ctx context.Context, number, password string)
 // Session state belongs to a single check, never to the reusable client.
 type gdanskPortalSession struct {
 	config      *GdanskPortalClient
-	httpClient  *http.Client
+	userID      string
 	lastRequest time.Time
 	requests    int
 	uiID        float64
@@ -129,16 +128,9 @@ type gdanskPortalSession struct {
 }
 
 func (c *GdanskPortalClient) newSession() *gdanskPortalSession {
-	jar, _ := cookiejar.New(nil)
 	return &gdanskPortalSession{
 		config: c,
-		httpClient: &http.Client{
-			Transport:     c.transport,
-			Jar:           jar,
-			Timeout:       c.perRequest,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
-		state: gdanskRPCState{props: map[float64]map[string]any{}, children: map[float64][]float64{}},
+		state:  gdanskRPCState{props: map[float64]map[string]any{}, children: map[float64][]float64{}},
 	}
 }
 
@@ -146,9 +138,11 @@ func (c *GdanskPortalClient) newSession() *gdanskPortalSession {
 // transport belongs to the caller and is left untouched. It is idempotent and should be
 // called after in-flight checks have drained.
 func (c *GdanskPortalClient) Close() {
-	if c.owned != nil {
-		c.owned.CloseIdleConnections()
-	}
+	c.httpClient.Close()
+}
+
+func (c *GdanskPortalClient) ForgetSession(ownerID int64) {
+	c.httpClient.InvalidateSession(strconv.FormatInt(ownerID, 10))
 }
 
 func (s *gdanskPortalSession) request(ctx context.Context, method, path string, body any) ([]byte, error) {
@@ -181,7 +175,7 @@ func (s *gdanskPortalSession) request(ctx context.Context, method, path string, 
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 	s.requests++
 	s.lastRequest = s.config.clock.Now()
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.config.httpClient.Do(s.userID, req)
 	if err != nil {
 		if requestCtx.Err() != nil {
 			return nil, requestCtx.Err()
@@ -228,6 +222,9 @@ func (s *gdanskPortalSession) bootstrap(ctx context.Context) error {
 	s.uiID = id
 	if err := s.state.apply(uidl); err != nil {
 		return err
+	}
+	if _, err := s.state.stage(); err == nil {
+		return nil
 	}
 	if _, _, _, err := s.state.loginComponents(); err != nil {
 		return err

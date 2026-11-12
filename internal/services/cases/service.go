@@ -138,11 +138,17 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	s.check = f
 	this.mu.Unlock()
 	defer func() { cancel(); this.mu.Lock(); s.check = nil; close(f.done); this.mu.Unlock() }()
+	committed := false
+	defer func() {
+		if !committed {
+			this.portal.ForgetSession(owner)
+		}
+	}()
 	id, err := repositories.NewEnrollmentID()
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
-	stage, checkedAt, err := this.baseline(work, Number, Password)
+	stage, checkedAt, err := this.baseline(work, owner, Number, Password)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -157,6 +163,7 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	if err = this.saveEnrollment(work, owner, id, Number, Password, stage, checkedAt); err != nil {
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
+	committed = true
 	return stage, checkedAt, nil
 }
 
@@ -220,7 +227,11 @@ func (this *Service) Remove(ctx context.Context, owner int64) error {
 	if e.OwnerID != owner {
 		return ErrDenied
 	}
-	return this.storageError(ctx, this.deleteEnrollment(ctx, owner, e.ID))
+	err = this.storageError(ctx, this.deleteEnrollment(ctx, owner, e.ID))
+	if err == nil {
+		this.portal.ForgetSession(owner)
+	}
+	return err
 }
 
 // Shutdown permanently closes admission, cancels every owner check and drains
@@ -285,10 +296,10 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *Service) baseline(ctx context.Context, Number, Password string) (string, time.Time, error) {
+func (this *Service) baseline(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	stage, _, err := this.portal.Check(bounded, Number, Password)
+	stage, _, err := this.portal.Check(bounded, owner, Number, Password)
 	if err != nil {
 		return "", time.Time{}, canceled(bounded, ErrCheck)
 	}
@@ -410,7 +421,7 @@ func (this *Service) refresh(
 	check *check,
 	enrollment models.Enrollment,
 ) {
-	stage, checkedAt, err := this.baseline(ctx, enrollment.Number, enrollment.Password)
+	stage, checkedAt, err := this.baseline(ctx, owner, enrollment.Number, enrollment.Password)
 	this.mu.Lock()
 
 	defer this.mu.Unlock()
