@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+
+# -- Build stage -------------------------------------------------------------
 FROM golang:1.27.3-alpine AS build
 
 WORKDIR /app
@@ -10,11 +12,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 go build \
-    -trimpath \
-    -ldflags="-s -w" \
-    -o /case-watch .
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /case-watch .
 
+# -- Production stage --------------------------------------------------------
 FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
