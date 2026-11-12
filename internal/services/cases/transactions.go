@@ -102,13 +102,11 @@ func (this *Service) reserveCheck(
 		if now.Before(next) {
 			return nil
 		}
-		if err = store.Cooldowns.Upsert(ctx,
-			models.Cooldown{
-				SubjectType: caseCheckCooldown,
-				SubjectID:   id,
-				StartedAt:   now,
-			},
-		); err != nil {
+		if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
+			SubjectType: caseCheckCooldown,
+			SubjectID:   id,
+			StartedAt:   now,
+		}); err != nil {
 			return err
 		}
 		if manual {
