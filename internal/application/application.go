@@ -59,7 +59,9 @@ func run(ctx context.Context) (result error) {
 		}
 	}
 
-	portalClient := portal.NewClient(portal.Options{Clock: clock})
+	portalClient := portal.NewGdanskPortalClient(portal.GdanskPortalClientOptions{Clock: clock})
+	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
+	defer portalClient.Close()
 
 	caseService := cases.New(cases.Config{
 		DB:             storage,
