@@ -12,26 +12,32 @@ GitHub webhook, registry, or GitHub Actions runner is required.
   Docker Compose plugin.
 - Docker access **without sudo** for the user running the updater. Membership
   in the `docker` group effectively grants root-level privileges.
-- A clone on branch `master` at **`~/case-watch`**. The systemd unit uses
-  this path.
+- An existing clean checkout on branch `master`, in **any directory**.
 - Internet access to GitHub for `git fetch` and to fetch Docker build
   dependencies.
 
-## Set up on a new machine
+## Set up
+
+From an existing checkout:
 
 ```sh
-git clone https://github.com/arhor/case-watch.git ~/case-watch
-cd ~/case-watch
-cp .env.example .env
+cd /path/to/case-watch
+git pull --ff-only
+# Create .env if it does not already exist:
+# cp .env.example .env
 # Edit .env and configure the real Telegram bot token.
 sudo loginctl enable-linger "$USER"
-bash scripts/auto-update/install.sh
+./scripts/auto-update/install.sh
 ```
 
-`enable-linger` keeps user services running after logout and allows them
-to start at boot. Run the installation as the regular user, not with sudo.
-The install script links the versioned unit files, enables the timer, and
-starts the initial update. Re-running it is supported.
+On a new machine, clone the repository anywhere you like and follow the same
+steps. `enable-linger` keeps user services running after logout and allows
+them to start at boot. Run the installer as the regular user, not with sudo.
+
+The installer creates a stable link at `~/.local/bin/case-watch-update` and
+copies the systemd unit files into `~/.config/systemd/user/`. It enables the
+timer and starts the first update. It can be run again if the checkout moves
+to another directory; no re-cloning is needed.
 
 ## Operate
 
@@ -49,7 +55,7 @@ private directory, so a failed Compose command is retried on the next tick.
 The marker records Compose command success, not application health. Docker
 Compose retains the named `case-watch-data` volume on container recreation.
 
-Changes to the linked systemd units are reloaded automatically when a new
-commit is deployed. Local changes to tracked files block updates; keep
+Changes to the systemd units are installed and reloaded automatically when a
+new commit is deployed. Local changes to tracked files block updates; keep
 machine-specific settings in the ignored `.env` file. If Docker is
 unavailable, or the build fails, inspect the journal and correct the issue.

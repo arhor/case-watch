@@ -5,4 +5,4 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash %h/case-watch/scripts/auto-update/update.sh
+ExecStart=%h/.local/bin/case-watch-update
