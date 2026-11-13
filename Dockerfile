@@ -19,6 +19,9 @@ FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
 
+COPY certificates/*.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+
 COPY --from=build /case-watch /case-watch
 
 CMD ["/case-watch"]
