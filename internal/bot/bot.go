@@ -506,16 +506,13 @@ func formatStatus(s models.Status, err error) string {
 			))
 		default:
 			parts = append(parts, fmt.Sprintf(
-				"Статус дела: %s\nПоследняя успешная проверка: %s\n\nПоказываю последние сохранённые данные.",
+				"Статус дела: %s\nПоследняя успешная проверка: %s",
 				stage, checkedAt,
 			))
 		}
 	}
 	if s.InProgress {
 		parts = append(parts, "Проверка статуса ещё выполняется.")
-	}
-	if !s.NextEligibleAt.IsZero() {
-		parts = append(parts, "Повторное обновление будет доступно после "+formatWarsawTime(s.NextEligibleAt)+".")
 	}
 	return strings.Join(parts, "\n\n")
 }
