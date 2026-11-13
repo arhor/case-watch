@@ -3,6 +3,8 @@
 !go.mod
 !go.sum
 !main.go
+!certificates/
+!certificates/*.crt
 !internal/
 !internal/**/
 !internal/**/*.go
