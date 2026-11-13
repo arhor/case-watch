@@ -98,9 +98,8 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	}
 	bot.handlers = map[string]commandHandler{
 		"/cancel": bot.onCancel,
-		"/start":  bot.onHelp,
 		"/help":   bot.onHelp,
-		"/enroll": bot.onEnroll,
+		"/start":  bot.onStart,
 		"/status": bot.onStatus,
 		"/remove": bot.onRemove,
 	}
@@ -171,7 +170,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		s.number = ""
 		s.deadline = time.Time{}
 		this.erase(ctx, id, m.ID)
-		this.reply(ctx, id, "Commands take no arguments. Send /enroll to restart enrollment.")
+		this.reply(ctx, id, "Commands take no arguments. Send /start to restart enrollment.")
 		return
 	}
 	if handler, ok := this.handlers[command]; ok {
@@ -200,17 +199,17 @@ func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) 
 	this.reply(
 		ctx,
 		id,
-		"Track one case privately. Commands: /enroll /status /remove /cancel /help. "+
+		"Track one case privately. Commands: /start /status /remove /cancel /help. "+
 			"Automatic checks run Monday-Friday at 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00 Europe/Warsaw, including holidays. "+
 			"Checks do not send automatic notifications; use /status to view your case. Telegram enrollment is not end-to-end encrypted; "+
 			"platform copies may remain. Credential-message deletion is best effort.",
 	)
 }
 
-func (this *Bot) onEnroll(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time) {
 	if s.cancel != nil {
 		s.cancel()
-		this.reply(ctx, id, "Enrollment cancellation requested. Send /enroll again after it finishes.")
+		this.reply(ctx, id, "Enrollment cancellation requested. Send /start again after it finishes.")
 		return
 	}
 	s.number = ""
@@ -234,7 +233,7 @@ func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time
 	status, e := this.caseService.Status(ctx, id)
 	s.mu.Lock()
 	if errors.Is(e, cases.ErrNotFound) {
-		this.reply(ctx, id, "No tracked case. Use /enroll.")
+		this.reply(ctx, id, "No tracked case. Use /start.")
 		return
 	}
 	this.reply(ctx, id, formatStatus(status, e))
@@ -252,7 +251,7 @@ func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time
 		return
 	}
 	if !exists {
-		this.reply(ctx, id, "No tracked case. Use /enroll.")
+		this.reply(ctx, id, "No tracked case. Use /start.")
 		return
 	}
 	s.removal = now.Add(10 * time.Minute)
@@ -285,7 +284,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		return
 	}
 	if s.deadline.IsZero() {
-		this.reply(ctx, id, "Use /enroll to begin, or /help.")
+		this.reply(ctx, id, "Use /start to begin, or /help.")
 		return
 	}
 	this.erase(ctx, id, m.ID)
@@ -319,7 +318,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		defer s.mu.Unlock()
 		s.cancel = nil
 		if e != nil {
-			this.reply(ctx, id, "Enrollment failed. Send /enroll to restart.")
+			this.reply(ctx, id, "Enrollment failed. Send /start to restart.")
 			return
 		}
 		this.reply(ctx, id, "Tracking enrolled. Use /status to view your case.")

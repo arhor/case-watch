@@ -117,11 +117,32 @@ func (f *fixture) message(id int64, text string) {
 		}
 	}
 }
+func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommands(t *testing.T) {
+	// Given
+	f := setup(t)
+
+	// When
+	f.message(101, "/help")
+	help := f.replies[len(f.replies)-1]
+	f.message(101, "/enroll")
+	legacy := f.replies[len(f.replies)-1]
+	f.message(101, "/start")
+	started := f.replies[len(f.replies)-1]
+
+	// Then
+	if !strings.Contains(help, "Commands: /start /status /remove /cancel /help.") ||
+		strings.Contains(help, "/enroll") ||
+		legacy != "Unknown command. Use /help." ||
+		!strings.Contains(started, "Send the case number") {
+		t.Fatalf("unexpected command behavior: help=%q legacy=%q start=%q", help, legacy, started)
+	}
+}
+
 func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAreSeparate(t *testing.T) {
 	// Given
 	f := setup(t)
 	// When
-	f.message(303, "/enroll")
+	f.message(303, "/start")
 	f.message(303, "synthetic-number")
 	f.message(303, "synthetic-password")
 	e, err := f.s.Enrollments.FindByOwner(context.Background(), 303)
@@ -196,15 +217,15 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	// Given
 	f := setup(t)
 	// When
-	f.message(101, "/enroll")
-	f.message(101, "/enroll secret")
-	f.message(101, "/enroll")
+	f.message(101, "/start")
+	f.message(101, "/start secret")
+	f.message(101, "/start")
 	f.message(101, "\n")
 	f.message(101, "synthetic-number")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "synthetic-password")
 	_, expired := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	f.message(101, "/enroll")
+	f.message(101, "/start")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	f.message(101, "/remove")
@@ -255,7 +276,7 @@ func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActi
 		Clock: f.clock,
 	})
 	// When
-	f.message(101, "/enroll")
+	f.message(101, "/start")
 	f.message(101, "/synthetic-secret")
 	f.message(101, "synthetic-number")
 	f.message(101, "other-password")
@@ -454,7 +475,7 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 			// Given
 			f := setup(t)
 			// When
-			f.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: testCase.sender, Chat: testCase.chat, Text: "/enroll"}})
+			f.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: testCase.sender, Chat: testCase.chat, Text: "/start"}})
 			if testCase.sender != nil {
 				f.a.handle(context.Background(), &telegramModels.Update{MyChatMember: &telegramModels.ChatMemberUpdated{From: *testCase.sender, Chat: testCase.chat, NewChatMember: telegramModels.ChatMember{Type: telegramModels.ChatMemberTypeBanned}}})
 			}
