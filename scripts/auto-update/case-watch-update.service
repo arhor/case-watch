@@ -5,5 +5,5 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory="@REPO_DIR@"
-ExecStart=/usr/bin/bash "@REPO_DIR@/scripts/auto-update/update.sh"
+EnvironmentFile=%h/.config/case-watch/deploy.env
+ExecStart=/usr/bin/bash -c 'exec "$$REPO_DIR/scripts/auto-update/update.sh"'

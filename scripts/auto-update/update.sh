@@ -25,9 +25,8 @@ if [[ "$current" == "$previous" ]]; then
     exit 0
 fi
 
-# Keep installed units in sync with the repository.
-"$repo_dir/scripts/auto-update/configure-units.sh"
-
+# Linked systemd units may have changed with the repository.
+systemctl --user daemon-reload
 docker compose up -d --build
 
 # Only mark a commit as deployed after Compose completes successfully.

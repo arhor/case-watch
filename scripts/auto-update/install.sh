@@ -18,15 +18,24 @@ done
 docker compose version >/dev/null
 docker info >/dev/null
 
+config_dir="$HOME/.config/case-watch"
+unit_dir="$HOME/.config/systemd/user"
+install -d "$config_dir" "$unit_dir"
+
+# EnvironmentFile uses systemd quoting, not shell quoting.
+escaped_dir="${repo_dir//\\/\\\\}"
+escaped_dir="${escaped_dir//\"/\\\"}"
+printf 'REPO_DIR="%s"\n' "$escaped_dir" > "$config_dir/deploy.env"
+
 systemctl --user disable --now case-watch-update.timer 2>/dev/null || true
-"$repo_dir/scripts/auto-update/configure-units.sh"
 
-# Remove the old indirection if it was created by a previous installer.
-old_link="$HOME/.local/bin/case-watch-update"
-if [[ -L "$old_link" && "$(readlink -f "$old_link")" == "$repo_dir/scripts/auto-update/update.sh" ]]; then
-    rm "$old_link"
-fi
-
+# Replace any formerly generated units with links to the repository.
+rm -f "$unit_dir/case-watch-update.service" "$unit_dir/case-watch-update.timer"
+systemctl --user daemon-reload
+systemctl --user link \
+    "$repo_dir/scripts/auto-update/case-watch-update.service" \
+    "$repo_dir/scripts/auto-update/case-watch-update.timer"
+systemctl --user daemon-reload
 systemctl --user enable --now case-watch-update.timer
 systemctl --user start case-watch-update.service
 
