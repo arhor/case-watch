@@ -199,7 +199,7 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 			status: models.Status{
 				CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
 			},
-			want: "Статус дела: Не указан\nПоследняя успешная проверка: 01.11.2026, 13:00\n\nПоказываю последние сохранённые данные.",
+			want: "Статус дела: Не указан\nПоследняя успешная проверка: 01.11.2026, 13:00",
 		},
 		{
 			name: "fresh check",
@@ -217,12 +217,20 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 			want: "Не удалось обновить статус дела.\n\nПоказываю данные последней успешной проверки:\n\nСтатус дела: Etap <A>\nПроверено: 01.11.2026, 13:00",
 		},
 		{
+			name: "cached check with cooldown",
+			status: models.Status{
+				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
+				NextEligibleAt: time.Date(2026, 11, 1, 12, 5, 0, 0, time.UTC),
+			},
+			want: "Статус дела: Etap <A>\nПоследняя успешная проверка: 01.11.2026, 13:00",
+		},
+		{
 			name: "daylight saving time and active check",
 			status: models.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 				InProgress: true, NextEligibleAt: time.Date(2026, 6, 1, 12, 5, 0, 0, time.UTC),
 			},
-			want: "Статус дела: Etap <A>\nПоследняя успешная проверка: 01.06.2026, 14:00\n\nПоказываю последние сохранённые данные.\n\nПроверка статуса ещё выполняется.\n\nПовторное обновление будет доступно после 01.06.2026, 14:05.",
+			want: "Статус дела: Etap <A>\nПоследняя успешная проверка: 01.06.2026, 14:00\n\nПроверка статуса ещё выполняется.",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
