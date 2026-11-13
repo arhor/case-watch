@@ -130,10 +130,18 @@ func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommands(t *testing.T) {
 	started := f.replies[len(f.replies)-1]
 
 	// Then
-	if !strings.Contains(help, "Commands: /start /status /remove /cancel /help.") ||
+	for _, command := range []string{"/start", "/status", "/remove", "/cancel", "/help"} {
+		if !strings.Contains(help, command) {
+			t.Fatalf("help omits %s: %q", command, help)
+		}
+	}
+	if !strings.Contains(help, "Доступные команды:") ||
 		strings.Contains(help, "/enroll") ||
-		legacy != "Unknown command. Use /help." ||
-		!strings.Contains(started, "Send the case number") {
+		strings.Contains(help, "08:00") ||
+		strings.Contains(help, "шифрованием") ||
+		legacy != "Неизвестная команда. Список доступных команд: /help." ||
+		!strings.Contains(started, "отправьте номер дела") ||
+		strings.Contains(started, "шифрованием") {
 		t.Fatalf("unexpected command behavior: help=%q legacy=%q start=%q", help, legacy, started)
 	}
 }
@@ -149,10 +157,10 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	history, herr := f.s.History.FindByEnrollment(context.Background(), 303, e.ID)
 	f.message(303, "/status")
 	f.message(202, "/remove")
-	f.message(202, "REMOVE")
+	f.message(202, "Да")
 	_, still := f.s.Enrollments.FindByOwner(context.Background(), 303)
 	f.message(303, "/remove")
-	f.message(303, "REMOVE")
+	f.message(303, "Да")
 	_, removed := f.s.Enrollments.FindByOwner(context.Background(), 303)
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, repositories.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
@@ -165,7 +173,7 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	if strings.Contains(combined, "synthetic-password") || strings.Contains(combined, "synthetic-number") || strings.Contains(combined, "synthetic-token") {
 		t.Fatal("sensitive output")
 	}
-	if !strings.Contains(combined, "Cached stage: Etap <A>") {
+	if !strings.Contains(combined, "Статус дела: Etap <A>") {
 		t.Fatal("missing plain cached stage")
 	}
 }
@@ -179,23 +187,42 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 	}{
 		{
 			name: "no successful check",
-			want: "No successful observation available.",
+			want: "Пока нет данных об успешных проверках вашего дела.",
 		},
 		{
-			name:   "successful check with empty stage",
-			status: models.Status{CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)},
-			want:   "Cached stage: \nLast successful check: 2026-11-01T12:00:00Z",
+			name: "no observation after failed refresh",
+			err:  cases.ErrCheck,
+			want: "Не удалось обновить статус дела.\n\nПока нет данных об успешных проверках вашего дела.",
 		},
 		{
-			name:   "fresh check",
-			status: models.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
-			want:   "Fresh stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
+			name: "successful check with empty stage",
+			status: models.Status{
+				CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
+			},
+			want: "Статус дела: Не указан\nПоследняя успешная проверка: 01.11.2026, 13:00\n\nПоказываю последние сохранённые данные.",
 		},
 		{
-			name:   "failed refresh with cached check",
-			status: models.Status{Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
-			err:    cases.ErrCheck,
-			want:   "Refresh failed. Cached stage: Etap <A>\nLast successful check: 2026-11-01T12:00:00Z",
+			name: "fresh check",
+			status: models.Status{
+				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true,
+			},
+			want: "Статус дела: Etap <A>\nПоследняя проверка: 01.11.2026, 13:00\n\nДанные успешно обновлены.",
+		},
+		{
+			name: "failed refresh with cached check",
+			status: models.Status{
+				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true,
+			},
+			err:  cases.ErrCheck,
+			want: "Не удалось обновить статус дела.\n\nПоказываю данные последней успешной проверки:\n\nСтатус дела: Etap <A>\nПроверено: 01.11.2026, 13:00",
+		},
+		{
+			name: "daylight saving time and active check",
+			status: models.Status{
+				Stage: "Etap <A>", CheckedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+				InProgress: true, NextEligibleAt: time.Date(2026, 6, 1, 12, 5, 0, 0, time.UTC),
+			},
+			want: "Статус дела: Etap <A>\nПоследняя успешная проверка: 01.06.2026, 14:00\n\nПоказываю последние сохранённые данные.\n\nПроверка статуса ещё выполняется.\n\nПовторное обновление будет доступно после 01.06.2026, 14:05.",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -208,6 +235,60 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 			// Then
 			if got != testCase.want {
 				t.Fatalf("formatStatus() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswers(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		answer      string
+		removed     bool
+		pending     bool
+		wantMessage string
+	}{
+		{"yes", "Да", true, false, "Дело удалено из отслеживания."},
+		{"yes ignores case and whitespace", " дА ", true, false, "Дело удалено из отслеживания."},
+		{"no", "Нет", false, false, "Удаление отменено."},
+		{"no ignores case and whitespace", " нЕт ", false, false, "Удаление отменено."},
+		{"old confirmation is not accepted", "REMOVE", false, true, "Пожалуйста, ответьте «Да» или «Нет»."},
+		{"other answer is not accepted", "возможно", false, true, "Пожалуйста, ответьте «Да» или «Нет»."},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := setup(t)
+			f.message(101, "/start")
+			f.message(101, "synthetic-number")
+			f.message(101, "synthetic-password")
+			f.message(101, "/remove")
+			f.message(101, testCase.answer)
+
+			_, err := f.s.Enrollments.FindByOwner(context.Background(), 101)
+			if errors.Is(err, repositories.ErrNotFound) != testCase.removed {
+				t.Fatalf("removed=%v, want %v", errors.Is(err, repositories.ErrNotFound), testCase.removed)
+			}
+			if got := f.replies[len(f.replies)-1]; !strings.Contains(got, testCase.wantMessage) {
+				t.Fatalf("last reply=%q, want %q", got, testCase.wantMessage)
+			}
+			state := f.a.owner(101)
+			state.mu.Lock()
+			pending := !state.removal.IsZero()
+			state.mu.Unlock()
+			if pending != testCase.pending {
+				t.Fatalf("pending=%v, want %v", pending, testCase.pending)
+			}
+
+			if !testCase.removed && !testCase.pending {
+				f.message(101, "Да")
+				if _, err := f.s.Enrollments.FindByOwner(context.Background(), 101); err != nil {
+					t.Fatalf("case removed after declining removal: %v", err)
+				}
+			}
+			if testCase.pending {
+				f.message(101, "Да")
+				if _, err := f.s.Enrollments.FindByOwner(context.Background(), 101); !errors.Is(err, repositories.ErrNotFound) {
+					t.Fatalf("case not removed after valid confirmation: %v", err)
+				}
 			}
 		})
 	}
@@ -230,11 +311,11 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "synthetic-password")
 	f.message(101, "/remove")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
-	f.message(101, "REMOVE")
+	f.message(101, "Да")
 	_, retained := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "/cancel")
-	f.message(101, "REMOVE")
+	f.message(101, "Да")
 	_, cancelled := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(expired, repositories.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
