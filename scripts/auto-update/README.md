@@ -34,10 +34,11 @@ On a new machine, clone the repository anywhere you like and follow the same
 steps. `enable-linger` keeps user services running after logout and allows
 them to start at boot. Run the installer as the regular user, not with sudo.
 
-The installer creates a stable link at `~/.local/bin/case-watch-update` and
-copies the systemd unit files into `~/.config/systemd/user/`. It enables the
-timer and starts the first update. It can be run again if the checkout moves
-to another directory; no re-cloning is needed.
+The installer renders `case-watch-update.service.in` with the checkout's
+absolute path and installs the resulting service and timer into
+`~/.config/systemd/user/`. No `~/.local/bin` symlink is needed. The
+installer enables the timer and starts the initial update. Re-run it after
+moving the repository to another directory, without cloning again.
 
 ## Operate
 
@@ -55,7 +56,7 @@ private directory, so a failed Compose command is retried on the next tick.
 The marker records Compose command success, not application health. Docker
 Compose retains the named `case-watch-data` volume on container recreation.
 
-Changes to the systemd units are installed and reloaded automatically when a
-new commit is deployed. Local changes to tracked files block updates; keep
-machine-specific settings in the ignored `.env` file. If Docker is
+Changes to the systemd unit templates are rendered and reloaded automatically
+when a new commit is deployed. Local changes to tracked files block updates;
+keep machine-specific settings in the ignored `.env` file. If Docker is
 unavailable, or the build fails, inspect the journal and correct the issue.

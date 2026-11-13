@@ -5,4 +5,5 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/case-watch-update
+WorkingDirectory="@REPO_DIR@"
+ExecStart=/usr/bin/bash "@REPO_DIR@/scripts/auto-update/update.sh"

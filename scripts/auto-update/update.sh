@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# systemd calls this script through ~/.local/bin/case-watch-update.
-script_path="$(readlink -f "${BASH_SOURCE[0]}")"
-repo_dir="$(cd "$(dirname "$script_path")/../.." && pwd)"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_dir"
 
 if [[ "$(git branch --show-current)" != "master" ]]; then
@@ -27,11 +25,8 @@ if [[ "$current" == "$previous" ]]; then
     exit 0
 fi
 
-# Propagate changes to versioned unit files before the next scheduled run.
-unit_dir="$HOME/.config/systemd/user"
-install -m 0644 "$repo_dir/scripts/auto-update/case-watch-update.service" "$unit_dir/"
-install -m 0644 "$repo_dir/scripts/auto-update/case-watch-update.timer" "$unit_dir/"
-systemctl --user daemon-reload
+# Keep installed units in sync with the repository.
+"$repo_dir/scripts/auto-update/configure-units.sh"
 
 docker compose up -d --build
 

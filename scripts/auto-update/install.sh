@@ -8,7 +8,7 @@ if [[ ! -f "$repo_dir/.env" ]]; then
     exit 1
 fi
 
-for command in git docker systemctl readlink; do
+for command in git docker systemctl; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "Missing required command: $command" >&2
         exit 1
@@ -18,21 +18,15 @@ done
 docker compose version >/dev/null
 docker info >/dev/null
 
-unit_dir="$HOME/.config/systemd/user"
-bin_dir="$HOME/.local/bin"
-install -d "$unit_dir" "$bin_dir"
-
-# A stable entry point lets the systemd unit work with repositories anywhere.
-ln -sfn "$repo_dir/scripts/auto-update/update.sh" "$bin_dir/case-watch-update"
-
-# Install units instead of linking to the checkout; reinstalling also handles
-# installations previously linked to a different repository location.
 systemctl --user disable --now case-watch-update.timer 2>/dev/null || true
-rm -f "$unit_dir/case-watch-update.service" "$unit_dir/case-watch-update.timer"
-install -m 0644 "$repo_dir/scripts/auto-update/case-watch-update.service" "$unit_dir/"
-install -m 0644 "$repo_dir/scripts/auto-update/case-watch-update.timer" "$unit_dir/"
+"$repo_dir/scripts/auto-update/configure-units.sh"
 
-systemctl --user daemon-reload
+# Remove the old indirection if it was created by a previous installer.
+old_link="$HOME/.local/bin/case-watch-update"
+if [[ -L "$old_link" && "$(readlink -f "$old_link")" == "$repo_dir/scripts/auto-update/update.sh" ]]; then
+    rm "$old_link"
+fi
+
 systemctl --user enable --now case-watch-update.timer
 systemctl --user start case-watch-update.service
 
