@@ -10,7 +10,7 @@ import (
 )
 
 // ------------------------------------------------------------------------------------------------
-//                                        HTTP Session
+//                                           HTTP Session
 // ------------------------------------------------------------------------------------------------
 
 // Session owns the cookies of one session and is safe for concurrent use.
@@ -22,15 +22,13 @@ func (this *Session) Cookies(u *url.URL) []*http.Cookie             { return thi
 func (this *Session) SetCookies(u *url.URL, cookies []*http.Cookie) { this.jar.SetCookies(u, cookies) }
 
 // ------------------------------------------------------------------------------------------------
-//                                  HTTP Session Manager
+//                                       HTTP Session Manager
 // ------------------------------------------------------------------------------------------------
 
 type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 }
-
-func NewSessionManager() *SessionManager { return &SessionManager{} }
 
 func (this *SessionManager) GetOrCreate(sessionID string) (*Session, error) {
 	if sessionID == "" {
@@ -68,7 +66,7 @@ func (this *SessionManager) Clear() {
 }
 
 // ------------------------------------------------------------------------------------------------
-//                                          HTTP Client
+//                                           HTTP Client
 // ------------------------------------------------------------------------------------------------
 
 type HttpClientOptions struct {
@@ -91,7 +89,7 @@ func NewHttpClient(options HttpClientOptions) *HttpClient {
 		transport:     options.Transport,
 		timeout:       options.Timeout,
 		checkRedirect: options.CheckRedirect,
-		sessions:      NewSessionManager(),
+		sessions:      &SessionManager{},
 	}
 	if c.transport == nil {
 		c.owned = http.DefaultTransport.(*http.Transport).Clone()
