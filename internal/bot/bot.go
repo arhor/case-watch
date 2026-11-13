@@ -218,7 +218,6 @@ func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) 
 		"/remove — удалить дело и связанные с ним данные\n" +
 		"/cancel — отменить текущее действие\n" +
 		"/help — показать эту справку")
-	)
 }
 
 func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time) {
