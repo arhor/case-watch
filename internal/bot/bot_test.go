@@ -141,7 +141,7 @@ func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommands(t *testing.T) {
 		strings.Contains(help, "шифрованием") ||
 		legacy != "Неизвестная команда. Список доступных команд: /help." ||
 		!strings.Contains(started, "отправьте номер дела") ||
-		!strings.Contains(started, "сквозным шифрованием") {
+		strings.Contains(started, "шифрованием") {
 		t.Fatalf("unexpected command behavior: help=%q legacy=%q start=%q", help, legacy, started)
 	}
 }
