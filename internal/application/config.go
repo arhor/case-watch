@@ -14,7 +14,7 @@ type Config struct {
 
 var tokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]{35}$`)
 
-// Load validates syntax only. Lifecycle startup separately validates the database.
+// loadConfig validates syntax only. Lifecycle startup separately validates the database.
 // Errors contain variable names only, never their supplied values.
 func loadConfig(lookup func(string) (string, bool)) (Config, error) {
 	var c Config
