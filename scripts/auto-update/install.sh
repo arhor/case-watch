@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Configuration
-# ------------------------------------------------------------
+# -- Configuration ------------------------------------------------------------
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 config_dir="$HOME/.config/case-watch"
 unit_dir="$HOME/.config/systemd/user"
 
-# Functions
-# ------------------------------------------------------------
+# -- Functions ----------------------------------------------------------------
 
 validate_environment() {
     if [[ ! -f "$repo_dir/.env" ]]; then
@@ -43,16 +41,13 @@ install_units() {
     # Replace any formerly generated units with links to the repository.
     rm -f "$unit_dir/case-watch-update.service" "$unit_dir/case-watch-update.timer"
     systemctl --user daemon-reload
-    systemctl --user link \
-        "$repo_dir/scripts/auto-update/case-watch-update.service" \
-        "$repo_dir/scripts/auto-update/case-watch-update.timer"
+    systemctl --user link "$repo_dir/scripts/auto-update/case-watch-update.service" "$repo_dir/scripts/auto-update/case-watch-update.timer"
     systemctl --user daemon-reload
     systemctl --user enable --now case-watch-update.timer
     systemctl --user start case-watch-update.service
 }
 
-# Main
-# ------------------------------------------------------------
+# -- Main ---------------------------------------------------------------------
 
 main() {
     validate_environment
