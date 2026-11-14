@@ -86,11 +86,11 @@ func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
 
 func TestNewShouldHandleCommandSynchronizationFailures(t *testing.T) {
 	for _, testCase := range []struct {
-		name         string
-		failingStep  string
-		status       int
-		result       string
-		wantInvalid  bool
+		name        string
+		failingStep string
+		status      int
+		result      string
+		wantInvalid bool
 	}{
 		{"get fails", "getMyCommands", 500, "", false},
 		{"set fails", "setMyCommands", 500, "", false},
