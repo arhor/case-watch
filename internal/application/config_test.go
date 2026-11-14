@@ -1,4 +1,4 @@
-package config
+package application
 
 import (
 	"strings"
@@ -12,18 +12,18 @@ func lookup(env map[string]string) func(string) (string, bool) {
 	return func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 }
 
-func TestLoadShouldAcceptRequiredSettingsWhenAccessPolicyIsAbsent(t *testing.T) {
+func TestLoadConfigShouldAcceptRequiredSettingsWhenAccessPolicyIsAbsent(t *testing.T) {
 	// Given
 	env := validEnv()
 	// When
-	c, err := Load(lookup(env))
+	c, err := loadConfig(lookup(env))
 	// Then
 	if err != nil || c.DBPath != env["CASE_WATCH_DB_PATH"] || c.TelegramBotToken != env["CASE_WATCH_TELEGRAM_BOT_TOKEN"] {
 		t.Fatalf("unexpected parsed configuration: error=%v", err)
 	}
 }
 
-func TestLoadShouldRejectInvalidConfigurationWhenValuesMalformed(t *testing.T) {
+func TestLoadConfigShouldRejectInvalidConfigurationWhenValuesMalformed(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
 		{"CASE_WATCH_TELEGRAM_BOT_TOKEN", "secret-token"}, {"CASE_WATCH_TELEGRAM_BOT_TOKEN", "123:" + strings.Repeat("a", 34)},
 		{"CASE_WATCH_DB_PATH", " "}, {"CASE_WATCH_DB_PATH", "secret\x00path"},
@@ -33,7 +33,7 @@ func TestLoadShouldRejectInvalidConfigurationWhenValuesMalformed(t *testing.T) {
 			env := validEnv()
 			env[tc.key] = tc.value
 			// When
-			_, err := Load(lookup(env))
+			_, err := loadConfig(lookup(env))
 			// Then
 			if err == nil || !strings.Contains(err.Error(), tc.key) {
 				t.Fatal("expected sanitized variable-specific error")

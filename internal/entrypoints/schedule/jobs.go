@@ -1,5 +1,5 @@
-// ScheduledJobsController implements the Warsaw weekday slots in ADR 0007.
-package controllers
+// Package schedule initiates case workflows at Warsaw weekday slots (ADR 0007).
+package schedule
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type Cases interface {
 	Scheduled(context.Context, int64) (models.Status, error)
 }
 
-type ScheduledJobsControllerConfig struct {
+type Config struct {
 	CaseService Cases
 	Clock       utils.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
@@ -32,13 +32,13 @@ type ScheduledJobsControllerConfig struct {
 	Report func(string)
 }
 
-type ScheduledJobsController struct {
-	c        ScheduledJobsControllerConfig
+type Jobs struct {
+	c        Config
 	schedule cron.Schedule
 	running  sync.Mutex
 }
 
-func NewScheduledJobsController(c ScheduledJobsControllerConfig) (*ScheduledJobsController, error) {
+func New(c Config) (*Jobs, error) {
 	if c.CaseService == nil || c.Clock == nil {
 		return nil, ErrScheduler
 	}
@@ -49,12 +49,12 @@ func NewScheduledJobsController(c ScheduledJobsControllerConfig) (*ScheduledJobs
 	if c.Wait == nil {
 		c.Wait = wait
 	}
-	return &ScheduledJobsController{c: c, schedule: schedule}, nil
+	return &Jobs{c: c, schedule: schedule}, nil
 }
 
 // Next returns the first strictly future Warsaw slot. Startup at a slot never
 // replays that slot; holidays use the same weekday rules as every other date.
-func (s *ScheduledJobsController) Next(after time.Time) time.Time {
+func (s *Jobs) Next(after time.Time) time.Time {
 	return s.schedule.Next(after)
 }
 
@@ -68,7 +68,7 @@ func wait(ctx context.Context, deadline time.Time) error {
 		return nil
 	}
 }
-func (s *ScheduledJobsController) report(category string) {
+func (s *Jobs) report(category string) {
 	if s.c.Report != nil {
 		s.c.Report(category)
 	}
@@ -78,7 +78,7 @@ func (s *ScheduledJobsController) report(category string) {
 // next slot after completion discards every slot crossed by a slow run. Repeated
 // concurrent Run calls are rejected rather than queued. Cancellation drains the
 // active Scheduled call before returning; the shared case service owns its I/O.
-func (s *ScheduledJobsController) Run(ctx context.Context) error {
+func (s *Jobs) Run(ctx context.Context) error {
 	if !s.running.TryLock() {
 		return ErrScheduler
 	}

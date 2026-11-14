@@ -1,5 +1,5 @@
-// Package portal provides administration-specific clients for checking case stages.
-package portal
+// Package clients contains administration-specific implementations for checking case stages.
+package clients
 
 import (
 	"bytes"
