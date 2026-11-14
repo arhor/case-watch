@@ -1,5 +1,5 @@
-// Package config parses startup environment without I/O or network access.
-package config
+// Application configuration is parsed from the environment without I/O or network access.
+package application
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ var tokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]{35}$`)
 
 // Load validates syntax only. Lifecycle startup separately validates the database.
 // Errors contain variable names only, never their supplied values.
-func Load(lookup func(string) (string, bool)) (Config, error) {
+func loadConfig(lookup func(string) (string, bool)) (Config, error) {
 	var c Config
 	get := func(name string) string { v, _ := lookup(name); return v }
 	c.TelegramBotToken = get("CASE_WATCH_TELEGRAM_BOT_TOKEN")

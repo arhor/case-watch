@@ -1,6 +1,6 @@
-// Package controllers contains external event handlers that initiate case workflows.
-// The Telegram entrypoint follows ADR 0003; incoming commands are not durably acknowledged.
-package controllers
+// Package telegram handles Telegram commands and conversations that initiate case workflows.
+// Incoming commands follow ADR 0003 and are not durably acknowledged.
+package telegram
 
 import (
 	"context"
@@ -28,20 +28,20 @@ var (
 
 type commandHandler func(context.Context, int64, *state, time.Time)
 
-type BotController struct {
+type Bot struct {
 	handlers      map[string]commandHandler
 	client        *telegramApi.Bot
 	polling       atomic.Bool
 	caseService   *cases.Service
 	replyMu       sync.Mutex
 	repliesFailed bool
-	config        BotControllerConfig
+	config        Config
 	owners        map[int64]*state
 	mu            sync.Mutex
 	wg            sync.WaitGroup
 }
 
-type BotControllerConfig struct {
+type Config struct {
 	Token       string
 	Endpoint    string
 	HTTPClient  *http.Client
@@ -57,12 +57,12 @@ type state struct {
 	cancel            context.CancelFunc
 }
 
-// NewBotController constructs the bot and validates its token using ctx before returning.
-func NewBotController(ctx context.Context, c BotControllerConfig) (*BotController, error) {
+// New constructs the bot and validates its token using ctx before returning.
+func New(ctx context.Context, c Config) (*Bot, error) {
 	if c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
 	}
-	bot := &BotController{
+	bot := &Bot{
 		caseService: c.CaseService,
 		config:      c,
 		owners:      make(map[int64]*state),
@@ -108,7 +108,7 @@ func NewBotController(ctx context.Context, c BotControllerConfig) (*BotControlle
 }
 
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
-func (this *BotController) Run(ctx context.Context) error {
+func (this *Bot) Run(ctx context.Context) error {
 	if !this.polling.CompareAndSwap(false, true) {
 		return errPolling
 	}
@@ -141,7 +141,7 @@ func (this *BotController) Run(ctx context.Context) error {
 
 // -- Internal implementation ---------------------------------------------------------------------
 
-func (this *BotController) handle(ctx context.Context, u *telegramModels.Update) {
+func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	m := u.Message
 	if m == nil || m.From == nil {
 		return
@@ -198,7 +198,7 @@ func (this *BotController) handle(ctx context.Context, u *telegramModels.Update)
 }
 
 // Command and conversation handlers run with the owner's state locked.
-func (this *BotController) onCancel(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onCancel(ctx context.Context, id int64, s *state, now time.Time) {
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -208,7 +208,7 @@ func (this *BotController) onCancel(ctx context.Context, id int64, s *state, now
 	this.reply(ctx, id, "Действие отменено.")
 }
 
-func (this *BotController) onHelp(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) {
 	this.reply(ctx, id,
 		"CaseWatch помогает следить за ходом рассмотрения вашего дела.\n" +
 		"\n" +
@@ -220,7 +220,7 @@ func (this *BotController) onHelp(ctx context.Context, id int64, s *state, now t
 		"/help — показать эту справку")
 }
 
-func (this *BotController) onStart(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time) {
 	if s.cancel != nil {
 		s.cancel()
 		this.reply(ctx, id, "Отменяю предыдущую попытку добавления дела.\n" +
@@ -252,7 +252,7 @@ func (this *BotController) onStart(ctx context.Context, id int64, s *state, now 
 		"Для отмены используйте /cancel.")
 }
 
-func (this *BotController) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
 	s.mu.Unlock()
 	status, e := this.caseService.Status(ctx, id)
 	s.mu.Lock()
@@ -265,7 +265,7 @@ func (this *BotController) onStatus(ctx context.Context, id int64, s *state, now
 	this.reply(ctx, id, formatStatus(status, e))
 }
 
-func (this *BotController) onRemove(ctx context.Context, id int64, s *state, now time.Time) {
+func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time) {
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -292,14 +292,14 @@ func (this *BotController) onRemove(ctx context.Context, id int64, s *state, now
 		"Для подтверждения ответьте «Да», для отмены — «Нет». Ответ нужно отправить в течение 10 минут.")
 }
 
-func (this *BotController) onUnknownCommand(ctx context.Context, m *telegramModels.Message, s *state) {
+func (this *Bot) onUnknownCommand(ctx context.Context, m *telegramModels.Message, s *state) {
 	if !s.deadline.IsZero() {
 		this.erase(ctx, m.Chat.ID, m.ID)
 	}
 	this.reply(ctx, m.Chat.ID, "Неизвестная команда. Список доступных команд: /help.")
 }
 
-func (this *BotController) onText(ctx context.Context, m *telegramModels.Message, s *state, now time.Time) {
+func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state, now time.Time) {
 	id, text := m.Chat.ID, m.Text
 	if !s.removal.IsZero() {
 		switch strings.ToLower(strings.TrimSpace(text)) {
@@ -380,7 +380,7 @@ func (this *BotController) onText(ctx context.Context, m *telegramModels.Message
 }
 
 // Sweep drops expired plaintext drafts even when no further update arrives.
-func (this *BotController) Sweep() {
+func (this *Bot) Sweep() {
 	withLock(&this.mu, func() {
 		now := this.config.Clock.Now()
 		for _, state := range this.owners {
@@ -397,7 +397,7 @@ func (this *BotController) Sweep() {
 	})
 }
 
-func (this *BotController) Close() {
+func (this *Bot) Close() {
 	withLock(&this.mu, func() {
 		for _, state := range this.owners {
 			withLock(&state.mu, func() {
@@ -412,7 +412,7 @@ func (this *BotController) Close() {
 	})
 }
 
-func (this *BotController) owner(id int64) *state {
+func (this *Bot) owner(id int64) *state {
 	this.mu.Lock()
 	defer this.mu.Unlock()
 	s := this.owners[id]
@@ -424,7 +424,7 @@ func (this *BotController) owner(id int64) *state {
 }
 
 // reply makes one bounded attempt for a user interaction. Replies are never queued.
-func (this *BotController) reply(ctx context.Context, id int64, text string) {
+func (this *Bot) reply(ctx context.Context, id int64, text string) {
 	this.replyMu.Lock()
 	defer this.replyMu.Unlock()
 	if this.repliesFailed || ctx.Err() != nil {
@@ -447,14 +447,14 @@ func (this *BotController) reply(ctx context.Context, id int64, text string) {
 	}
 }
 
-func (this *BotController) erase(ctx context.Context, id int64, message int) {
+func (this *Bot) erase(ctx context.Context, id int64, message int) {
 	_, err := this.client.DeleteMessage(ctx, &telegramApi.DeleteMessageParams{ChatID: id, MessageID: message})
 	if err != nil && !this.tokenRejected(err) {
 		this.diagnostic("telegram credential deletion failure")
 	}
 }
 
-func (this *BotController) tokenRejected(err error) bool {
+func (this *Bot) tokenRejected(err error) bool {
 	if errors.Is(err, telegramApi.ErrorUnauthorized) {
 		this.diagnostic("telegram_invalid_token")
 		return true
@@ -462,13 +462,13 @@ func (this *BotController) tokenRejected(err error) bool {
 	return false
 }
 
-func (this *BotController) diagnostic(s string) {
+func (this *Bot) diagnostic(s string) {
 	if this.config.Diagnostic != nil {
 		this.config.Diagnostic(s)
 	}
 }
 
-func (this *BotController) exists(ctx context.Context, id int64) (bool, error) {
+func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
 	return this.caseService.HasEnrollment(ctx, id)
 }
 

@@ -7,12 +7,12 @@ import (
 	"os"
 	"sync"
 
-	"github.com/arhor/case-watch/internal/config"
-	"github.com/arhor/case-watch/internal/controllers"
+	"github.com/arhor/case-watch/internal/clients"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/entrypoints/schedule"
+	"github.com/arhor/case-watch/internal/entrypoints/telegram"
 	"github.com/arhor/case-watch/internal/services/cases"
-	"github.com/arhor/case-watch/internal/services/cases/portal"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -28,7 +28,7 @@ func Run(ctx context.Context) error {
 func run(ctx context.Context) (result error) {
 	clock := utils.NewClock()
 
-	cfg, err := config.Load(os.LookupEnv)
+	cfg, err := loadConfig(os.LookupEnv)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func run(ctx context.Context) (result error) {
 		}
 	}
 
-	portalClient := portal.NewGdanskPortalClient(portal.GdanskPortalClientOptions{Clock: clock})
+	portalClient := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{Clock: clock})
 	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
 	defer portalClient.Close()
 
@@ -70,7 +70,7 @@ func run(ctx context.Context) (result error) {
 	})
 	defer caseService.Shutdown()
 
-	telegramBot, err := controllers.NewBotController(work, controllers.BotControllerConfig{
+	telegramBot, err := telegram.New(work, telegram.Config{
 		Token:       cfg.TelegramBotToken,
 		CaseService: caseService,
 		Clock:       clock,
@@ -84,7 +84,7 @@ func run(ctx context.Context) (result error) {
 	}
 	defer telegramBot.Close()
 
-	scheduled, err := controllers.NewScheduledJobsController(controllers.ScheduledJobsControllerConfig{
+	scheduled, err := schedule.New(schedule.Config{
 		CaseService: caseService,
 		Clock:       clock,
 		Report:      diagnostic,
