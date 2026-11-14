@@ -175,7 +175,6 @@ func (this *Bot) syncCommands(ctx context.Context) error {
 	return nil
 }
 
-
 func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	m := u.Message
 	if m == nil || m.From == nil {
