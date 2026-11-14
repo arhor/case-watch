@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,14 @@ var (
 	ErrInvalidToken = errors.New("telegram token rejected")
 	errPolling      = errors.New("telegram polling already started")
 )
+
+var botCommands = []telegramModels.BotCommand{
+	{Command: "start", Description: "Добавить дело для отслеживания"},
+	{Command: "status", Description: "Проверить статус дела"},
+	{Command: "remove", Description: "Удалить дело и связанные с ним данные"},
+	{Command: "cancel", Description: "Отменить текущее действие"},
+	{Command: "help", Description: "Показать эту справку"},
+}
 
 type commandHandler func(context.Context, int64, *state, time.Time)
 
@@ -104,6 +113,12 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 		"/status": bot.onStatus,
 		"/remove": bot.onRemove,
 	}
+	if err := bot.syncCommands(bounded); err != nil {
+		if bot.tokenRejected(err) {
+			return nil, ErrInvalidToken
+		}
+		bot.diagnostic("telegram command synchronization failure")
+	}
 	return bot, nil
 }
 
@@ -140,6 +155,26 @@ func (this *Bot) Run(ctx context.Context) error {
 }
 
 // -- Internal implementation ---------------------------------------------------------------------
+
+// Synchronize the default command menu without overwriting chat- or language-specific menus.
+func (this *Bot) syncCommands(ctx context.Context) error {
+	current, err := this.client.GetMyCommands(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if slices.Equal(current, botCommands) {
+		return nil
+	}
+	updated, err := this.client.SetMyCommands(ctx, &telegramApi.SetMyCommandsParams{Commands: botCommands})
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return errors.New("telegram did not accept the command list")
+	}
+	return nil
+}
+
 
 func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	m := u.Message
@@ -209,15 +244,15 @@ func (this *Bot) onCancel(ctx context.Context, id int64, s *state, now time.Time
 }
 
 func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) {
-	this.reply(ctx, id,
-		"CaseWatch помогает следить за ходом рассмотрения вашего дела.\n" +
-		"\n" +
-		"Доступные команды:\n" +
-		"/start — добавить дело для отслеживания\n" +
-		"/status — проверить статус дела\n" +
-		"/remove — удалить дело и связанные с ним данные\n" +
-		"/cancel — отменить текущее действие\n" +
-		"/help — показать эту справку")
+	lines := []string{
+		"CaseWatch помогает следить за ходом рассмотрения вашего дела.",
+		"",
+		"Доступные команды:",
+	}
+	for _, command := range botCommands {
+		lines = append(lines, "/"+command.Command+" — "+strings.ToLower(command.Description[:1])+command.Description[1:])
+	}
+	this.reply(ctx, id, strings.Join(lines, "\n"))
 }
 
 func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time) {
