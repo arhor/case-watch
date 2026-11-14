@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync case-watch master and redeploy on changes
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/case-watch/deploy.env
+ExecStart=/usr/bin/bash -c 'exec "$$REPO_DIR/scripts/auto-update/update.sh"'

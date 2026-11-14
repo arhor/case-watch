@@ -30,3 +30,6 @@ docker compose up --build -d
 ```
 
 Compose passes variables from `.env` into the container.
+
+For unattended Raspberry Pi updates from the `master` branch, see
+[automatic updates](scripts/auto-update/README.md).
