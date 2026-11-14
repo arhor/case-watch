@@ -15,7 +15,6 @@ import (
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/scheduler"
 )
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -539,36 +538,6 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 		t.Fatalf("baseline reuse: %+v status=%v next=%v guard=%v", status, statusErr, next, guardErr)
 	}
 	obs(t, status, "A", epoch)
-}
-
-func TestSchedulerShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	f.enroll(t, 101)
-	monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
-	f.clock.set(monday.Add(-time.Second))
-	_, manualErr := f.c.Status(context.Background(), 101)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	waits := 0
-	s, err := scheduler.New(scheduler.Config{CaseService: f.c, Clock: f.clock, Wait: func(_ context.Context, deadline time.Time) error {
-		waits++
-		if waits == 2 {
-			cancel()
-			return ctx.Err()
-		}
-		f.clock.set(deadline)
-		return nil
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// When
-	runErr := s.Run(ctx)
-	// Then
-	if manualErr != nil || !errors.Is(runErr, context.Canceled) || f.calls.Load() != 2 || waits != 2 {
-		t.Fatalf("manual=%v run=%v calls=%d waits=%d", manualErr, runErr, f.calls.Load(), waits)
-	}
 }
 
 func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {

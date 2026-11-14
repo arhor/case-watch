@@ -1,4 +1,4 @@
-package bot
+package controllers
 
 import (
 	"context"
@@ -39,7 +39,7 @@ func (p portal) Check(c context.Context, owner int64, Number, Password string) (
 }
 
 type fixture struct {
-	a       *Bot
+	a       *BotController
 	s       *store.Store
 	clock   *fakeClock
 	mu      sync.Mutex
@@ -91,7 +91,7 @@ func setup(t *testing.T) *fixture {
 		}),
 		Clock: f.clock,
 	})
-	f.a = f.bot(t, server, Config{
+	f.a = f.bot(t, server, BotControllerConfig{
 		CaseService: caseService,
 		Clock:       f.clock,
 		Diagnostic:  func(s string) { f.logs = append(f.logs, s) },
@@ -413,7 +413,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.bot(t, server, Config{CaseService: f.a.config.CaseService, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, BotControllerConfig{CaseService: f.a.config.CaseService, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -483,7 +483,7 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 				c.Clock = nil
 			}
 			// When
-			a, err := New(context.Background(), c)
+			a, err := NewBotController(context.Background(), c)
 			// Then
 			if a != nil || err == nil {
 				t.Fatalf("accepted missing %s", missing)
@@ -527,7 +527,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 
 // bot mirrors the production reply/intake construction order while
 // supplying only synthetic HTTP exchanges and a deterministic clock.
-func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
+func (f *fixture) bot(t *testing.T, server *fakeServer, c BotControllerConfig) *BotController {
 	t.Helper()
 	c.Token = "123:synthetic-token"
 	c.Endpoint = server.URL
@@ -538,7 +538,7 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 		}
 		server.handler.ServeHTTP(w, r)
 	}), server.URL}).Client()
-	a, err := New(context.Background(), c)
+	a, err := NewBotController(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 			c.Endpoint = server.URL
 			c.HTTPClient = server.Client()
 			// When
-			a, err := New(context.Background(), c)
+			a, err := NewBotController(context.Background(), c)
 			if a != nil {
 				t.Cleanup(a.Close)
 			}
@@ -700,7 +700,7 @@ func TestNewShouldReturnNoBotWhenValidationIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	// When
-	a, err := New(ctx, c)
+	a, err := NewBotController(ctx, c)
 	// Then
 	if a != nil || err == nil {
 		t.Fatalf("bot=%v error=%v", a, err)
