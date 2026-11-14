@@ -250,7 +250,7 @@ func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) 
 		"Доступные команды:",
 	}
 	for _, command := range botCommands {
-		lines = append(lines, "/"+command.Command+" — "+strings.ToLower(command.Description[:1])+command.Description[1:])
+		lines = append(lines, "/"+command.Command+" — "+command.Description)
 	}
 	this.reply(ctx, id, strings.Join(lines, "\n"))
 }
