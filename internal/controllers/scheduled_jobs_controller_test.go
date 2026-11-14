@@ -1,14 +1,18 @@
-package scheduler_test
+package controllers_test
 
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/arhor/case-watch/internal/controllers"
+	"github.com/arhor/case-watch/internal/database"
+	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/scheduler"
+	"github.com/arhor/case-watch/internal/services/cases"
 )
 
 type clock struct{ now time.Time }
@@ -31,9 +35,9 @@ func parse(s string) time.Time {
 	}
 	return t
 }
-func newScheduler(t *testing.T, c scheduler.Config) *scheduler.Scheduler {
+func newScheduler(t *testing.T, c controllers.ScheduledJobsControllerConfig) *controllers.ScheduledJobsController {
 	t.Helper()
-	s, err := scheduler.New(c)
+	s, err := controllers.NewScheduledJobsController(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +45,7 @@ func newScheduler(t *testing.T, c scheduler.Config) *scheduler.Scheduler {
 }
 func TestNextShouldReturnStrictWarsawSlotsWhenDatesCrossSeasonsWeekendsAndHolidays(t *testing.T) {
 	// Given
-	s := newScheduler(t, scheduler.Config{CaseService: tracking{scheduled: func(context.Context, int64) (models.Status, error) { return models.Status{}, nil }}, Clock: &clock{}})
+	s := newScheduler(t, controllers.ScheduledJobsControllerConfig{CaseService: tracking{scheduled: func(context.Context, int64) (models.Status, error) { return models.Status{}, nil }}, Clock: &clock{}})
 	cases := []struct{ after, want string }{
 		{"2026-01-05T06:59:59Z", "2026-01-05T07:00:00Z"},
 		{"2026-07-06T05:59:59Z", "2026-07-06T06:00:00Z"},
@@ -77,7 +81,7 @@ func TestRunShouldSkipCrossedSlotsAndRecheckQueuedAuthorizationWhenFirstCheckIsS
 	defer cancel()
 	var calls []int64
 	var deadlines []time.Time
-	s := newScheduler(t, scheduler.Config{Clock: c, CaseService: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
+	s := newScheduler(t, controllers.ScheduledJobsControllerConfig{Clock: c, CaseService: tracking{owners: []int64{1, 2, 3}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 		calls = append(calls, owner)
 		if owner == 1 {
 			c.now = parse("2026-07-06T10:30:00Z")
@@ -106,7 +110,7 @@ func TestRunShouldWaitForFutureSlotWhenStartingAtBoundaryOrRestartingAfterMissed
 		c := &clock{now: parse(start)}
 		calls := 0
 		var deadline time.Time
-		s := newScheduler(t, scheduler.Config{Clock: c, CaseService: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
+		s := newScheduler(t, controllers.ScheduledJobsControllerConfig{Clock: c, CaseService: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error { deadline = d; cancel(); return ctx.Err() }})
 		// When
 		err := s.Run(ctx)
 		// Then
@@ -124,7 +128,7 @@ func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
 	canceled := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan error, 1)
-	s := newScheduler(t, scheduler.Config{Clock: c, CaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
+	s := newScheduler(t, controllers.ScheduledJobsControllerConfig{Clock: c, CaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
@@ -143,7 +147,7 @@ func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
 		t.Fatalf("returned before drain: %v", err)
 	default:
 	}
-	if !errors.Is(overlap, scheduler.ErrScheduler) {
+	if !errors.Is(overlap, controllers.ErrScheduler) {
 		t.Fatalf("overlap=%v", overlap)
 	}
 	close(release)
@@ -158,7 +162,7 @@ func TestRunShouldSkipMissedMinuteAndAcceptTimerJitterWhenWaitReturnsLate(t *tes
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	waits, calls := 0, 0
-	s := newScheduler(t, scheduler.Config{Clock: c, CaseService: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
+	s := newScheduler(t, controllers.ScheduledJobsControllerConfig{Clock: c, CaseService: tracking{owners: []int64{1}, scheduled: func(context.Context, int64) (models.Status, error) { calls++; return models.Status{}, nil }}, Wait: func(_ context.Context, d time.Time) error {
 		waits++
 		switch waits {
 		case 1:
@@ -178,3 +182,63 @@ func TestRunShouldSkipMissedMinuteAndAcceptTimerJitterWhenWaitReturnsLate(t *tes
 		t.Fatalf("err=%v calls=%d waits=%d", err, calls, waits)
 	}
 }
+
+func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
+	calls := 0
+	caseService := cases.New(cases.Config{
+		DB:     store.New(db),
+		Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) {
+			calls++
+			return "A", time.Time{}, nil
+		}),
+		Clock:  c,
+	})
+	t.Cleanup(caseService.Shutdown)
+	if _, _, err := caseService.Enroll(ctx, 101, "synthetic-number", "synthetic-password"); err != nil {
+		t.Fatal(err)
+	}
+	monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
+	c.now = monday.Add(-time.Second)
+	_, manualErr := caseService.Status(ctx, 101)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	waits := 0
+	s, err := controllers.NewScheduledJobsController(controllers.ScheduledJobsControllerConfig{
+		CaseService: caseService,
+		Clock:       c,
+		Wait: func(_ context.Context, deadline time.Time) error {
+			waits++
+			if waits == 2 {
+				cancel()
+				return runCtx.Err()
+			}
+			c.now = deadline
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When
+	runErr := s.Run(runCtx)
+	// Then
+	if manualErr != nil || !errors.Is(runErr, context.Canceled) || calls != 2 || waits != 2 {
+		t.Fatalf("manual=%v run=%v calls=%d waits=%d", manualErr, runErr, calls, waits)
+	}
+}
+
+type scheduledPortal func(context.Context, string, string) (string, time.Time, error)
+
+func (p scheduledPortal) Check(ctx context.Context, _ int64, number, password string) (string, time.Time, error) {
+	return p(ctx, number, password)
+}
+
+func (scheduledPortal) ForgetSession(int64) {}

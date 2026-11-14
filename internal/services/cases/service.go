@@ -1,5 +1,5 @@
 // Package cases implements enrollment, status checks and removal.
-// One Service is shared by the bot and scheduler; transactions contain no network I/O.
+// One Service is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
 package cases
 
 import (

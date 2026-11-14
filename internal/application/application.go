@@ -7,11 +7,10 @@ import (
 	"os"
 	"sync"
 
-	"github.com/arhor/case-watch/internal/bot"
 	"github.com/arhor/case-watch/internal/config"
+	"github.com/arhor/case-watch/internal/controllers"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/scheduler"
 	"github.com/arhor/case-watch/internal/services/cases"
 	"github.com/arhor/case-watch/internal/services/cases/portal"
 	"github.com/arhor/case-watch/internal/utils"
@@ -71,7 +70,7 @@ func run(ctx context.Context) (result error) {
 	})
 	defer caseService.Shutdown()
 
-	telegramBot, err := bot.New(work, bot.Config{
+	telegramBot, err := controllers.NewBotController(work, controllers.BotControllerConfig{
 		Token:       cfg.TelegramBotToken,
 		CaseService: caseService,
 		Clock:       clock,
@@ -85,7 +84,7 @@ func run(ctx context.Context) (result error) {
 	}
 	defer telegramBot.Close()
 
-	scheduled, err := scheduler.New(scheduler.Config{
+	scheduled, err := controllers.NewScheduledJobsController(controllers.ScheduledJobsControllerConfig{
 		CaseService: caseService,
 		Clock:       clock,
 		Report:      diagnostic,
