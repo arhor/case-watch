@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -536,6 +537,10 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 			w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/getMyCommands") {
+			writeBotCommands(w, botCommands)
+			return
+		}
 		server.handler.ServeHTTP(w, r)
 	}), server.URL}).Client()
 	a, err := New(context.Background(), c)
@@ -544,6 +549,13 @@ func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	}
 	t.Cleanup(a.Close)
 	return a
+}
+
+func writeBotCommands(w http.ResponseWriter, commands []telegramModels.BotCommand) {
+	_ = json.NewEncoder(w).Encode(struct {
+		OK     bool                        `json:"ok"`
+		Result []telegramModels.BotCommand `json:"result"`
+	}{OK: true, Result: commands})
 }
 
 func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) {
@@ -660,13 +672,17 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 			calls := 0
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
-				if !strings.HasSuffix(r.URL.Path, "/getMe") {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/getMe"):
+					if code == 200 {
+						w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+					} else {
+						w.Write([]byte(fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"synthetic-secret"}`, code)))
+					}
+				case strings.HasSuffix(r.URL.Path, "/getMyCommands"):
+					writeBotCommands(w, botCommands)
+				default:
 					t.Error("unexpected API method")
-				}
-				if code == 200 {
-					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
-				} else {
-					w.Write([]byte(fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"synthetic-secret"}`, code)))
 				}
 			}))
 			t.Cleanup(server.Close)
@@ -679,7 +695,11 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 				t.Cleanup(a.Close)
 			}
 			// Then
-			if calls != 1 || (err == nil) != (code == 200) || errors.Is(err, ErrInvalidToken) != (code == 401) {
+			expectedCalls := 1
+			if code == 200 {
+				expectedCalls = 2
+			}
+			if calls != expectedCalls || (err == nil) != (code == 200) || errors.Is(err, ErrInvalidToken) != (code == 401) {
 				t.Fatalf("calls=%d error=%v", calls, err)
 			}
 			if err != nil && strings.Contains(err.Error(), "synthetic") {
