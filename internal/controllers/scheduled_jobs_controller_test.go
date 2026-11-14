@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arhor/case-watch/internal/controllers"
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services/cases"
-	"github.com/arhor/case-watch/internal/controllers"
 )
 
 type clock struct{ now time.Time }
@@ -194,12 +194,12 @@ func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *test
 	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
 	calls := 0
 	caseService := cases.New(cases.Config{
-		DB: store.New(db),
+		DB:     store.New(db),
 		Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) {
 			calls++
 			return "A", time.Time{}, nil
 		}),
-		Clock: c,
+		Clock:  c,
 	})
 	t.Cleanup(caseService.Shutdown)
 	if _, _, err := caseService.Enroll(ctx, 101, "synthetic-number", "synthetic-password"); err != nil {
