@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 )
 
@@ -19,22 +19,22 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := store.New(db)
+	store := repositories.NewStore(db)
 	id := "0123456789abcdef0123456789abcdef"
 	checked := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	stage := "B"
-	if err = initial.Enrollments.Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked); err != nil {
+	if err = store.Enrollments.Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked); err != nil {
 		t.Fatal(err)
 	}
-	if err := initial.History.Append(ctx, id, "A", stage, checked); err != nil {
+	if err := store.History.Append(ctx, id, "A", stage, checked); err != nil {
 		t.Fatal(err)
 	}
 	guard := models.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
-	if err = initial.Cooldowns.Upsert(ctx, guard); err != nil {
+	if err = store.Cooldowns.Upsert(ctx, guard); err != nil {
 		t.Fatal(err)
 	}
 	caseGuard := models.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
-	if err := initial.Cooldowns.Upsert(ctx, caseGuard); err != nil {
+	if err := store.Cooldowns.Upsert(ctx, caseGuard); err != nil {
 		t.Fatal(err)
 	}
 	// When
@@ -46,11 +46,11 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 		t.Fatal(err)
 	}
 	defer db.Close()
-	storage := store.New(db)
-	enrollment, readErr := storage.Enrollments.FindByOwner(ctx, 101)
-	history, historyErr := storage.History.FindByEnrollment(ctx, 101, id)
-	cooldown, guardErr := storage.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, guard.SubjectType, guard.SubjectID)
-	caseCooldown, caseGuardErr := storage.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseGuard.SubjectType, caseGuard.SubjectID)
+	store = repositories.NewStore(db)
+	enrollment, readErr := store.Enrollments.FindByOwner(ctx, 101)
+	history, historyErr := store.History.FindByEnrollment(ctx, 101, id)
+	cooldown, guardErr := store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, guard.SubjectType, guard.SubjectID)
+	caseCooldown, caseGuardErr := store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseGuard.SubjectType, caseGuard.SubjectID)
 	var version int
 	var dirty bool
 	versionErr := db.QueryRowContext(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty)

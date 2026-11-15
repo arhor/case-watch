@@ -1,4 +1,4 @@
-package store_test
+package repositories_test
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/database/store"
 )
 
 func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) {
@@ -20,15 +19,15 @@ func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer db.Close()
-	storage := store.New(db)
+	store := repositories.NewStore(db)
 	id := "0123456789abcdef0123456789abcdef"
 	Number, Password := "synthetic-number", "synthetic-password"
 	stage := "A"
 	checkedAt := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	abort := errors.New("abort transaction")
 	// When
-	err = storage.RunInTx(ctx, func(tx *store.Store) error {
-		if err := tx.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt); err != nil {
+	err = store.RunInTx(ctx, func(store *repositories.Store) error {
+		if err := store.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt); err != nil {
 			return err
 		}
 		return abort
@@ -37,15 +36,15 @@ func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) 
 	if !errors.Is(err, abort) {
 		t.Fatalf("rollback returned %v, want %v", err, abort)
 	}
-	if _, err := storage.Enrollments.FindByOwner(ctx, 101); !errors.Is(err, repositories.ErrNotFound) {
+	if _, err := store.Enrollments.FindByOwner(ctx, 101); !errors.Is(err, repositories.ErrNotFound) {
 		t.Fatalf("rolled-back record was visible: %v", err)
 	}
-	if err := storage.RunInTx(ctx, func(tx *store.Store) error {
-		return tx.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt)
+	if err := store.RunInTx(ctx, func(store *repositories.Store) error {
+		return store.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storage.Enrollments.FindByOwner(ctx, 101); err != nil {
+	if _, err := store.Enrollments.FindByOwner(ctx, 101); err != nil {
 		t.Fatalf("committed record was missing: %v", err)
 	}
 }
@@ -57,11 +56,11 @@ func TestRunInTxShouldRejectNestedTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	storage := store.New(db)
-	err = storage.RunInTx(ctx, func(tx *store.Store) error {
-		return tx.RunInTx(ctx, func(*store.Store) error { return nil })
+	store := repositories.NewStore(db)
+	err = store.RunInTx(ctx, func(store *repositories.Store) error {
+		return store.RunInTx(ctx, func(*repositories.Store) error { return nil })
 	})
-	if !errors.Is(err, store.ErrTransaction) {
-		t.Fatalf("nested transaction returned %v, want %v", err, store.ErrTransaction)
+	if !errors.Is(err, repositories.ErrTransaction) {
+		t.Fatalf("nested transaction returned %v, want %v", err, repositories.ErrTransaction)
 	}
 }

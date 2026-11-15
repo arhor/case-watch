@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/entrypoints/schedule"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
@@ -194,7 +194,7 @@ func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *test
 	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
 	calls := 0
 	caseService := services.NewCaseService(services.CaseServiceConfig{
-		DB: store.New(db),
+		Store: repositories.NewStore(db),
 		Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) {
 			calls++
 			return "A", time.Time{}, nil
