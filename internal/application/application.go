@@ -9,7 +9,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/clients"
 	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/store"
+	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/entrypoints/schedule"
 	"github.com/arhor/case-watch/internal/entrypoints/telegram"
 	"github.com/arhor/case-watch/internal/services"
@@ -43,7 +43,7 @@ func run(ctx context.Context) (result error) {
 		}
 	}()
 
-	storage := store.New(db)
+	store := repositories.NewStore(db)
 
 	work, stop := context.WithCancelCause(ctx)
 
@@ -63,7 +63,7 @@ func run(ctx context.Context) (result error) {
 	defer portalClient.Close()
 
 	caseService := services.NewCaseService(services.CaseServiceConfig{
-		DB:             storage,
+		Store:          store,
 		Portal:         portalClient,
 		Clock:          clock,
 		OnStorageError: fail,

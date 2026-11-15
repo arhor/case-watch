@@ -13,7 +13,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/models"
 )
 
@@ -38,7 +37,7 @@ func (this portalFunc) Check(ctx context.Context, owner int64, number, password 
 type fixture struct {
 	c     *CaseService
 	db    *sql.DB
-	s     *store.Store
+	store *repositories.Store
 	clock *clock
 	path  string
 	calls atomic.Int32
@@ -52,7 +51,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s = store.New(f.db)
+	f.store = repositories.NewStore(f.db)
 	t.Cleanup(func() { f.db.Close() })
 	wrapped := portalFunc(func(ctx context.Context, number, password string) (string, time.Time, error) {
 		f.calls.Add(1)
@@ -61,7 +60,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 		}
 		return "A", time.Time{}, nil
 	})
-	f.c = NewCaseService(CaseServiceConfig{DB: f.s, Portal: wrapped, Clock: f.clock})
+	f.c = NewCaseService(CaseServiceConfig{Store: f.store, Portal: wrapped, Clock: f.clock})
 	return f
 }
 func (this *fixture) reopen(t *testing.T) {
@@ -74,7 +73,7 @@ func (this *fixture) reopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	this.db = db
-	this.s = store.New(db)
+	this.store = repositories.NewStore(db)
 }
 
 func (this *fixture) enroll(t *testing.T, owner int64) string {
@@ -82,7 +81,7 @@ func (this *fixture) enroll(t *testing.T, owner int64) string {
 	if _, _, err := this.c.Enroll(context.Background(), owner, number, password); err != nil {
 		t.Fatal(err)
 	}
-	e, err := this.s.Enrollments.FindByOwner(context.Background(), owner)
+	e, err := this.store.Enrollments.FindByOwner(context.Background(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +105,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	recent, e1 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(time.Minute))
 	at, e2 := f.c.Status(context.Background(), 101)
-	e, _ := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	e, _ := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	deadline, e3 := f.c.checkEligibility(context.Background(), 101, e.ID, true)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
@@ -131,7 +130,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
 	f.reopen(t)
-	f.c = NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+	f.c = NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 		f.calls.Add(1)
 		return "", time.Time{}, errors.New("secret")
 	}), Clock: f.clock})
@@ -160,7 +159,7 @@ func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *t
 	cached, e3 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(2 * time.Minute))
 	manual, e4 := f.c.Status(context.Background(), 101)
-	history, e5 := f.s.History.FindByEnrollment(context.Background(), 101, id)
+	history, e5 := f.store.History.FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || f.calls.Load() != 3 || !scheduled.Fresh || !guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) || cached.Fresh || !manual.Fresh || len(history) != 0 {
 		t.Fatalf("scheduled guard: %+v %+v %+v calls=%d errors=%v/%v/%v/%v/%v", scheduled, guarded, cached, f.calls.Load(), e1, e2, e3, e4, e5)
@@ -285,7 +284,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	id := f.enroll(t, 101)
 	// When
 	_, _, err := f.c.Enroll(context.Background(), 101, number, password)
-	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	e, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
 		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
@@ -296,7 +295,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 }
 
 func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.T) {
-	for _, kind := range []string{"portal", "storage", "cancellation", "validation"} {
+	for _, kind := range []string{"portal", "store", "cancellation", "validation"} {
 		t.Run(kind, func(t *testing.T) {
 			// Given
 			f := setup(t, nil)
@@ -310,7 +309,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 				p = func(context.Context, string, string) (string, time.Time, error) {
 					return "", time.Time{}, errors.New("private remote detail")
 				}
-			case "storage":
+			case "store":
 				rejectInsert(t, f.path, "enrollments")
 			case "cancellation":
 				c, cancel := context.WithCancel(ctx)
@@ -319,10 +318,10 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			case "validation":
 				password = ""
 			}
-			c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: p, Clock: f.clock})
+			c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: p, Clock: f.clock})
 			// When
 			_, _, err := c.Enroll(ctx, 101, number, password)
-			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
+			_, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
 			// Then
 			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
 				t.Fatalf("failed enrollment committed: %v/%v", err, read)
@@ -357,7 +356,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	<-canceled
 	_, busyStatus := f.c.Status(context.Background(), 101)
 	_, _, busyEnroll := f.c.Enroll(context.Background(), 101, number, password)
-	before, beforeErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	before, beforeErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
 		t.Fatalf("removal returned without drain: %v", err)
@@ -366,7 +365,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	close(release)
 	late := <-checked
 	removeErr := <-removed
-	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	block.Store(false)
 	newID := f.enroll(t, 101)
 	lateObservation := f.c.saveObservation(context.Background(), 101, id, "LATE", f.clock.Now())
@@ -399,7 +398,7 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	_, _, busy := f.c.Enroll(context.Background(), 101, number, password)
 	close(release)
 	enrollErr, removeErr := <-enrolled, <-removed
-	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(busy, ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
@@ -444,15 +443,15 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		id := f.enroll(t, 101)
 		var calls atomic.Int32
 		rejectInsert(t, f.path, "history")
-		c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+		c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 			calls.Add(1)
 			return "B", time.Time{}, nil
 		}), Clock: f.clock})
 		f.clock.set(epoch.Add(time.Minute))
 		// When
 		status, err := c.Status(context.Background(), 101)
-		e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-		history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
+		e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
+		history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
 		// Then
 		if !errors.Is(err, ErrStorage) || readErr != nil || historyErr != nil || e.Stage != "A" || !e.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
 			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
@@ -476,7 +475,7 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	f.clock.set(epoch.Add(2 * time.Minute))
 	stage.Store("A")
 	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
-	history, e3 := f.s.History.FindByEnrollment(context.Background(), 101, id)
+	history, e3 := f.store.History.FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || history[0].Stage != "B" || history[1].Stage != "A" {
 		t.Fatalf("shared observation transaction: history=%+v errors=%v/%v/%v", history, e1, e2, e3)
@@ -512,7 +511,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	cancel()
 	close(release)
 	workErr, removeErr := <-work, <-removed
-	e, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
+	e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
 	if !errors.Is(workErr, ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.CheckedAt.IsZero() {
@@ -525,7 +524,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.reopen(t)
-	c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+	c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 		t.Error("recent baseline triggered portal work")
 		return "", time.Time{}, nil
 	}), Clock: f.clock})
@@ -623,8 +622,8 @@ func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
 	}
 	// When
 	observeErr := f.c.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
-	enrollment, readErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
-	history, historyErr := f.s.History.FindByEnrollment(context.Background(), 101, id)
+	enrollment, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Stage != "A" || !enrollment.CheckedAt.Equal(epoch) || len(history) != 0 {
 		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment, history, observeErr, readErr, historyErr)
