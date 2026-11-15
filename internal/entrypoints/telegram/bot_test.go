@@ -20,7 +20,7 @@ import (
 	"github.com/arhor/case-watch/internal/database"
 	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/database/store"
-	"github.com/arhor/case-watch/internal/services/cases"
+	"github.com/arhor/case-watch/internal/services"
 
 	"github.com/arhor/case-watch/internal/models"
 )
@@ -80,7 +80,7 @@ func setup(t *testing.T) *fixture {
 	}
 	f.s = store.New(db)
 	t.Cleanup(func() { db.Close() })
-	caseService := cases.New(cases.Config{
+	caseService := services.NewCaseService(services.CaseServiceConfig{
 		DB: f.s,
 		Portal: portal(func(context.Context, string, string) (string, time.Time, error) {
 			f.calls++
@@ -192,7 +192,7 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 		},
 		{
 			name: "no observation after failed refresh",
-			err:  cases.ErrCheck,
+			err:  services.ErrCheck,
 			want: "Не удалось обновить статус дела.\n\nПока нет данных об успешных проверках вашего дела.",
 		},
 		{
@@ -214,7 +214,7 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 			status: models.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true,
 			},
-			err:  cases.ErrCheck,
+			err:  services.ErrCheck,
 			want: "Не удалось обновить статус дела.\n\nПоказываю данные последней успешной проверки:\n\nСтатус дела: Etap <A>\nПроверено: 01.11.2026, 13:00",
 		},
 		{
@@ -355,7 +355,7 @@ func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActi
 	// Given
 	f := setup(t)
 	started, done := make(chan struct{}), make(chan struct{})
-	f.a.caseService = cases.New(cases.Config{
+	f.a.caseService = services.NewCaseService(services.CaseServiceConfig{
 		DB: f.s,
 		Portal: portal(func(ctx context.Context, _, _ string) (string, time.Time, error) {
 			close(started)

@@ -36,7 +36,7 @@ Use an explicit section divider before private declarations when the file contai
 
 Use descriptive public section headings when they improve navigation, especially in files containing several related types. Keep those headings consistent and their divider lines 80 characters wide. Do not add empty sections.
 
-`internal/utils/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/cases/service.go` and `internal/entrypoints/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can mix types with methods, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
+`internal/utils/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/case_service.go` and `internal/entrypoints/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can mix types with methods, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
 
 The declaration-order and divider requirements do not apply to `*_test.go`; preserve useful test organization there.
 

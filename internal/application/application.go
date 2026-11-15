@@ -12,7 +12,7 @@ import (
 	"github.com/arhor/case-watch/internal/database/store"
 	"github.com/arhor/case-watch/internal/entrypoints/schedule"
 	"github.com/arhor/case-watch/internal/entrypoints/telegram"
-	"github.com/arhor/case-watch/internal/services/cases"
+	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -62,7 +62,7 @@ func run(ctx context.Context) (result error) {
 	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
 	defer portalClient.Close()
 
-	caseService := cases.New(cases.Config{
+	caseService := services.NewCaseService(services.CaseServiceConfig{
 		DB:             storage,
 		Portal:         portalClient,
 		Clock:          clock,

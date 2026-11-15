@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services/cases`. Telegram commands and timed checks enter through `internal/entrypoints/telegram` and `internal/entrypoints/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/database`; shared domain contracts are in `internal/models`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
+`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services`. Telegram commands and timed checks enter through `internal/entrypoints/telegram` and `internal/entrypoints/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/database`; shared domain contracts are in `internal/models`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
 
 ## Build, Test, and Development Commands
 
@@ -10,7 +10,7 @@
 - `go test -timeout 60s ./...` runs the full unit and integration test suite.
 - `go test -race -timeout 90s ./...` repeats tests with race detection, matching CI.
 - `go vet ./...` performs the static checks required by CI.
-- `go test ./internal/services/cases/... -run TestName` targets a package or named test during development.
+- `go test ./internal/services/... -run TestName` targets a package or named test during development.
 - `docker build --platform linux/arm64 -t case-watch .` builds the deployment image.
 
 Set `CASE_WATCH_TELEGRAM_BOT_TOKEN` and `CASE_WATCH_DB_PATH` before running `./case-watch`. The program does not load `.env` automatically.

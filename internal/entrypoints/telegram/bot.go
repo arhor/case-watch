@@ -18,7 +18,7 @@ import (
 	telegramModels "github.com/go-telegram/bot/models"
 
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/services/cases"
+	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/utils"
 )
 
@@ -41,7 +41,7 @@ type Bot struct {
 	handlers      map[string]commandHandler
 	client        *telegramApi.Bot
 	polling       atomic.Bool
-	caseService   *cases.Service
+	caseService   *services.CaseService
 	replyMu       sync.Mutex
 	repliesFailed bool
 	config        Config
@@ -54,7 +54,7 @@ type Config struct {
 	Token       string
 	Endpoint    string
 	HTTPClient  *http.Client
-	CaseService *cases.Service
+	CaseService *services.CaseService
 	Clock       utils.Clock
 	Diagnostic  func(string)
 }
@@ -207,9 +207,9 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		s.number = ""
 		s.deadline = time.Time{}
 		this.erase(ctx, id, m.ID)
-		this.reply(ctx, id, "Команду нужно отправить без дополнительных параметров.\n" +
-		"\n" +
-		"Чтобы начать заново, используйте /start.")
+		this.reply(ctx, id, "Команду нужно отправить без дополнительных параметров.\n"+
+			"\n"+
+			"Чтобы начать заново, используйте /start.")
 		return
 	}
 	if handler, ok := this.handlers[command]; ok {
@@ -257,9 +257,9 @@ func (this *Bot) onHelp(ctx context.Context, id int64, s *state, now time.Time) 
 func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time) {
 	if s.cancel != nil {
 		s.cancel()
-		this.reply(ctx, id, "Отменяю предыдущую попытку добавления дела.\n" +
-		"\n" +
-		"После завершения попробуйте ещё раз: /start.")
+		this.reply(ctx, id, "Отменяю предыдущую попытку добавления дела.\n"+
+			"\n"+
+			"После завершения попробуйте ещё раз: /start.")
 		return
 	}
 	s.number = ""
@@ -267,22 +267,22 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 	s.removal = time.Time{}
 	exists, e := this.exists(ctx, id)
 	if e != nil {
-		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n" +
-		"\n" +
-		"Попробуйте ещё раз позже.")
+		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n"+
+			"\n"+
+			"Попробуйте ещё раз позже.")
 		return
 	}
 	if exists {
-		this.reply(ctx, id, "У вас уже есть дело для отслеживания.\n" +
-		"\n" +
-		"Чтобы добавить другое, сначала удалите текущее с помощью /remove.")
+		this.reply(ctx, id, "У вас уже есть дело для отслеживания.\n"+
+			"\n"+
+			"Чтобы добавить другое, сначала удалите текущее с помощью /remove.")
 		return
 	}
 	s.deadline = now.Add(10 * time.Minute)
-	this.reply(ctx, id, "Давайте добавим ваше дело для отслеживания.\n" +
-		"\n" +
-		"Для начала отправьте номер дела отдельным сообщением. Затем я попрошу пароль для доступа к информации о деле.\n" +
-		"\n" +
+	this.reply(ctx, id, "Давайте добавим ваше дело для отслеживания.\n"+
+		"\n"+
+		"Для начала отправьте номер дела отдельным сообщением. Затем я попрошу пароль для доступа к информации о деле.\n"+
+		"\n"+
 		"Для отмены используйте /cancel.")
 }
 
@@ -290,10 +290,10 @@ func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time
 	s.mu.Unlock()
 	status, e := this.caseService.Status(ctx, id)
 	s.mu.Lock()
-	if errors.Is(e, cases.ErrNotFound) {
-		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n" +
-		"\n" +
-		"Чтобы добавить дело, отправьте /start.")
+	if errors.Is(e, services.ErrNotFound) {
+		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
+			"\n"+
+			"Чтобы добавить дело, отправьте /start.")
 		return
 	}
 	this.reply(ctx, id, formatStatus(status, e))
@@ -307,22 +307,22 @@ func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time
 	s.deadline = time.Time{}
 	exists, e := this.exists(ctx, id)
 	if e != nil {
-		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n" +
-		"\n" +
-		"Попробуйте ещё раз позже.")
+		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n"+
+			"\n"+
+			"Попробуйте ещё раз позже.")
 		return
 	}
 	if !exists {
-		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n" +
-		"\n" +
-		"Чтобы добавить дело, отправьте /start.")
+		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
+			"\n"+
+			"Чтобы добавить дело, отправьте /start.")
 		return
 	}
 	s.removal = now.Add(10 * time.Minute)
-	this.reply(ctx, id, "Вы уверены, что хотите удалить дело из отслеживания?\n" +
-		"\n" +
-		"Все сохранённые данные, включая номер дела, пароль и историю изменений статуса, будут безвозвратно удалены.\n" +
-		"\n" +
+	this.reply(ctx, id, "Вы уверены, что хотите удалить дело из отслеживания?\n"+
+		"\n"+
+		"Все сохранённые данные, включая номер дела, пароль и историю изменений статуса, будут безвозвратно удалены.\n"+
+		"\n"+
 		"Для подтверждения ответьте «Да», для отмены — «Нет». Ответ нужно отправить в течение 10 минут.")
 }
 
@@ -359,17 +359,17 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		return
 	}
 	if s.deadline.IsZero() {
-		this.reply(ctx, id, "Чтобы добавить дело для отслеживания, отправьте /start.\n" +
-		"\n" +
-		"Список доступных команд: /help.")
+		this.reply(ctx, id, "Чтобы добавить дело для отслеживания, отправьте /start.\n"+
+			"\n"+
+			"Список доступных команд: /help.")
 		return
 	}
 	this.erase(ctx, id, m.ID)
 	if s.number == "" {
 		if strings.TrimSpace(text) == "" || len(text) > 256 || strings.ContainsAny(text, "\r\n") {
-			this.reply(ctx, id, "Не удалось принять номер дела.\n" +
-		"\n" +
-		"Проверьте его и отправьте ещё раз одним текстовым сообщением, без переносов строк.")
+			this.reply(ctx, id, "Не удалось принять номер дела.\n"+
+				"\n"+
+				"Проверьте его и отправьте ещё раз одним текстовым сообщением, без переносов строк.")
 			return
 		}
 		s.number = text
@@ -378,9 +378,9 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		return
 	}
 	if text == "" || len(text) > 4096 {
-		this.reply(ctx, id, "Не удалось принять пароль.\n" +
-		"\n" +
-		"Проверьте его и отправьте ещё раз отдельным сообщением.")
+		this.reply(ctx, id, "Не удалось принять пароль.\n"+
+			"\n"+
+			"Проверьте его и отправьте ещё раз отдельным сообщением.")
 		return
 	}
 	number := s.number
@@ -400,16 +400,16 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		defer s.mu.Unlock()
 		s.cancel = nil
 		if e != nil {
-			this.reply(ctx, id, "Не удалось добавить дело для отслеживания.\n" +
-		"\n" +
-		"Проверьте номер дела и пароль или попробуйте ещё раз позже.\n" +
-		"\n" +
-		"Для повторной попытки отправьте /start.")
+			this.reply(ctx, id, "Не удалось добавить дело для отслеживания.\n"+
+				"\n"+
+				"Проверьте номер дела и пароль или попробуйте ещё раз позже.\n"+
+				"\n"+
+				"Для повторной попытки отправьте /start.")
 			return
 		}
-		this.reply(ctx, id, "Готово! Ваше дело добавлено для отслеживания.\n" +
-		"\n" +
-		"Чтобы узнать текущий статус, отправьте /status.")
+		this.reply(ctx, id, "Готово! Ваше дело добавлено для отслеживания.\n"+
+			"\n"+
+			"Чтобы узнать текущий статус, отправьте /status.")
 	}(number, text)
 }
 

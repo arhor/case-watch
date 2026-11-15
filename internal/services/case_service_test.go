@@ -1,4 +1,4 @@
-package cases
+package services
 
 import (
 	"context"
@@ -19,24 +19,24 @@ import (
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 
-const Number, Password = "synthetic-number", "synthetic-password"
+const number, password = "synthetic-number", "synthetic-password"
 
 type clock struct {
 	mu  sync.Mutex
 	now time.Time
 }
 
-func (c *clock) Now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); return c.now }
-func (c *clock) set(t time.Time) { c.mu.Lock(); defer c.mu.Unlock(); c.now = t }
+func (this *clock) Now() time.Time  { this.mu.Lock(); defer this.mu.Unlock(); return this.now }
+func (this *clock) set(t time.Time) { this.mu.Lock(); defer this.mu.Unlock(); this.now = t }
 
 type portalFunc func(context.Context, string, string) (string, time.Time, error)
 
-func (f portalFunc) Check(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
-	return f(ctx, Number, Password)
+func (this portalFunc) Check(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
+	return this(ctx, number, password)
 }
 
 type fixture struct {
-	c     *Service
+	c     *CaseService
 	db    *sql.DB
 	s     *store.Store
 	clock *clock
@@ -54,35 +54,35 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	}
 	f.s = store.New(f.db)
 	t.Cleanup(func() { f.db.Close() })
-	wrapped := portalFunc(func(ctx context.Context, Number, Password string) (string, time.Time, error) {
+	wrapped := portalFunc(func(ctx context.Context, number, password string) (string, time.Time, error) {
 		f.calls.Add(1)
 		if p != nil {
-			return p(ctx, Number, Password)
+			return p(ctx, number, password)
 		}
 		return "A", time.Time{}, nil
 	})
-	f.c = New(Config{DB: f.s, Portal: wrapped, Clock: f.clock})
+	f.c = NewCaseService(CaseServiceConfig{DB: f.s, Portal: wrapped, Clock: f.clock})
 	return f
 }
-func (f *fixture) reopen(t *testing.T) {
+func (this *fixture) reopen(t *testing.T) {
 	t.Helper()
-	if err := f.db.Close(); err != nil {
+	if err := this.db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := database.Open(context.Background(), f.path)
+	db, err := database.Open(context.Background(), this.path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.db = db
-	f.s = store.New(db)
+	this.db = db
+	this.s = store.New(db)
 }
 
-func (f *fixture) enroll(t *testing.T, owner int64) string {
+func (this *fixture) enroll(t *testing.T, owner int64) string {
 	t.Helper()
-	if _, _, err := f.c.Enroll(context.Background(), owner, Number, Password); err != nil {
+	if _, _, err := this.c.Enroll(context.Background(), owner, number, password); err != nil {
 		t.Fatal(err)
 	}
-	e, err := f.s.Enrollments.FindByOwner(context.Background(), owner)
+	e, err := this.s.Enrollments.FindByOwner(context.Background(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	// When
 	failed, e1 := f.c.Status(context.Background(), 101)
 	f.reopen(t)
-	f.c = New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+	f.c = NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 		f.calls.Add(1)
 		return "", time.Time{}, errors.New("secret")
 	}), Clock: f.clock})
@@ -199,9 +199,9 @@ type waitContext struct {
 	entered chan struct{}
 }
 
-func (c *waitContext) Done() <-chan struct{} {
-	c.once.Do(func() { close(c.entered) })
-	return c.Context.Done()
+func (this *waitContext) Done() <-chan struct{} {
+	this.once.Do(func() { close(this.entered) })
+	return this.Context.Done()
 }
 func waitingContext(ctx context.Context) *waitContext {
 	return &waitContext{Context: ctx, entered: make(chan struct{})}
@@ -263,7 +263,7 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.
 	f := setup(t, nil)
 	f.enroll(t, 101)
 	// When
-	_, _, e1 := f.c.Enroll(context.Background(), 0, Number, Password)
+	_, _, e1 := f.c.Enroll(context.Background(), 0, number, password)
 	_, e2 := f.c.Status(context.Background(), 0)
 	_, e3 := f.c.Scheduled(context.Background(), 0)
 	e4 := f.c.Remove(context.Background(), 0)
@@ -284,13 +284,13 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	// When
-	_, _, err := f.c.Enroll(context.Background(), 101, Number, Password)
+	_, _, err := f.c.Enroll(context.Background(), 101, number, password)
 	e, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
 		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
 	}
-	if e.Number != Number || e.Password != Password {
+	if e.Number != number || e.Password != password {
 		t.Fatal("enrollment credentials missing")
 	}
 }
@@ -301,7 +301,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			// Given
 			f := setup(t, nil)
 			ctx := context.Background()
-			password := Password
+			password := password
 			p := portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 				return "A", time.Time{}, nil
 			})
@@ -319,9 +319,9 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			case "validation":
 				password = ""
 			}
-			c := New(Config{DB: f.s, Portal: p, Clock: f.clock})
+			c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: p, Clock: f.clock})
 			// When
-			_, _, err := c.Enroll(ctx, 101, Number, password)
+			_, _, err := c.Enroll(ctx, 101, number, password)
 			_, read := f.s.Enrollments.FindByOwner(context.Background(), 101)
 			// Then
 			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
@@ -356,7 +356,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	go func() { removed <- f.c.Remove(context.Background(), 101) }()
 	<-canceled
 	_, busyStatus := f.c.Status(context.Background(), 101)
-	_, _, busyEnroll := f.c.Enroll(context.Background(), 101, Number, Password)
+	_, _, busyEnroll := f.c.Enroll(context.Background(), 101, number, password)
 	before, beforeErr := f.s.Enrollments.FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
@@ -390,13 +390,13 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 		return "late", time.Time{}, nil
 	})
 	enrolled := make(chan error, 1)
-	go func() { _, _, e := f.c.Enroll(context.Background(), 101, Number, Password); enrolled <- e }()
+	go func() { _, _, e := f.c.Enroll(context.Background(), 101, number, password); enrolled <- e }()
 	<-entered
 	removed := make(chan error, 1)
 	// When
 	go func() { removed <- f.c.Remove(context.Background(), 101) }()
 	<-canceled
-	_, _, busy := f.c.Enroll(context.Background(), 101, Number, Password)
+	_, _, busy := f.c.Enroll(context.Background(), 101, number, password)
 	close(release)
 	enrollErr, removeErr := <-enrolled, <-removed
 	_, missing := f.s.Enrollments.FindByOwner(context.Background(), 101)
@@ -444,7 +444,7 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		id := f.enroll(t, 101)
 		var calls atomic.Int32
 		rejectInsert(t, f.path, "history")
-		c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+		c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 			calls.Add(1)
 			return "B", time.Time{}, nil
 		}), Clock: f.clock})
@@ -525,7 +525,7 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.reopen(t)
-	c := New(Config{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+	c := NewCaseService(CaseServiceConfig{DB: f.s, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 		t.Error("recent baseline triggered portal work")
 		return "", time.Time{}, nil
 	}), Clock: f.clock})
@@ -555,7 +555,7 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	finished := make(chan error, 2)
 	for _, owner := range []int64{101, 202} {
 		go func(owner int64) {
-			_, _, err := f.c.Enroll(context.Background(), owner, Number, Password)
+			_, _, err := f.c.Enroll(context.Background(), owner, number, password)
 			finished <- err
 		}(owner)
 	}
@@ -582,7 +582,7 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 		}
 	}
 	f.c.Shutdown()
-	if _, _, e := f.c.Enroll(context.Background(), 101, Number, Password); !errors.Is(e, ErrClosed) {
+	if _, _, e := f.c.Enroll(context.Background(), 101, number, password); !errors.Is(e, ErrClosed) {
 		t.Fatal("enrollment admitted after shutdown")
 	}
 	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, ErrClosed) {

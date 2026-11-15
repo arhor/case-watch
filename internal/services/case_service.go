@@ -1,10 +1,11 @@
-// Package cases implements enrollment, status checks and removal.
-// One Service is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
-package cases
+// Package services implements enrollment, status checks and removal.
+// One CaseService is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
+package services
 
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,22 +27,14 @@ var (
 	ErrNotFound = repositories.ErrNotFound
 )
 
-type check struct {
-	cancel     context.CancelFunc
-	done       chan struct{}
-	status     models.Status
-	err        error
-	waiters    int
-	enrollment bool
+type CaseServiceConfig struct {
+	DB             *store.Store
+	Portal         models.Portal
+	Clock          utils.Clock
+	OnStorageError func()
 }
 
-type ownerState struct {
-	check       *check
-	removing    bool
-	removalDone chan struct{}
-}
-
-type Service struct {
+type CaseService struct {
 	mu             sync.Mutex
 	closed         bool
 	owners         map[int64]*ownerState
@@ -51,15 +44,8 @@ type Service struct {
 	clock          utils.Clock
 }
 
-type Config struct {
-	DB             *store.Store
-	Portal         models.Portal
-	Clock          utils.Clock
-	OnStorageError func()
-}
-
-func New(config Config) *Service {
-	return &Service{
+func NewCaseService(config CaseServiceConfig) *CaseService {
+	return &CaseService{
 		owners:         make(map[int64]*ownerState),
 		db:             config.DB,
 		portal:         config.Portal,
@@ -70,7 +56,7 @@ func New(config Config) *Service {
 
 // HasEnrollment lets interactive entry points ask a business-level question
 // without reading an enrollment repository directly.
-func (this *Service) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
+func (this *CaseService) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
 	if owner <= 0 {
 		return false, ErrDenied
 	}
@@ -86,7 +72,7 @@ func (this *Service) HasEnrollment(ctx context.Context, owner int64) (bool, erro
 
 // ScheduledOwners returns the enrolled owners available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
-func (this *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
+func (this *CaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	items, err := this.db.Enrollments.FindAll(ctx)
 	if err != nil {
 		return nil, this.storageError(ctx, err)
@@ -100,14 +86,14 @@ func (this *Service) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
+func (this *CaseService) Enroll(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	if owner <= 0 {
 		return "", time.Time{}, ErrDenied
 	}
 	if ctx.Err() != nil {
 		return "", time.Time{}, ctx.Err()
 	}
-	if strings.TrimSpace(Number) == "" || strings.TrimSpace(Password) == "" {
+	if strings.TrimSpace(number) == "" || strings.TrimSpace(password) == "" {
 		return "", time.Time{}, ErrInvalid
 	}
 	this.mu.Lock()
@@ -148,7 +134,7 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
-	stage, checkedAt, err := this.baseline(work, owner, Number, Password)
+	stage, checkedAt, err := this.baseline(work, owner, number, password)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -160,28 +146,28 @@ func (this *Service) Enroll(ctx context.Context, owner int64, Number, Password s
 	if work.Err() != nil {
 		return "", time.Time{}, work.Err()
 	}
-	if err = this.saveEnrollment(work, owner, id, Number, Password, stage, checkedAt); err != nil {
+	if err = this.saveEnrollment(work, owner, id, number, password, stage, checkedAt); err != nil {
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
 	committed = true
 	return stage, checkedAt, nil
 }
 
-func (this *Service) Status(ctx context.Context, owner int64) (models.Status, error) {
+func (this *CaseService) Status(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (this *Service) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
+func (this *CaseService) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, false)
 }
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the enrollment and reopens work.
-func (this *Service) Remove(ctx context.Context, owner int64) error {
+func (this *CaseService) Remove(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
 	}
@@ -237,7 +223,7 @@ func (this *Service) Remove(ctx context.Context, owner int64) error {
 // Shutdown permanently closes admission, cancels every owner check and drains
 // work before storage may close. Concurrent calls are safe and all wait for the
 // same admitted work. Collaborators must honor cancellation.
-func (this *Service) Shutdown() {
+func (this *CaseService) Shutdown() {
 	this.mu.Lock()
 	this.closed = true
 	var done []<-chan struct{}
@@ -256,9 +242,29 @@ func (this *Service) Shutdown() {
 	}
 }
 
-// -- Internal implementation ---------------------------------------------------------------------
+// -- Internals ----------------------------------------------------------------
 
-func (this *Service) state(owner int64) *ownerState {
+const (
+	caseCheckCooldown   = "case_check"
+	manualCheckCooldown = "manual_check"
+)
+
+type check struct {
+	cancel     context.CancelFunc
+	done       chan struct{}
+	status     models.Status
+	err        error
+	waiters    int
+	enrollment bool
+}
+
+type ownerState struct {
+	check       *check
+	removing    bool
+	removalDone chan struct{}
+}
+
+func (this *CaseService) state(owner int64) *ownerState {
 	state := this.owners[owner]
 	if state == nil {
 		state = &ownerState{}
@@ -267,7 +273,7 @@ func (this *Service) state(owner int64) *ownerState {
 	return state
 }
 
-func (this *Service) storageError(ctx context.Context, err error) error {
+func (this *CaseService) storageError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -296,10 +302,10 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *Service) baseline(ctx context.Context, owner int64, Number, Password string) (string, time.Time, error) {
+func (this *CaseService) baseline(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	stage, _, err := this.portal.Check(bounded, owner, Number, Password)
+	stage, _, err := this.portal.Check(bounded, owner, number, password)
 	if err != nil {
 		return "", time.Time{}, canceled(bounded, ErrCheck)
 	}
@@ -313,7 +319,7 @@ func cached(stage string, checkedAt time.Time) models.Status {
 	return models.Status{Stage: stage, CheckedAt: checkedAt}
 }
 
-func (this *Service) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
+func (this *CaseService) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
 	if owner <= 0 {
 		return models.Status{}, ErrDenied
 	}
@@ -375,7 +381,7 @@ func (this *Service) check(ctx context.Context, owner int64, manual bool) (model
 }
 
 // Scheduled calls wait for their canceled check to finish before returning.
-func (this *Service) wait(
+func (this *CaseService) wait(
 	ctx context.Context,
 	check *check,
 	drain bool,
@@ -414,7 +420,7 @@ func later(a, b time.Time) time.Time {
 	return b
 }
 
-func (this *Service) refresh(
+func (this *CaseService) refresh(
 	ctx context.Context,
 	owner int64,
 	state *ownerState,
@@ -446,4 +452,148 @@ func (this *Service) refresh(
 	state.check = nil
 
 	close(check.done)
+}
+
+func (this *CaseService) saveEnrollment(
+	ctx context.Context,
+	owner int64,
+	id string,
+	number, password string,
+	stage string,
+	checkedAt time.Time,
+) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
+		return store.Enrollments.Create(ctx, owner, id, number, password, stage, checkedAt)
+	})
+}
+
+func (this *CaseService) saveObservation(
+	ctx context.Context,
+	owner int64,
+	id string,
+	stage string,
+	checkedAt time.Time,
+) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
+		e, err := store.Enrollments.FindByIdentity(ctx, owner, id)
+		if err != nil {
+			return err
+		}
+		if err = store.Enrollments.UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
+			return err
+		}
+		if e.Stage == stage {
+			return nil
+		}
+		return store.History.Append(ctx, id, e.Stage, stage, checkedAt)
+	})
+}
+
+func (this *CaseService) deleteEnrollment(
+	ctx context.Context,
+	owner int64,
+	id string,
+) error {
+	return this.db.RunInTx(ctx, func(store *store.Store) error {
+		if err := store.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
+			return err
+		}
+		if err := store.History.DeleteByEnrollmentID(ctx, id); err != nil {
+			return err
+		}
+		return store.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+	})
+}
+
+func (this *CaseService) checkEligibility(
+	ctx context.Context,
+	owner int64,
+	id string,
+	manual bool,
+) (time.Time, error) {
+	var next time.Time
+	err := this.db.RunInTx(ctx, func(store *store.Store) error {
+		var err error
+		next, err = eligibility(ctx, store, owner, id, manual)
+		return err
+	})
+	return next, err
+}
+
+func (this *CaseService) reserveCheck(
+	ctx context.Context,
+	owner int64,
+	id string,
+	manual bool,
+	now time.Time,
+) (models.CheckReservation, error) {
+	if now.IsZero() {
+		return models.CheckReservation{}, repositories.ErrInvalid
+	}
+	var result models.CheckReservation
+	err := this.db.RunInTx(ctx, func(store *store.Store) error {
+		next, err := eligibility(ctx, store, owner, id, manual)
+		if err != nil {
+			return err
+		}
+		result.NextEligibleAt = next
+		if now.Before(next) {
+			return nil
+		}
+		if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
+			SubjectType: caseCheckCooldown,
+			SubjectID:   id,
+			StartedAt:   now,
+		}); err != nil {
+			return err
+		}
+		if manual {
+			if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
+				SubjectType: manualCheckCooldown,
+				SubjectID:   strconv.FormatInt(owner, 10),
+				StartedAt:   now,
+			}); err != nil {
+				return err
+			}
+		}
+		result = models.CheckReservation{
+			Reserved:       true,
+			NextEligibleAt: now.Add(time.Minute),
+		}
+		return nil
+	})
+	if err != nil {
+		return models.CheckReservation{}, err
+	}
+	return result, nil
+}
+
+func eligibility(
+	ctx context.Context,
+	store *store.Store,
+	owner int64,
+	id string,
+	manual bool,
+) (time.Time, error) {
+	if _, err := store.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
+		return time.Time{}, err
+	}
+	c, err := store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+	if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+		return time.Time{}, err
+	}
+	caseStart := c.StartedAt
+	if manual {
+		c, err = store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
+		if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+			return time.Time{}, err
+		}
+		if c.StartedAt.After(caseStart) {
+			caseStart = c.StartedAt
+		}
+	}
+	if caseStart.IsZero() {
+		return time.Time{}, nil
+	}
+	return caseStart.Add(time.Minute), nil
 }
