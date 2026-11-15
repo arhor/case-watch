@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing Go Code"
+  short_description: "Write Go using case-watch repository conventions"
+  default_prompt: "Use $writing-go-code to implement this Go change in case-watch."
