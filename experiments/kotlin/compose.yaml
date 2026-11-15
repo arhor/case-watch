@@ -1,0 +1,22 @@
+services:
+  case-watch-kotlin:
+    image: case-watch-kotlin:0.1.0-alpine
+    build:
+      context: ../..
+      dockerfile: experiments/kotlin/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+          pids: 64
+    environment:
+      CASE_WATCH_TELEGRAM_BOT_TOKEN: ${CASE_WATCH_TELEGRAM_BOT_TOKEN:?required}
+      CASE_WATCH_DB_PATH: /data/case-watch.db
+    volumes:
+      - kotlin-data:/data
+volumes:
+  kotlin-data:
+    name: case-watch-kotlin-data
