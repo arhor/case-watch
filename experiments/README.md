@@ -4,8 +4,11 @@ Use this template to implement equivalent Case Watch services in different techn
 
 This document is an instruction template for an agent. Follow the steps in order, producing a technology-specific plan before implementation. Benchmark tooling and actual measurements are separate tasks.
 
+The template applies to any language or technology stack. Rust, Kotlin, and Node.js are examples, not a fixed set of supported technologies. Add another technology by following the same steps in a new experiment directory; no changes to this template are required.
+
 ## Example requests
 
+- Implement Case Watch in `<technology>` following `experiments/README.md`.
 - Implement Case Watch in Rust following `experiments/README.md`.
 - Implement Case Watch in Kotlin following `experiments/README.md`.
 - Implement Case Watch in Node.js following `experiments/README.md`.
@@ -14,9 +17,9 @@ For a planning-only task, prefix the request with “Create the implementation p
 
 ## 1. Define the experiment
 
-Create `experiments/<technology>/`, using `rust`, `kotlin`, or `nodejs` for the examples above. Keep all implementation files and technology-specific documentation there; leave the Go application intact.
+Create `experiments/<technology>/`, choosing a descriptive lowercase directory name for the selected stack (for example, `rust`, `kotlin`, or `nodejs`). Keep all implementation files and technology-specific documentation there; leave the Go application intact.
 
-Record the target language, runtime, compiler, package manager, versions, and deployment architecture. For Node.js, explicitly select JavaScript or TypeScript; for Kotlin, explicitly select the runtime target. Choose supported versions and explain decisions that affect resource usage. Record the reference Go Git revision and any relevant uncommitted baseline changes.
+Record the target language, runtime, compiler where applicable, package manager, versions, and deployment architecture. Explicitly resolve stack variants that affect the experiment, such as JavaScript versus TypeScript for Node.js or the runtime target for Kotlin. Choose supported versions and explain decisions that affect resource usage. Record the reference Go Git revision and any relevant uncommitted baseline changes.
 
 **Deliverable:** an experiment identity section in `experiments/<technology>/PLAN.md`.
 
