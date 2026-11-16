@@ -1,0 +1,207 @@
+{
+  "utc": "2026-11-16T15:58:54.092045+00:00",
+  "revision": "107c5859fbdf7a8b8ef454aedeaf3f94ee7fec0f",
+  "host": {
+    "system": "Linux",
+    "node": "home-control-center",
+    "release": "6.18.50+rpt-rpi-2712",
+    "version": "#1 SMP PREEMPT Debian 1:6.18.50-1+rpt1 (2026-09-11)",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "cpu_count": 4,
+  "clock_ticks_per_second": 100,
+  "cpu_measurement": "cgroup v2 cpu.stat usage_usec; process ticks retained separately",
+  "memory": "MemTotal:        4146240 kB",
+  "cgroup_controllers": "cpuset cpu io pids\n",
+  "images": {
+    "go": {
+      "Id": "sha256:7a461bb18544d1dcc8abf4caa4e47d880eb5ce6f52ded2658ecc9a3aa6d5dbb0",
+      "RepoTags": [
+        "case-watch-case-watch:latest"
+      ],
+      "RepoDigests": [
+        "case-watch-case-watch@sha256:7a461bb18544d1dcc8abf4caa4e47d880eb5ce6f52ded2658ecc9a3aa6d5dbb0"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux",
+      "Size": 33896669
+    },
+    "rust": {
+      "Id": "sha256:8ff24c35ac98e7033a4f7e5ce3577f2c31bd44967293a0ac70a9396de2f6a6e8",
+      "RepoTags": [
+        "case-watch-rust:0.1.0-alpine"
+      ],
+      "RepoDigests": [
+        "case-watch-rust@sha256:8ff24c35ac98e7033a4f7e5ce3577f2c31bd44967293a0ac70a9396de2f6a6e8"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux",
+      "Size": 27918767
+    },
+    "kotlin": {
+      "Id": "sha256:2bfe75ebee869be21ff01c13ce71e41192b1abf6354f1d619bc8927ea4ee40a2",
+      "RepoTags": [
+        "case-watch-kotlin:0.1.0-alpine"
+      ],
+      "RepoDigests": [
+        "case-watch-kotlin@sha256:2bfe75ebee869be21ff01c13ce71e41192b1abf6354f1d619bc8927ea4ee40a2"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux",
+      "Size": 125484513
+    },
+    "node": {
+      "Id": "sha256:3fcc794b8e9ec40fe711675b062544234783b9ac61302180f70f59e0854765e3",
+      "RepoTags": [
+        "case-watch-node:24.22.3-alpine"
+      ],
+      "RepoDigests": [
+        "case-watch-node@sha256:3fcc794b8e9ec40fe711675b062544234783b9ac61302180f70f59e0854765e3"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux",
+      "Size": 196075668
+    }
+  },
+  "source_sha256": {
+    "experiments/final/builds.py": "820df7f192d17b79f6ff68caf9d58fc12205e52b256b15d6c8f3a5604f52a331",
+    "experiments/final/kotlin-Main.kt": "31ebf1784b495bf7ad585cae0116f59adf409fd9897a516daf6fc0a2d747597c",
+    "experiments/final/make-probes.py": "042717d8f237af31280d471b642f828a1e57ff51c5657b6749223c2133bba69a",
+    "experiments/final/report.py": "0f24fb37cbb60a860014b97fca52d0ab4f48f95288a3d9e99767947b8440085d",
+    "experiments/final/runtime.py": "d5b2773d772352f0bb9f887798804b6c64aa741187e1a9d8b8ff20f40a383e5e",
+    "experiments/final/rust-main.rs": "fc466268ccbdb131ad180840b554ec4adae3d8863a43852f2a56effe4f58a240",
+    "experiments/kotlin/src/main/kotlin/casewatch/CaseService.kt": "74af14f951245d33f03020f726dbc3b02789eb6f1b3555f7085edf76346767eb",
+    "experiments/kotlin/src/main/kotlin/casewatch/Config.kt": "e6383acc239bdf4b16cac2536a43ae56146b7e28dd538be9d106b00008cc6463",
+    "experiments/kotlin/src/main/kotlin/casewatch/Domain.kt": "701eab79629015382b4984f59b06f842faad6d9458e28ccc06aca3c7b7eb2267",
+    "experiments/kotlin/src/main/kotlin/casewatch/Main.kt": "fd9ba0194856dd9a00e1b6680688d558b479c1aca25e1d3af24692c2d5e26346",
+    "experiments/kotlin/src/main/kotlin/casewatch/PortalClient.kt": "07e2697edf43e9e5689c38602ca44966a15b85293e7c440153beea0f8a8f9734",
+    "experiments/kotlin/src/main/kotlin/casewatch/Schedule.kt": "df004f7a0ed64d4365295b25960e600ee770c882fcee5237ad5d986c32e66e11",
+    "experiments/kotlin/src/main/kotlin/casewatch/Storage.kt": "2dfdc97573cb2ba3a7deb14a51fd529afe8fb91fc3f74da5c795e6e6132cd735",
+    "experiments/kotlin/src/main/kotlin/casewatch/Telegram.kt": "49509317b3e781b23a5a0a414096f9aba6563e91e6fc332dd34c7903f61298ad",
+    "experiments/kotlin/src/main/resources/messages.json": "13c7f90abdfe4e82f801699672eb84cd5bd5dbd5b6b1344363476989c1f73a29",
+    "experiments/kotlin/src/main/resources/migrations/001.sql": "d3a0a83b759bbd694a9bb181d1a44c03c149fcd9bed88061fcb1741cec4edfe2",
+    "experiments/nodejs/measurements/go-probe/main.go": "f36f856031d1fb52ab596f563f566b77ed6383bf9d652e4e4a7db53403609173",
+    "experiments/nodejs/measurements/measure.py": "a6666183edc0eda11131abb2cd7b4a2730e9f7297da55e3a76305ce241a8687a",
+    "experiments/nodejs/measurements/probe.js": "1ec7e552c77db0d9215d07e05ed4ad669e634795a149637ea990e704923dfb3f",
+    "experiments/nodejs/src/common.js": "81627a213a003fd2dd19d90f4a81a261f67afcd62c59a77562de4737a76067cb",
+    "experiments/nodejs/src/config.js": "c8483ed9304b0492bca11752c76a340b5f91806c1ca6ed4887524692797f142a",
+    "experiments/nodejs/src/http.js": "e983c361146c994315d85ee1cf43fde28f6bc84f14aaac6167f81c58d1e234d4",
+    "experiments/nodejs/src/main.js": "a362133c456e05eb02dc144bd3c445d1c8e221115281b74fc2d2a36adc7b011b",
+    "experiments/nodejs/src/messages.json": "13c7f90abdfe4e82f801699672eb84cd5bd5dbd5b6b1344363476989c1f73a29",
+    "experiments/nodejs/src/portal.js": "56a36aa7b2970516e2e3f47e59d0fa6ea91029ef6fd03e2956ebcf74a4234ab3",
+    "experiments/nodejs/src/schedule.js": "ff3c76585092db7f1bd03a269c3157517300b8ade3b48029f5a82d7e386ed04a",
+    "experiments/nodejs/src/service.js": "8b6f2b171fde9e6d8deac3a007d54adcc588ca8faafe35606aff7e2691fcb12e",
+    "experiments/nodejs/src/storage.js": "586c19eab150f98f53652ba2e0cfac9818692d4d5ff2b0a16a804b8dfd4e6ed7",
+    "experiments/nodejs/src/telegram.js": "ec5daeea6ba697986a12f6822c080e5732d0d1ab6e10159def66e96b04af27e0",
+    "experiments/rust/src/config.rs": "6252fae7d36c01ce0729488428d9b12fa22982cd1dc9fcd9aa21f7b297bd95fd",
+    "experiments/rust/src/domain.rs": "6e4584a4dcec146d9a2682ab53f6cc43282310084c0af10202e1c679bb2699ce",
+    "experiments/rust/src/lib.rs": "b3e6a04909a0afe63b6be4fa109f9b3093a3d2858d07e3187baba82f6013b96b",
+    "experiments/rust/src/main.rs": "0a2e05f74442f175a9b964ebf358cc325e960a29f89605199e2c0f0888379949",
+    "experiments/rust/src/messages.json": "13c7f90abdfe4e82f801699672eb84cd5bd5dbd5b6b1344363476989c1f73a29",
+    "experiments/rust/src/portal.rs": "db5832b3b17f977374934a50668596337f7e7a91632170e71da10787d45ed7e3",
+    "experiments/rust/src/schedule.rs": "b92ae29f1aaff85d850a5a906a7393ad32e109ed2d722302a2565484ec5770a5",
+    "experiments/rust/src/service.rs": "3e40c8ba30910859e37a23b11fa80b7576b69386c2a274a456a7d50791c77a6c",
+    "experiments/rust/src/storage.rs": "94279e158c6e67624f101d08161c6ae6797de3983c3fd40186be72f52006d1b7",
+    "experiments/rust/src/telegram.rs": "f215519d35a1a0aed4a5969ee130327c17216437a93b6fb43bcda4e84448928c",
+    "go.mod": "6310e8d9550bbe55add33a3435d4a74038017f2a2abc0056862d5c31da95647d",
+    "go.sum": "5a342dd6d69081bf22a11544477c37e9f46b3aa422fe0d224fc3cc58a721bc29",
+    "internal/application/application.go": "7f306e97ab7b4ac37b3d6465e303bf5637fdb293b2a8bdaa23f26c1d5331fd9f",
+    "internal/application/config.go": "08d2cc4c927f36965db23a8860f42dac0b629386d1ad70a07bcb8645974dd4bb",
+    "internal/application/config_test.go": "d86665b33e7cdb5f6381134a0e8da1048834efcf622023bf6e9b9dd6f0cded38",
+    "internal/clients/gdansk_portal_client.go": "ed016be43688135aea67cc21a040f97f27fd9788a35c16714166155c36f12714",
+    "internal/clients/gdansk_portal_client_test.go": "a0dfdf137746180bbde5819b531402bb9215fcda5a9933937b478d1a63d71305",
+    "internal/clients/testdata/README.md": "4c4e299138a9c9828d77e120fae89f8800b71b9e586882e691817f0afccc97c5",
+    "internal/clients/testdata/bootstrap.html": "9e0b302e0e1ef7a59c118df02b9492cd517dc2442230a7d5059fe1c1b8515700",
+    "internal/clients/testdata/rpc0.json": "77ffca80a7e7fcd8a0613dde64f6c37c00ea761c43351b4d1a6e9b4538a251b6",
+    "internal/clients/testdata/rpc1.json": "a50db222b69db5c8e8c69b296a3070f233b9ed2cc808bf5b8b3c278b25c267cd",
+    "internal/clients/testdata/rpc2.json": "069883123f8a809b6200aa7b8975fa5afbd4dc665047a69ef99bc8282f365afe",
+    "internal/clients/testdata/rpc3.json": "fff37377e03bb5b779a24cbd323c123dcd0d8a542fb04471e2ef1051444c645d",
+    "internal/database/database.go": "b5895eccb06703d836d28fe94dfae37d716df32a83c62548a919322a1bbd5fa9",
+    "internal/database/database_test.go": "f1b6c02c0e9f2a13c1a716ef0d89af41fdbd189e1de6c08da66547d8c6220e29",
+    "internal/database/migrations/migrations.go": "9e1c89ac88b6430da91b8eada9b30996663352b1344f5cac5df7e7cc0fc7a120",
+    "internal/database/repositories/cooldown_repository.go": "c5b095beade0fda21ec0405218b66189cac4b0543c3e4d851ceae8d89b1bfc55",
+    "internal/database/repositories/enrollment_repository.go": "a11ebd59cea352841e87920c03391992d77f73dfa67e7fa48f08d3d2bbbb7d64",
+    "internal/database/repositories/executor.go": "14d3b171233b20791ab17307907ccd6032a9d19446d362c04f4209c73f27eddf",
+    "internal/database/repositories/history_repository.go": "6c32e7a62b6dc15cd5a85ed70c417f40ab1882535099c2203464c6f2abb87fba",
+    "internal/database/repositories/shared.go": "77566f938ec80d22e64e8127db2a5550e8232466fbc18a2b671a3b15a6090768",
+    "internal/database/repositories/store.go": "a86157f7d3e67c7ea3e1f7341cd5e282a5c60491808b302d7c71fa47838b21a1",
+    "internal/database/repositories/store_test.go": "18441beb8f9b0659bd3b34c9927512b8cb616c814ba46b7e5a0325e99fdea8d2",
+    "internal/entrypoints/schedule/jobs.go": "7e2c0f5b30549a79e810eba4c0033083bbf909b7bab829be300be4da90866ca6",
+    "internal/entrypoints/schedule/jobs_test.go": "b351b1d89f8235a9d164a872628afc548cc7120421bd410197c740aee6ec7164",
+    "internal/entrypoints/telegram/bot.go": "cb55ad74b4f84a5b4be7c55c9be7888c925f3fd26b2350c05a336f15e9670d69",
+    "internal/entrypoints/telegram/bot_test.go": "9187e14730ab61070ca03bc62fc5bfdab462b9d25397434aadbd9bd487cca2c4",
+    "internal/entrypoints/telegram/commands_test.go": "d1eb60dace15c5d0d7cf2db6097436d9a179beda9a3dabaae5021de6b5ba48ec",
+    "internal/models/models.go": "f1709c109cd66a940bc71760b3fc7a2572a03951287075c9a59b9e53fb64f149",
+    "internal/services/case_service.go": "4bd76431a18378064360a6495399995c9fc27f6b7a16ee63086c046cb13f9ab5",
+    "internal/services/case_service_test.go": "13f822bdc84058fe511f8f3848342a7409ba0e373e539415eaed6686c3447ca4",
+    "internal/utils/clock.go": "203c597427c4974ade8cb919178fa8677ebbeca538b2fb1c04d9fa1c591c4fd4",
+    "internal/utils/http_client.go": "3373c5b9eb32281cbe5aff1b111f29ffcde76b68c764bf2efa71be357ca35da7",
+    "internal/utils/http_client_test.go": "a653a48b0aa5b9b2880a21261c1bc58841bae45adfc78f7cfd5e307c62b002ae",
+    "main.go": "23bd2b113ca6b84244f299161d553886e54aa4f013a674c27a3d57b982e3fe23"
+  },
+  "probe_sha256": {
+    "go-probe-bin": "e8ca6443963fa39c230252817ca98ac7bee61ce2c7a98935b83cad9b6696fc41",
+    "rust-probe-bin": "327c6cd64adaa66c80385c9fc3c2614e65d8f4bdbcb3e311522947bb030dd88f",
+    "kotlin-probe.jar": "03116d4ad224f5568fa924914c126d67827e641d0127ee7865b503a08adfaf89"
+  },
+  "parameters": {
+    "repetitions": 10,
+    "warmup_s": 10,
+    "idle_s": 60,
+    "sample_interval_s": 0.25
+  },
+  "docker_versions": {
+    "client": {
+      "Version": "29.9.2",
+      "ApiVersion": "1.56",
+      "GoVersion": "go1.26.10",
+      "GitCommit": "a82e528",
+      "Os": "linux",
+      "Arch": "arm64"
+    },
+    "server": {
+      "Version": "29.9.2",
+      "ApiVersion": "1.56",
+      "GoVersion": "go1.26.10",
+      "GitCommit": "0367cbe",
+      "Os": "linux",
+      "Arch": "arm64"
+    }
+  },
+  "cpu_hardware": {
+    "CPU implementer": [
+      "0x41"
+    ],
+    "CPU architecture": [
+      "8"
+    ],
+    "CPU variant": [
+      "0x4"
+    ],
+    "CPU part": [
+      "0xd0b"
+    ],
+    "CPU revision": [
+      "1"
+    ],
+    "Model": [
+      "Raspberry Pi 5 Model B Rev 1.1"
+    ]
+  },
+  "cpu_frequency_policy": {
+    "scaling_governor": "ondemand",
+    "cpuinfo_max_freq": "2400000",
+    "scaling_max_freq": "2400000"
+  },
+  "environment_details_recorded_utc": "2026-11-16T16:34:19.921763+00:00",
+  "analysis_refinements": [
+    {
+      "path": "experiments/final/report.py",
+      "collection_draft_sha256": "a8cba1d7489cca1fd2ee2cc654a58049e0cd1a4010dd78ce7ebbae4ca43fd76c",
+      "final_sha256": "0f24fb37cbb60a860014b97fca52d0ab4f48f95288a3d9e99767947b8440085d",
+      "utc": "2026-11-16T17:24:58.838617+00:00",
+      "scope": "Post-collection report summary, display precision, hardware details and qualifications; measurement code and raw data unchanged."
+    }
+  ]
+}

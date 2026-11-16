@@ -1,0 +1,35 @@
+{
+  "host": {
+    "system": "Linux",
+    "node": "home-control-center",
+    "release": "6.18.50+rpt-rpi-2712",
+    "version": "#1 SMP PREEMPT Debian 1:6.18.50-1+rpt1 (2026-09-11)",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "revision": "107c5859fbdf7a8b8ef454aedeaf3f94ee7fec0f",
+  "toolchains": {
+    "go": {
+      "versions": "go version go1.27.3 linux/arm64\n",
+      "image": "sha256:255b9ee143016405740ab25a0762ba6ed21bc179e974bbadac2f94961dac4a7a"
+    },
+    "rust": {
+      "versions": "rustc 1.100.0 (0ef1bc386 2026-11-09)\ncargo 1.100.0 (3acc79c0c 2026-11-05)\n",
+      "image": "sha256:fa9502b4c3e3d8d890909489dd9aaf369effa8b19faff548b6be332c1dd1126d"
+    },
+    "kotlin": {
+      "versions": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n\n------------------------------------------------------------\nGradle 9.7.0\n------------------------------------------------------------\n\nBuild time:    2026-08-06 14:07:35 UTC\nRevision:      3defbfc59d757b873d787b2261de5c7f8a00970a\n\nKotlin:        2.4.0\nGroovy:        4.0.32\nAnt:           Apache Ant(TM) version 1.10.17 compiled on April 6 2026\nLauncher JVM:  25.0.5 (Eclipse Adoptium 25.0.5+8-LTS)\nDaemon JVM:    /opt/java/openjdk (no Daemon JVM specified, using current Java home)\nOS:            Linux 6.18.50+rpt-rpi-2712 aarch64\n\n",
+      "image": "sha256:3d2b830c29a8bb08b1ae3408ebbdb791b428030c73804dc002d79ffe695ecaf8"
+    },
+    "node": {
+      "versions": "v24.22.3\n11.19.1\n",
+      "image": "sha256:5420eae3059b2ae2bc5f5bba1da0e7c56d4f9a753a83e4bcb8c3d870bf59295f"
+    }
+  },
+  "method": {
+    "samples_per_kind": 10,
+    "incremental_edit": "change an entrypoint error diagnostic literal; no dependency/API changes",
+    "fresh": "empty compiler outputs/caches; downloaded dependencies retained",
+    "timing": "Docker exec wall time, excludes explicit cache/output removal"
+  }
+}

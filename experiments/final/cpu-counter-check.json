@@ -1,0 +1,50 @@
+{
+  "purpose": "counter plumbing check on compiler container; excluded from application measurements",
+  "rows": [
+    {
+      "monotonic_s": 367085.681292303,
+      "cpu_time_s": 0.01,
+      "VmHWM": 800,
+      "VmRSS": 800,
+      "RssAnon": 96,
+      "RssFile": 704,
+      "VmSwap": 0,
+      "Threads": 1,
+      "cgroup_usage_usec": 4140653493,
+      "cgroup_user_usec": 3869460354,
+      "cgroup_system_usec": 271193139,
+      "cgroup_nr_throttled": 0,
+      "cgroup_throttled_usec": 0
+    },
+    {
+      "monotonic_s": 367085.981920118,
+      "cpu_time_s": 0.01,
+      "VmHWM": 800,
+      "VmRSS": 800,
+      "RssAnon": 96,
+      "RssFile": 704,
+      "VmSwap": 0,
+      "Threads": 1,
+      "cgroup_usage_usec": 4141764828,
+      "cgroup_user_usec": 3870511203,
+      "cgroup_system_usec": 271253624,
+      "cgroup_nr_throttled": 0,
+      "cgroup_throttled_usec": 0
+    }
+  ],
+  "metrics": {
+    "sample_duration_s": 0.30062781495507807,
+    "samples": 2,
+    "cpu_time_s": 1.1113350000005084,
+    "cpu_percent_one_core": 369.671382591984,
+    "rss_median_mib": 0.78125,
+    "rss_min_mib": 0.78125,
+    "rss_max_mib": 0.78125,
+    "process_lifetime_peak_rss_mib": 0.78125,
+    "threads_min": 1,
+    "threads_max": 1,
+    "swap_max_mib": 0.0,
+    "process_tick_cpu_time_s": 0.0,
+    "process_tick_cpu_percent_one_core": 0.0
+  }
+}

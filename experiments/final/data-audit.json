@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "build_trials": 80,
+  "runtime_trials": 120,
+  "raw_files_recomputed": 120,
+  "checks": [
+    "CPU usage and percentage recomputed from raw microsecond counters",
+    "RSS medians and lifetime peaks recomputed",
+    "Empty application diagnostic logs",
+    "No child processes",
+    "Effective CPU/task limits and absent memory controller verified",
+    "Source and compiled probe hashes match recorded identities"
+  ],
+  "maximum_swap_mib": 0.0,
+  "source_hashes_rechecked_utc": "2026-11-16T17:25:27.931145+00:00",
+  "analysis_refinements_recorded": "host.json",
+  "benchmark_containers_remaining": 0
+}
