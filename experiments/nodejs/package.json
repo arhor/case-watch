@@ -1,0 +1,28 @@
+{
+  "name": "case-watch-nodejs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.22.3"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test --test-timeout=15000 test/*.test.js",
+    "check": "node scripts/check.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "npm run check && npm pack --pack-destination /tmp"
+  },
+  "files": [
+    "src",
+    "migrations",
+    "README.md",
+    "PLAN.md",
+    "scripts"
+  ],
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "packageManager": "npm@11.19.1"
+}

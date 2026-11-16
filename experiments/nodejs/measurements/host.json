@@ -1,0 +1,133 @@
+{
+  "utc": "2026-11-16T07:07:43.338499+00:00",
+  "revision": "f6863f145fd9d77c381b666654716d182bebc5cb",
+  "go_probe_binary_sha256": "adf8ad45c40a4e4a6f9389bb74554a011f69ddd60652b40938fba35caf1ab390",
+  "git_status": [
+    "?? experiments/nodejs/"
+  ],
+  "host": {
+    "system": "Linux",
+    "node": "home-control-center",
+    "release": "6.18.50+rpt-rpi-2712",
+    "version": "#1 SMP PREEMPT Debian 1:6.18.50-1+rpt1 (2026-09-11)",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "go_toolchain": "go version go1.27.3 linux/arm64",
+  "node_runtime": {
+    "node": "24.22.3",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.9",
+    "brotli": "1.2.1",
+    "cldr": "48.0",
+    "icu": "78.3",
+    "llhttp": "9.4.4",
+    "merve": "1.2.2",
+    "modules": "137",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "3.5.9",
+    "simdjson": "4.6.11",
+    "simdutf": "6.4.0",
+    "sqlite": "3.54.1",
+    "tz": "2026e",
+    "undici": "7.30.2",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "13.6.233.17-node.63",
+    "zlib": "1.3.2.1-motley-285e94b",
+    "zstd": "1.5.7"
+  },
+  "cpu_count": 4,
+  "clock_ticks_per_second": 100,
+  "memory_total_kib": 4146240,
+  "cgroup_controllers": "cpuset cpu io pids",
+  "parameters": {
+    "repetitions": 2,
+    "warmup": 10,
+    "idle": 60,
+    "interval": 0.25,
+    "scenarios": [
+      "idle",
+      "manual",
+      "scheduled"
+    ],
+    "go_image": "case-watch-case-watch:latest",
+    "node_image": "case-watch-node:24.22.3"
+  },
+  "images": {
+    "go": {
+      "Id": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+      "RepoTags": [
+        "case-watch-case-watch:latest"
+      ],
+      "RepoDigests": [
+        "case-watch-case-watch@sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7"
+      ],
+      "Size": 33896669,
+      "Architecture": "arm64",
+      "Os": "linux"
+    },
+    "node": {
+      "Id": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+      "RepoTags": [
+        "case-watch-node:24.22.3"
+      ],
+      "RepoDigests": [
+        "case-watch-node@sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9"
+      ],
+      "Size": 349505803,
+      "Architecture": "arm64",
+      "Os": "linux"
+    }
+  },
+  "source_sha256": {
+    "experiments/nodejs/measurements/go-probe/main.go": "f36f856031d1fb52ab596f563f566b77ed6383bf9d652e4e4a7db53403609173",
+    "experiments/nodejs/measurements/measure.py": "a6666183edc0eda11131abb2cd7b4a2730e9f7297da55e3a76305ce241a8687a",
+    "experiments/nodejs/measurements/probe.js": "1ec7e552c77db0d9215d07e05ed4ad669e634795a149637ea990e704923dfb3f",
+    "experiments/nodejs/measurements/summarize.py": "91466d077fe90e886494da26359db4bdfe4199a9840f62d2f0153540de5bf135",
+    "experiments/nodejs/src/common.js": "81627a213a003fd2dd19d90f4a81a261f67afcd62c59a77562de4737a76067cb",
+    "experiments/nodejs/src/config.js": "c8483ed9304b0492bca11752c76a340b5f91806c1ca6ed4887524692797f142a",
+    "experiments/nodejs/src/http.js": "e983c361146c994315d85ee1cf43fde28f6bc84f14aaac6167f81c58d1e234d4",
+    "experiments/nodejs/src/main.js": "a362133c456e05eb02dc144bd3c445d1c8e221115281b74fc2d2a36adc7b011b",
+    "experiments/nodejs/src/messages.json": "13c7f90abdfe4e82f801699672eb84cd5bd5dbd5b6b1344363476989c1f73a29",
+    "experiments/nodejs/src/portal.js": "56a36aa7b2970516e2e3f47e59d0fa6ea91029ef6fd03e2956ebcf74a4234ab3",
+    "experiments/nodejs/src/schedule.js": "ff3c76585092db7f1bd03a269c3157517300b8ade3b48029f5a82d7e386ed04a",
+    "experiments/nodejs/src/service.js": "8b6f2b171fde9e6d8deac3a007d54adcc588ca8faafe35606aff7e2691fcb12e",
+    "experiments/nodejs/src/storage.js": "586c19eab150f98f53652ba2e0cfac9818692d4d5ff2b0a16a804b8dfd4e6ed7",
+    "experiments/nodejs/src/telegram.js": "ec5daeea6ba697986a12f6822c080e5732d0d1ab6e10159def66e96b04af27e0",
+    "internal/application/application.go": "7f306e97ab7b4ac37b3d6465e303bf5637fdb293b2a8bdaa23f26c1d5331fd9f",
+    "internal/application/config.go": "08d2cc4c927f36965db23a8860f42dac0b629386d1ad70a07bcb8645974dd4bb",
+    "internal/application/config_test.go": "d86665b33e7cdb5f6381134a0e8da1048834efcf622023bf6e9b9dd6f0cded38",
+    "internal/clients/gdansk_portal_client.go": "ed016be43688135aea67cc21a040f97f27fd9788a35c16714166155c36f12714",
+    "internal/clients/gdansk_portal_client_test.go": "a0dfdf137746180bbde5819b531402bb9215fcda5a9933937b478d1a63d71305",
+    "internal/database/database.go": "b5895eccb06703d836d28fe94dfae37d716df32a83c62548a919322a1bbd5fa9",
+    "internal/database/database_test.go": "f1b6c02c0e9f2a13c1a716ef0d89af41fdbd189e1de6c08da66547d8c6220e29",
+    "internal/database/migrations/migrations.go": "9e1c89ac88b6430da91b8eada9b30996663352b1344f5cac5df7e7cc0fc7a120",
+    "internal/database/repositories/cooldown_repository.go": "c5b095beade0fda21ec0405218b66189cac4b0543c3e4d851ceae8d89b1bfc55",
+    "internal/database/repositories/enrollment_repository.go": "a11ebd59cea352841e87920c03391992d77f73dfa67e7fa48f08d3d2bbbb7d64",
+    "internal/database/repositories/executor.go": "14d3b171233b20791ab17307907ccd6032a9d19446d362c04f4209c73f27eddf",
+    "internal/database/repositories/history_repository.go": "6c32e7a62b6dc15cd5a85ed70c417f40ab1882535099c2203464c6f2abb87fba",
+    "internal/database/repositories/shared.go": "77566f938ec80d22e64e8127db2a5550e8232466fbc18a2b671a3b15a6090768",
+    "internal/database/repositories/store.go": "a86157f7d3e67c7ea3e1f7341cd5e282a5c60491808b302d7c71fa47838b21a1",
+    "internal/database/repositories/store_test.go": "18441beb8f9b0659bd3b34c9927512b8cb616c814ba46b7e5a0325e99fdea8d2",
+    "internal/entrypoints/schedule/jobs.go": "7e2c0f5b30549a79e810eba4c0033083bbf909b7bab829be300be4da90866ca6",
+    "internal/entrypoints/schedule/jobs_test.go": "b351b1d89f8235a9d164a872628afc548cc7120421bd410197c740aee6ec7164",
+    "internal/entrypoints/telegram/bot.go": "cb55ad74b4f84a5b4be7c55c9be7888c925f3fd26b2350c05a336f15e9670d69",
+    "internal/entrypoints/telegram/bot_test.go": "9187e14730ab61070ca03bc62fc5bfdab462b9d25397434aadbd9bd487cca2c4",
+    "internal/entrypoints/telegram/commands_test.go": "d1eb60dace15c5d0d7cf2db6097436d9a179beda9a3dabaae5021de6b5ba48ec",
+    "internal/models/models.go": "f1709c109cd66a940bc71760b3fc7a2572a03951287075c9a59b9e53fb64f149",
+    "internal/services/case_service.go": "4bd76431a18378064360a6495399995c9fc27f6b7a16ee63086c046cb13f9ab5",
+    "internal/services/case_service_test.go": "13f822bdc84058fe511f8f3848342a7409ba0e373e539415eaed6686c3447ca4",
+    "internal/utils/clock.go": "203c597427c4974ade8cb919178fa8677ebbeca538b2fb1c04d9fa1c591c4fd4",
+    "internal/utils/http_client.go": "3373c5b9eb32281cbe5aff1b111f29ffcde76b68c764bf2efa71be357ca35da7",
+    "internal/utils/http_client_test.go": "a653a48b0aa5b9b2880a21261c1bc58841bae45adfc78f7cfd5e307c62b002ae"
+  }
+}

@@ -1,0 +1,614 @@
+[
+  {
+    "technology": "go",
+    "scenario": "idle",
+    "repetition": 1,
+    "pid": 168775,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      1.3212890625,
+      2.42919921875,
+      1.306640625
+    ],
+    "host_loadavg_end": [
+      0.40869140625,
+      1.9189453125,
+      1.20849609375
+    ],
+    "child_pids": [],
+    "readiness_s": 0.1422891616821289,
+    "window_start_monotonic_s": 337330.219950121,
+    "window_end_monotonic_s": 337390.327810963,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 60.3412838630029,
+      "samples": 242,
+      "cpu_time_s": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_median_mib": 12.3125,
+      "rss_min_mib": 12.3125,
+      "rss_max_mib": 12.34375,
+      "process_lifetime_peak_rss_mib": 12.34375,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "idle",
+    "repetition": 1,
+    "pid": 168924,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.40869140625,
+      1.9189453125,
+      1.20849609375
+    ],
+    "host_loadavg_end": [
+      0.17822265625,
+      1.53076171875,
+      1.123046875
+    ],
+    "child_pids": [],
+    "readiness_s": 0.5986030101776123,
+    "window_start_monotonic_s": 337401.577715112,
+    "window_end_monotonic_s": 337461.698863657,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 60.34316853398923,
+      "samples": 242,
+      "cpu_time_s": 0.009999999999999981,
+      "cpu_percent_one_core": 0.016571884180008423,
+      "rss_median_mib": 68.25,
+      "rss_min_mib": 68.25,
+      "rss_max_mib": 68.28125,
+      "process_lifetime_peak_rss_mib": 68.28125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "go",
+    "scenario": "manual",
+    "repetition": 1,
+    "pid": 169087,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      0.17822265625,
+      1.53076171875,
+      1.123046875
+    ],
+    "host_loadavg_end": [
+      0.126953125,
+      1.43017578125,
+      1.09765625
+    ],
+    "child_pids": [],
+    "readiness_s": 0.1690516471862793,
+    "window_start_monotonic_s": 337472.583838848,
+    "window_end_monotonic_s": 337482.802349605,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "sendMessage": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.266081392997876,
+      "samples": 42,
+      "cpu_time_s": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_median_mib": 13.078125,
+      "rss_min_mib": 12.296875,
+      "rss_max_mib": 13.53125,
+      "process_lifetime_peak_rss_mib": 13.53125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "manual",
+    "repetition": 1,
+    "pid": 169244,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.126953125,
+      1.43017578125,
+      1.09765625
+    ],
+    "host_loadavg_end": [
+      0.158203125,
+      1.35302734375,
+      1.07861328125
+    ],
+    "child_pids": [],
+    "readiness_s": 0.8082895278930664,
+    "window_start_monotonic_s": 337494.233929178,
+    "window_end_monotonic_s": 337504.448249657,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "sendMessage": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.266487921006046,
+      "samples": 42,
+      "cpu_time_s": 0.03999999999999998,
+      "cpu_percent_one_core": 0.3896171729589904,
+      "rss_median_mib": 73.9375,
+      "rss_min_mib": 68.25,
+      "rss_max_mib": 74.578125,
+      "process_lifetime_peak_rss_mib": 74.578125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "go",
+    "scenario": "scheduled",
+    "repetition": 1,
+    "pid": 169399,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      0.158203125,
+      1.35302734375,
+      1.07861328125
+    ],
+    "host_loadavg_end": [
+      0.16064453125,
+      1.25830078125,
+      1.0546875
+    ],
+    "child_pids": [],
+    "readiness_s": 0.14090824127197266,
+    "window_start_monotonic_s": 337515.133526834,
+    "window_end_monotonic_s": 337525.1598698,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 1,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "scheduled-done": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.265977449947968,
+      "samples": 42,
+      "cpu_time_s": 0.01,
+      "cpu_percent_one_core": 0.09740913662391382,
+      "rss_median_mib": 12.78125,
+      "rss_min_mib": 12.328125,
+      "rss_max_mib": 13.28125,
+      "process_lifetime_peak_rss_mib": 13.28125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "scheduled",
+    "repetition": 1,
+    "pid": 169547,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.16064453125,
+      1.25830078125,
+      1.0546875
+    ],
+    "host_loadavg_end": [
+      0.11376953125,
+      1.17578125,
+      1.03125
+    ],
+    "child_pids": [],
+    "readiness_s": 0.5940325260162354,
+    "window_start_monotonic_s": 337536.477272652,
+    "window_end_monotonic_s": 337546.5184189,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 1,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "scheduled-done": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.265530221047811,
+      "samples": 42,
+      "cpu_time_s": 0.03999999999999998,
+      "cpu_percent_one_core": 0.38965352143220466,
+      "rss_median_mib": 73.875,
+      "rss_min_mib": 68.265625,
+      "rss_max_mib": 74.5,
+      "process_lifetime_peak_rss_mib": 74.5,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "idle",
+    "repetition": 2,
+    "pid": 169691,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.11376953125,
+      1.17578125,
+      1.03125
+    ],
+    "host_loadavg_end": [
+      0.0859375,
+      0.9423828125,
+      0.958984375
+    ],
+    "child_pids": [],
+    "readiness_s": 0.7879672050476074,
+    "window_start_monotonic_s": 337558.143490705,
+    "window_end_monotonic_s": 337618.265712694,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 60.34003587794723,
+      "samples": 242,
+      "cpu_time_s": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_median_mib": 68.21875,
+      "rss_min_mib": 68.21875,
+      "rss_max_mib": 68.25,
+      "process_lifetime_peak_rss_mib": 68.25,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "go",
+    "scenario": "idle",
+    "repetition": 2,
+    "pid": 169856,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      0.0859375,
+      0.9423828125,
+      0.958984375
+    ],
+    "host_loadavg_end": [
+      0.10546875,
+      0.759765625,
+      0.8916015625
+    ],
+    "child_pids": [],
+    "readiness_s": 0.15445327758789062,
+    "window_start_monotonic_s": 337628.986227417,
+    "window_end_monotonic_s": 337689.095423294,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 60.34345573402243,
+      "samples": 242,
+      "cpu_time_s": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_median_mib": 12.375,
+      "rss_min_mib": 12.375,
+      "rss_max_mib": 12.390625,
+      "process_lifetime_peak_rss_mib": 12.390625,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "manual",
+    "repetition": 2,
+    "pid": 170012,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.10546875,
+      0.759765625,
+      0.8916015625
+    ],
+    "host_loadavg_end": [
+      0.068359375,
+      0.69775390625,
+      0.8671875
+    ],
+    "child_pids": [],
+    "readiness_s": 0.7384216785430908,
+    "window_start_monotonic_s": 337700.586013929,
+    "window_end_monotonic_s": 337710.791673387,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "sendMessage": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.264402083004825,
+      "samples": 42,
+      "cpu_time_s": 0.04000000000000001,
+      "cpu_percent_one_core": 0.3896963474007861,
+      "rss_median_mib": 73.96875,
+      "rss_min_mib": 68.28125,
+      "rss_max_mib": 74.8125,
+      "process_lifetime_peak_rss_mib": 74.8125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "go",
+    "scenario": "manual",
+    "repetition": 2,
+    "pid": 170155,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      0.068359375,
+      0.69775390625,
+      0.8671875
+    ],
+    "host_loadavg_end": [
+      0.1220703125,
+      0.66845703125,
+      0.853515625
+    ],
+    "child_pids": [],
+    "readiness_s": 0.15166044235229492,
+    "window_start_monotonic_s": 337721.58769664,
+    "window_end_monotonic_s": 337731.787854924,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "sendMessage": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.265578019956592,
+      "samples": 42,
+      "cpu_time_s": 0.019999999999999997,
+      "cpu_percent_one_core": 0.1948258535575824,
+      "rss_median_mib": 13.078125,
+      "rss_min_mib": 12.375,
+      "rss_max_mib": 13.59375,
+      "process_lifetime_peak_rss_mib": 13.59375,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "node",
+    "scenario": "scheduled",
+    "repetition": 2,
+    "pid": 170304,
+    "image": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "host_loadavg_start": [
+      0.1220703125,
+      0.66845703125,
+      0.853515625
+    ],
+    "host_loadavg_end": [
+      0.08642578125,
+      0.62451171875,
+      0.833984375
+    ],
+    "child_pids": [],
+    "readiness_s": 0.7797954082489014,
+    "window_start_monotonic_s": 337743.142531348,
+    "window_end_monotonic_s": 337753.183849598,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 2,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "scheduled-done": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.26603304001037,
+      "samples": 42,
+      "cpu_time_s": 0.04000000000000001,
+      "cpu_percent_one_core": 0.38963443663298014,
+      "rss_median_mib": 73.96875,
+      "rss_min_mib": 68.234375,
+      "rss_max_mib": 74.609375,
+      "process_lifetime_peak_rss_mib": 74.609375,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  },
+  {
+    "technology": "go",
+    "scenario": "scheduled",
+    "repetition": 2,
+    "pid": 170458,
+    "image": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+    "host_loadavg_start": [
+      0.08642578125,
+      0.62451171875,
+      0.833984375
+    ],
+    "host_loadavg_end": [
+      0.123046875,
+      0.59912109375,
+      0.8203125
+    ],
+    "child_pids": [],
+    "readiness_s": 0.1446676254272461,
+    "window_start_monotonic_s": 337764.078060661,
+    "window_end_monotonic_s": 337774.117930371,
+    "warmup_s": 10,
+    "request_counts": {
+      "getMe": 1,
+      "getMyCommands": 1,
+      "getUpdates": 1,
+      "portal_get": 1,
+      "portal_rpc": 4,
+      "scheduled-done": 1
+    },
+    "diagnostic_lines": 0,
+    "cgroup": {
+      "cpu.max": "25000 100000",
+      "pids.max": "64",
+      "memory.max": null,
+      "memory.peak": null
+    },
+    "requested_memory_bytes": 134217728,
+    "docker_recorded_memory_bytes": 0,
+    "metrics": {
+      "sample_duration_s": 10.266244661004748,
+      "samples": 42,
+      "cpu_time_s": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_median_mib": 12.78125,
+      "rss_min_mib": 12.359375,
+      "rss_max_mib": 13.203125,
+      "process_lifetime_peak_rss_mib": 13.203125,
+      "threads_min": 7,
+      "threads_max": 7,
+      "swap_max_mib": 0.0
+    }
+  }
+]

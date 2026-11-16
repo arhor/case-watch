@@ -1,0 +1,19 @@
+{
+  "architecture": "linux/arm64",
+  "metric": "docker image inspect .Size",
+  "debian": {
+    "tag": "case-watch-node:24.22.3",
+    "id": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+    "bytes": 349505803
+  },
+  "alpine": {
+    "tag": "case-watch-node:24.22.3-alpine",
+    "id": "sha256:3fcc794b8e9ec40fe711675b062544234783b9ac61302180f70f59e0854765e3",
+    "bytes": 196075668
+  },
+  "reduction_percent": 43.89916667563886,
+  "node_binary_bytes": 128247648,
+  "tests_passed_in_build_stage": 35,
+  "tests_passed_in_minimal_runtime": 35,
+  "cpu_rss_remeasured": false
+}

@@ -1,0 +1,23 @@
+services:
+  case-watch-node:
+    image: case-watch-node:24.22.3-alpine
+    platform: linux/arm64
+    build:
+      context: ../..
+      dockerfile: experiments/nodejs/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 90s
+    environment:
+      CASE_WATCH_TELEGRAM_BOT_TOKEN: ${CASE_WATCH_TELEGRAM_BOT_TOKEN:?set bot token}
+      CASE_WATCH_DB_PATH: /data/case-watch-node.db
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+          pids: 64
+    volumes:
+      - node-data:/data
+volumes:
+  node-data:
+    name: case-watch-node-data
