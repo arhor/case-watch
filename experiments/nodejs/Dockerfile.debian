@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS verify
+WORKDIR /workspace/experiments/nodejs
+COPY experiments/nodejs/package*.json ./
+RUN npm ci --ignore-scripts
+COPY experiments/nodejs/ ./
+COPY internal/clients/testdata/ /workspace/internal/clients/testdata/
+RUN npm run format:check && npm run check && npm test && npm run build
+
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runtime
+WORKDIR /app
+COPY --from=verify /workspace/experiments/nodejs/src/ ./src/
+COPY --from=verify /workspace/experiments/nodejs/migrations/ ./migrations/
+COPY --from=verify /workspace/experiments/nodejs/package.json ./
+COPY certificates/*.crt /usr/local/share/ca-certificates/
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/certum-dv-tls-g2-r39-ca.crt
+RUN node --input-type=module -e "import { DatabaseSync } from 'node:sqlite'; const db=new DatabaseSync(':memory:'); db.exec('SELECT 1'); db.close(); if(new Intl.DateTimeFormat('en',{timeZone:'Europe/Warsaw'}).resolvedOptions().timeZone!=='Europe/Warsaw') process.exit(1)"
+CMD ["node", "src/main.js"]

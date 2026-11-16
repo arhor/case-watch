@@ -1,0 +1,222 @@
+{
+  "go": {
+    "idle": {
+      "rss_median_mib": {
+        "median": 12.34375,
+        "min": 12.3125,
+        "max": 12.375
+      },
+      "cpu_percent_one_core": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "cpu_time_s": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 12.3671875,
+        "min": 12.34375,
+        "max": 12.390625
+      },
+      "readiness_s": {
+        "median": 0.14837121963500977,
+        "min": 0.1422891616821289,
+        "max": 0.15445327758789062
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "manual": {
+      "rss_median_mib": {
+        "median": 13.078125,
+        "min": 13.078125,
+        "max": 13.078125
+      },
+      "cpu_percent_one_core": {
+        "median": 0.0974129267787912,
+        "min": 0.0,
+        "max": 0.1948258535575824
+      },
+      "cpu_time_s": {
+        "median": 0.009999999999999998,
+        "min": 0.0,
+        "max": 0.019999999999999997
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 13.5625,
+        "min": 13.53125,
+        "max": 13.59375
+      },
+      "readiness_s": {
+        "median": 0.1603560447692871,
+        "min": 0.15166044235229492,
+        "max": 0.1690516471862793
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "scheduled": {
+      "rss_median_mib": {
+        "median": 12.78125,
+        "min": 12.78125,
+        "max": 12.78125
+      },
+      "cpu_percent_one_core": {
+        "median": 0.04870456831195691,
+        "min": 0.0,
+        "max": 0.09740913662391382
+      },
+      "cpu_time_s": {
+        "median": 0.005,
+        "min": 0.0,
+        "max": 0.01
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 13.2421875,
+        "min": 13.203125,
+        "max": 13.28125
+      },
+      "readiness_s": {
+        "median": 0.14278793334960938,
+        "min": 0.14090824127197266,
+        "max": 0.1446676254272461
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "image": {
+      "Id": "sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7",
+      "RepoTags": [
+        "case-watch-case-watch:latest"
+      ],
+      "RepoDigests": [
+        "case-watch-case-watch@sha256:2d1cdfeef681bcc3d06956e98786a33663a5de4382de0371c5db0b97290d8db7"
+      ],
+      "Size": 33896669,
+      "Architecture": "arm64",
+      "Os": "linux"
+    }
+  },
+  "node": {
+    "idle": {
+      "rss_median_mib": {
+        "median": 68.234375,
+        "min": 68.21875,
+        "max": 68.25
+      },
+      "cpu_percent_one_core": {
+        "median": 0.008285942090004212,
+        "min": 0.0,
+        "max": 0.016571884180008423
+      },
+      "cpu_time_s": {
+        "median": 0.0049999999999999906,
+        "min": 0.0,
+        "max": 0.009999999999999981
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 68.265625,
+        "min": 68.25,
+        "max": 68.28125
+      },
+      "readiness_s": {
+        "median": 0.6932851076126099,
+        "min": 0.5986030101776123,
+        "max": 0.7879672050476074
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "manual": {
+      "rss_median_mib": {
+        "median": 73.953125,
+        "min": 73.9375,
+        "max": 73.96875
+      },
+      "cpu_percent_one_core": {
+        "median": 0.38965676017988826,
+        "min": 0.3896171729589904,
+        "max": 0.3896963474007861
+      },
+      "cpu_time_s": {
+        "median": 0.039999999999999994,
+        "min": 0.03999999999999998,
+        "max": 0.04000000000000001
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 74.6953125,
+        "min": 74.578125,
+        "max": 74.8125
+      },
+      "readiness_s": {
+        "median": 0.7733556032180786,
+        "min": 0.7384216785430908,
+        "max": 0.8082895278930664
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "scheduled": {
+      "rss_median_mib": {
+        "median": 73.921875,
+        "min": 73.875,
+        "max": 73.96875
+      },
+      "cpu_percent_one_core": {
+        "median": 0.3896439790325924,
+        "min": 0.38963443663298014,
+        "max": 0.38965352143220466
+      },
+      "cpu_time_s": {
+        "median": 0.039999999999999994,
+        "min": 0.03999999999999998,
+        "max": 0.04000000000000001
+      },
+      "process_lifetime_peak_rss_mib": {
+        "median": 74.5546875,
+        "min": 74.5,
+        "max": 74.609375
+      },
+      "readiness_s": {
+        "median": 0.6869139671325684,
+        "min": 0.5940325260162354,
+        "max": 0.7797954082489014
+      },
+      "repetitions": 2,
+      "threads": [
+        7,
+        7
+      ]
+    },
+    "image": {
+      "Id": "sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9",
+      "RepoTags": [
+        "case-watch-node:24.22.3"
+      ],
+      "RepoDigests": [
+        "case-watch-node@sha256:792db207b956ed55a359e90b069364dc591bc252c3d85bf2c843f10da94ae7d9"
+      ],
+      "Size": 349505803,
+      "Architecture": "arm64",
+      "Os": "linux"
+    }
+  }
+}

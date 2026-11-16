@@ -1,0 +1,11 @@
+**/.git
+**/node_modules
+**/.env
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.tgz
+experiments/kotlin
+experiments/rust
+
+experiments/nodejs/measurements
