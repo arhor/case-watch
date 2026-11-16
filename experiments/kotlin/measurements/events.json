@@ -1,0 +1,78 @@
+[
+  {
+    "utc": "2026-11-15T21:48:31.445007+00:00",
+    "event": "go_stopped"
+  },
+  {
+    "utc": "2026-11-15T21:48:32.034096+00:00",
+    "event": "independent_database_seeded",
+    "counts": {
+      "enrollments": 1,
+      "history": 0,
+      "cooldowns": 2
+    },
+    "active_cases": 1,
+    "volume": "case-watch-kotlin-measurement-data"
+  },
+  {
+    "utc": "2026-11-15T21:48:35.324894+00:00",
+    "event": "kotlin_started",
+    "pid": 138674,
+    "launch_command_seconds": 3.2904827389866114,
+    "image": "sha256:2bfe75ebee869be21ff01c13ce71e41192b1abf6354f1d619bc8927ea4ee40a2",
+    "cpu_quota_nanocpus": 250000000,
+    "effective_memory_limit_bytes": 0,
+    "pid_limit": 64,
+    "duration_seconds": 300,
+    "phases": {
+      "warmup": [
+        0,
+        60
+      ],
+      "steady": [
+        60,
+        180
+      ],
+      "manual_activity_window": [
+        180,
+        300
+      ]
+    }
+  },
+  {
+    "utc": "2026-11-15T21:48:35.355198+00:00",
+    "event": "phase",
+    "phase": "warmup"
+  },
+  {
+    "utc": "2026-11-15T21:49:35.639789+00:00",
+    "event": "phase",
+    "phase": "steady"
+  },
+  {
+    "utc": "2026-11-15T21:51:36.218768+00:00",
+    "event": "phase",
+    "phase": "manual_activity_window"
+  },
+  {
+    "utc": "2026-11-15T21:53:36.799718+00:00",
+    "event": "trial_completed",
+    "diagnostics": {
+      "service operation failed": 0,
+      "check_failed": 0,
+      "telegram polling failure": 0,
+      "telegram reply failure": 0,
+      "telegram deletion failure": 0,
+      "telegram command synchronization failure": 0
+    },
+    "other_diagnostic_lines": 0
+  },
+  {
+    "utc": "2026-11-15T21:53:37.339810+00:00",
+    "event": "go_restored"
+  },
+  {
+    "utc": "2026-11-15T21:53:37.348891+00:00",
+    "event": "updater_restored"
+  }
+]

@@ -1,0 +1,7 @@
+.gradle/
+build/
+*.db
+*.db-*
+.env
+
+__pycache__/
