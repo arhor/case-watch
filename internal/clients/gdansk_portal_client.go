@@ -19,8 +19,6 @@ import (
 	"github.com/arhor/case-watch/internal/utils"
 )
 
-type Kind string
-
 const (
 	Authentication Kind = "authentication"
 	Transport      Kind = "transport"
@@ -28,6 +26,8 @@ const (
 	Canceled       Kind = "canceled"
 	Deadline       Kind = "deadline"
 )
+
+type Kind string
 
 // Error contains only a stable classification, never remote text or credentials.
 type Error struct {
@@ -58,8 +58,6 @@ type GdanskPortalClient struct {
 	budget     int
 }
 
-var _ models.Portal = (*GdanskPortalClient)(nil)
-
 // NewGdanskPortalClient creates a client with bounded requests and production defaults.
 func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClient {
 	base := options.BaseURL
@@ -87,17 +85,17 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 }
 
 // Check returns the portal's stage text and the completion time of one bounded check.
-func (c *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error) {
-	ctx, cancel := context.WithTimeout(ctx, c.overall)
+func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error) {
+	ctx, cancel := context.WithTimeout(ctx, this.overall)
 	defer cancel()
 	defer func() { err = classify(err) }()
 
 	defer func() {
 		if err != nil {
-			c.ForgetSession(ownerID)
+			this.ForgetSession(ownerID)
 		}
 	}()
-	session := c.newSession()
+	session := this.newSession()
 	session.userID = strconv.FormatInt(ownerID, 10)
 	if err := session.bootstrap(ctx); err != nil {
 		return "", time.Time{}, err
@@ -114,8 +112,31 @@ func (c *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, p
 	if err := ctx.Err(); err != nil {
 		return "", time.Time{}, err
 	}
-	return stage, c.clock.Now(), nil
+	return stage, this.clock.Now(), nil
 }
+
+// Close releases idle connections of the transport created by the client. An injected
+// transport belongs to the caller and is left untouched. It is idempotent and should be
+// called after in-flight checks have drained.
+func (this *GdanskPortalClient) Close() {
+	this.httpClient.Close()
+}
+
+func (this *GdanskPortalClient) ForgetSession(ownerID int64) {
+	this.httpClient.InvalidateSession(strconv.FormatInt(ownerID, 10))
+}
+
+func (this *Error) Error() string {
+	return "portal check failed: " + string(this.Kind)
+}
+
+func (this *Error) Is(target error) bool {
+	return this.Kind == Canceled && target == context.Canceled || this.Kind == Deadline && target == context.DeadlineExceeded
+}
+
+// -- Internals ----------------------------------------------------------------
+
+var _ models.Portal = (*GdanskPortalClient)(nil)
 
 // Session state belongs to a single check, never to the reusable client.
 type gdanskPortalSession struct {
@@ -127,33 +148,29 @@ type gdanskPortalSession struct {
 	state       gdanskRPCState
 }
 
-func (c *GdanskPortalClient) newSession() *gdanskPortalSession {
+type gdanskRPCState struct {
+	props        map[float64]map[string]any
+	children     map[float64][]float64
+	sync, client any
+	token        string
+}
+
+func (this *GdanskPortalClient) newSession() *gdanskPortalSession {
 	return &gdanskPortalSession{
-		config: c,
+		config: this,
 		state:  gdanskRPCState{props: map[float64]map[string]any{}, children: map[float64][]float64{}},
 	}
 }
 
-// Close releases idle connections of the transport created by the client. An injected
-// transport belongs to the caller and is left untouched. It is idempotent and should be
-// called after in-flight checks have drained.
-func (c *GdanskPortalClient) Close() {
-	c.httpClient.Close()
-}
-
-func (c *GdanskPortalClient) ForgetSession(ownerID int64) {
-	c.httpClient.InvalidateSession(strconv.FormatInt(ownerID, 10))
-}
-
-func (s *gdanskPortalSession) request(ctx context.Context, method, path string, body any) ([]byte, error) {
+func (this *gdanskPortalSession) request(ctx context.Context, method, path string, body any) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s.requests >= s.config.budget {
+	if this.requests >= this.config.budget {
 		return nil, errors.New("request budget exhausted")
 	}
-	if !s.lastRequest.IsZero() {
-		if err := s.config.wait(ctx, s.lastRequest.Add(s.config.interval).Sub(s.config.clock.Now())); err != nil {
+	if !this.lastRequest.IsZero() {
+		if err := this.config.wait(ctx, this.lastRequest.Add(this.config.interval).Sub(this.config.clock.Now())); err != nil {
 			return nil, err
 		}
 	}
@@ -163,19 +180,19 @@ func (s *gdanskPortalSession) request(ctx context.Context, method, path string, 
 			return nil, err
 		}
 	}
-	requestCtx, requestCancel := context.WithTimeout(ctx, s.config.perRequest)
+	requestCtx, requestCancel := context.WithTimeout(ctx, this.config.perRequest)
 	defer requestCancel()
 	// A non-nil body of unknown length without GetBody makes every request, including
 	// the initial GET, non-replayable, so net/http never resends it on a stale pooled connection.
-	req, err := http.NewRequestWithContext(requestCtx, method, s.config.base+path, io.NopCloser(&buf))
+	req, err := http.NewRequestWithContext(requestCtx, method, this.config.base+path, io.NopCloser(&buf))
 	if err != nil {
 		return nil, &Error{Kind: Protocol}
 	}
 	req.GetBody = nil
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	s.requests++
-	s.lastRequest = s.config.clock.Now()
-	resp, err := s.config.httpClient.Do(s.userID, req)
+	this.requests++
+	this.lastRequest = this.config.clock.Now()
+	resp, err := this.config.httpClient.Do(this.userID, req)
 	if err != nil {
 		if requestCtx.Err() != nil {
 			return nil, requestCtx.Err()
@@ -202,8 +219,8 @@ func (s *gdanskPortalSession) request(ctx context.Context, method, path string, 
 	return b, nil
 }
 
-func (s *gdanskPortalSession) bootstrap(ctx context.Context) error {
-	b, err := s.request(ctx, http.MethodGet, "/", nil)
+func (this *gdanskPortalSession) bootstrap(ctx context.Context) error {
+	b, err := this.request(ctx, http.MethodGet, "/", nil)
 	if err != nil {
 		return err
 	}
@@ -219,27 +236,27 @@ func (s *gdanskPortalSession) bootstrap(ctx context.Context) error {
 	if !ok || !gdanskRPCInteger(id) {
 		return errors.New("missing UI identifier")
 	}
-	s.uiID = id
-	if err := s.state.apply(uidl); err != nil {
+	this.uiID = id
+	if err := this.state.apply(uidl); err != nil {
 		return err
 	}
-	if _, err := s.state.stage(); err == nil {
+	if _, err := this.state.stage(); err == nil {
 		return nil
 	}
-	if _, _, _, err := s.state.loginComponents(); err != nil {
+	if _, _, _, err := this.state.loginComponents(); err != nil {
 		return err
 	}
-	if s.state.token == "" {
+	if this.state.token == "" {
 		return errors.New("missing security token")
 	}
 	return nil
 }
 
-func (s *gdanskPortalSession) authenticate(ctx context.Context, number, password string) error {
-	path := "/?v-r=uidl&v-uiId=" + url.QueryEscape(fmt.Sprint(s.uiID))
+func (this *gdanskPortalSession) authenticate(ctx context.Context, number, password string) error {
+	path := "/?v-r=uidl&v-uiId=" + url.QueryEscape(fmt.Sprint(this.uiID))
 	for step := 0; step < 4; step++ {
 		// Each reply may replace login components.
-		num, pass, button, err := s.state.loginComponents()
+		num, pass, button, err := this.state.loginComponents()
 		if err != nil {
 			return err
 		}
@@ -254,13 +271,13 @@ func (s *gdanskPortalSession) authenticate(ctx context.Context, number, password
 		case 3:
 			rpc = []any{gdanskRPCEvent(button, "click")}
 		}
-		b, err := s.request(ctx, http.MethodPost, path, map[string]any{
-			"csrfToken": s.state.token, "syncId": s.state.sync, "clientId": s.state.client, "rpc": rpc,
+		b, err := this.request(ctx, http.MethodPost, path, map[string]any{
+			"csrfToken": this.state.token, "syncId": this.state.sync, "clientId": this.state.client, "rpc": rpc,
 		})
 		if err != nil {
 			return err
 		}
-		if err := s.state.applyResponse(b); err != nil {
+		if err := this.state.applyResponse(b); err != nil {
 			return err
 		}
 	}
@@ -287,36 +304,29 @@ func gdanskRPCChange(node float64, value, event string) []any {
 	}
 }
 
-type gdanskRPCState struct {
-	props        map[float64]map[string]any
-	children     map[float64][]float64
-	sync, client any
-	token        string
-}
-
-func (s *gdanskRPCState) applyResponse(b []byte) error {
+func (this *gdanskRPCState) applyResponse(b []byte) error {
 	var messages []map[string]any
 	if err := json.Unmarshal(bytes.TrimPrefix(b, []byte("for(;;);")), &messages); err != nil || len(messages) == 0 {
 		return errors.New("invalid RPC response")
 	}
 	for _, message := range messages {
-		if err := s.apply(message); err != nil {
+		if err := this.apply(message); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *gdanskRPCState) loginComponents() (number, password, button float64, err error) {
-	number, err = s.find("vaadin-text-field", "Number of application")
+func (this *gdanskRPCState) loginComponents() (number, password, button float64, err error) {
+	number, err = this.find("vaadin-text-field", "Number of application")
 	if err != nil {
 		return
 	}
-	password, err = s.find("vaadin-password-field", "Password")
+	password, err = this.find("vaadin-password-field", "Password")
 	if err != nil {
 		return
 	}
-	button, err = s.find("vaadin-button", "")
+	button, err = this.find("vaadin-button", "")
 	return
 }
 
@@ -330,15 +340,15 @@ func gdanskBootstrapObject(b []byte, marker string) (map[string]any, error) {
 	return v, err
 }
 
-func (s *gdanskRPCState) apply(v map[string]any) error {
+func (this *gdanskRPCState) apply(v map[string]any) error {
 	sync, sok := v["syncId"].(float64)
 	client, cok := v["clientId"].(float64)
 	if !sok || !cok || !gdanskRPCInteger(sync) || !gdanskRPCInteger(client) {
 		return errors.New("invalid RPC synchronization state")
 	}
-	s.sync, s.client = sync, client
+	this.sync, this.client = sync, client
 	if t, ok := v["Vaadin-Security-Key"].(string); ok {
-		s.token = t
+		this.token = t
 	}
 	rawChanges, exists := v["changes"]
 	if !exists {
@@ -357,8 +367,8 @@ func (s *gdanskRPCState) apply(v map[string]any) error {
 		if !ok || !gdanskRPCInteger(n) {
 			return errors.New("invalid RPC node")
 		}
-		if s.props[n] == nil {
-			s.props[n] = map[string]any{}
+		if this.props[n] == nil {
+			this.props[n] = map[string]any{}
 		}
 		feat, _ := c["feat"].(float64)
 		switch c["type"] {
@@ -370,25 +380,25 @@ func (s *gdanskRPCState) apply(v map[string]any) error {
 			}
 			// Only semantic properties participate in discovery; styles and listeners must not overwrite them.
 			if feat == 0 || feat == 1 || feat == 7 {
-				s.props[n][k] = c["value"]
+				this.props[n][k] = c["value"]
 			}
 		case "remove":
 			if feat == 0 || feat == 1 || feat == 7 {
 				k, _ := c["key"].(string)
-				delete(s.props[n], k)
+				delete(this.props[n], k)
 			}
 		case "detach":
-			delete(s.props, n)
-			delete(s.children, n)
+			delete(this.props, n)
+			delete(this.children, n)
 		case "clear", "empty":
 			if feat == 2 {
-				delete(s.children, n)
+				delete(this.children, n)
 			}
 		case "splice":
 			if feat != 2 {
 				continue
 			}
-			old := s.children[n]
+			old := this.children[n]
 			i, ok := c["index"].(float64)
 			if !ok || !gdanskRPCInteger(i) {
 				return errors.New("invalid child index")
@@ -411,7 +421,7 @@ func (s *gdanskRPCState) apply(v map[string]any) error {
 					next = append(next, f)
 				}
 			}
-			s.children[n] = append(next, old[int(i+r):]...)
+			this.children[n] = append(next, old[int(i+r):]...)
 		default:
 			return errors.New("unsupported RPC change")
 		}
@@ -419,14 +429,14 @@ func (s *gdanskRPCState) apply(v map[string]any) error {
 	return nil
 }
 
-func (s *gdanskRPCState) find(tag, label string) (float64, error) {
+func (this *gdanskRPCState) find(tag, label string) (float64, error) {
 	var found []float64
-	for n, p := range s.props {
+	for n, p := range this.props {
 		if p["tag"] == tag && (label == "" || p["label"] == label) {
 			if tag == "vaadin-button" {
 				matches := false
-				for _, child := range s.children[n] {
-					if s.props[child]["text"] == "Log in" {
+				for _, child := range this.children[n] {
+					if this.props[child]["text"] == "Log in" {
 						matches = true
 					}
 				}
@@ -443,7 +453,7 @@ func (s *gdanskRPCState) find(tag, label string) (float64, error) {
 	return found[0], nil
 }
 
-func (s *gdanskRPCState) stage() (string, error) {
+func (this *gdanskRPCState) stage() (string, error) {
 	// Locate the field in the same row as the stage caption.
 	var contains func(float64, string, map[float64]bool) bool
 	contains = func(n float64, text string, seen map[float64]bool) bool {
@@ -451,18 +461,18 @@ func (s *gdanskRPCState) stage() (string, error) {
 			return false
 		}
 		seen[n] = true
-		p := s.props[n]
+		p := this.props[n]
 		if p["text"] == text || p["nodeValue"] == text {
 			return true
 		}
-		for _, ch := range s.children[n] {
+		for _, ch := range this.children[n] {
 			if contains(ch, text, seen) {
 				return true
 			}
 		}
 		return false
 	}
-	for n := range s.children {
+	for n := range this.children {
 		if !contains(n, "Stage of your case", map[float64]bool{}) {
 			continue
 		}
@@ -473,13 +483,13 @@ func (s *gdanskRPCState) stage() (string, error) {
 				return
 			}
 			seen[id] = true
-			p := s.props[id]
+			p := this.props[id]
 			if p["tag"] == "vaadin-text-field" {
 				if v, ok := p["value"].(string); ok && strings.TrimSpace(v) != "" {
 					values = append(values, v)
 				}
 			}
-			for _, ch := range s.children[id] {
+			for _, ch := range this.children[id] {
 				walk(ch, seen)
 			}
 		}
@@ -488,7 +498,7 @@ func (s *gdanskRPCState) stage() (string, error) {
 			return values[0], nil
 		}
 	}
-	if _, err := s.find("vaadin-password-field", "Password"); err == nil {
+	if _, err := this.find("vaadin-password-field", "Password"); err == nil {
 		return "", &Error{Kind: Authentication}
 	}
 	return "", &Error{Kind: Protocol}
@@ -507,14 +517,6 @@ func waitContext(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func (e *Error) Error() string {
-	return "portal check failed: " + string(e.Kind)
-}
-
-func (e *Error) Is(target error) bool {
-	return e.Kind == Canceled && target == context.Canceled || e.Kind == Deadline && target == context.DeadlineExceeded
 }
 
 func classify(err error) error {
