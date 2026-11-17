@@ -98,7 +98,7 @@ func TestJobsNext(test *testing.T) {
 			actual := scheduler.Next(after)
 
 			// Then
-			assert.True(test, actual.Equal(expected), "next slot after %s should be %s, got %s", after, expected, actual)
+			assert.Equal(test, expected, actual)
 		})
 	}
 }

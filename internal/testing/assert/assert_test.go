@@ -10,31 +10,78 @@ import (
 func TestEqual(test *testing.T) {
 	test.Run("should continue when values match", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			Equal(recorder, "Approved", "Approved", "matching stage")
 		})
 
 		// Then
-		if stopped {
-			test.Fatalf("successful assertion stopped execution with message %q", recorder.message)
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
 		}
 	})
 
 	test.Run("should report failure when values differ", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 		expectedMessage := "expected \"Approved\", got \"Pending\" - latest portal response"
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			Equal(recorder, "Approved", "Pending", "latest portal response")
 		})
 
 		// Then
-		verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
+	})
+
+	test.Run("should continue when time instants match", func(test *testing.T) {
+		// Given
+		recorder := &failureRecorder{}
+		expected := time.Date(2026, time.July, 6, 6, 0, 0, 0, time.UTC)
+		actual := time.Date(2026, time.July, 5, 23, 0, 0, 0, time.FixedZone("", -7*60*60))
+
+		// When
+		failed := recordFailure(func() {
+			Equal(recorder, expected, actual)
+		})
+
+		// Then
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
+		}
+	})
+
+	test.Run("should report failure when time instants differ", func(test *testing.T) {
+		// Given
+		recorder := &failureRecorder{}
+		expected := time.Date(2026, time.July, 6, 6, 0, 0, 0, time.UTC)
+		actual := time.Date(2026, time.July, 6, 7, 0, 0, 0, time.UTC)
+		expectedMessage := "expected time.Date(2026, time.July, 6, 6, 0, 0, 0, time.UTC), got time.Date(2026, time.July, 6, 7, 0, 0, 0, time.UTC)"
+
+		// When
+		failed := recordFailure(func() {
+			Equal(recorder, expected, actual)
+		})
+
+		// Then
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
+	})
+
+	test.Run("should report failure when an equal method differs", func(test *testing.T) {
+		// Given
+		recorder := &failureRecorder{}
+		expectedMessage := `expected "Case", got "other"`
+
+		// When
+		failed := recordFailure(func() {
+			Equal(recorder, "Case", "other")
+		})
+
+		// Then
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
 	})
 
 	for _, scenario := range []struct {
@@ -94,16 +141,16 @@ func TestEqual(test *testing.T) {
 	} {
 		test.Run("should report failure when values differ with "+scenario.name, func(test *testing.T) {
 			// Given
-			recorder := &fatalRecorder{}
+			recorder := &failureRecorder{}
 			expectedMessage := "expected \"Approved\", got \"Pending\"" + scenario.expectedSuffix
 
 			// When
-			stopped := recordFailure(func() {
+			failed := recordFailure(func() {
 				Equal(recorder, "Approved", "Pending", scenario.arguments...)
 			})
 
 			// Then
-			verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+			verifyRecordedFailure(test, recorder, failed, expectedMessage)
 		})
 	}
 }
@@ -111,93 +158,93 @@ func TestEqual(test *testing.T) {
 func TestDeepEqual(test *testing.T) {
 	test.Run("should continue when contents match", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			DeepEqual(recorder, []int{1}, []int{1}, "matching values")
 		})
 
 		// Then
-		if stopped {
-			test.Fatalf("successful assertion stopped execution with message %q", recorder.message)
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
 		}
 	})
 
 	test.Run("should report failure when contents differ", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 		expectedMessage := "expected []int{1}, got []int{2} - latest values"
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			DeepEqual(recorder, []int{1}, []int{2}, "latest values")
 		})
 
 		// Then
-		verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
 	})
 }
 
 func TestTrue(test *testing.T) {
 	test.Run("should continue when condition holds", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			True(recorder, true, "condition holds")
 		})
 
 		// Then
-		if stopped {
-			test.Fatalf("successful assertion stopped execution with message %q", recorder.message)
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
 		}
 	})
 
 	test.Run("should report failure when condition does not hold", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 		expectedMessage := "expected true, got false - required condition"
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			True(recorder, false, "required condition")
 		})
 
 		// Then
-		verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
 	})
 }
 
 func TestNoError(test *testing.T) {
 	test.Run("should continue when error is nil", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			NoError(recorder, nil, "operation succeeded")
 		})
 
 		// Then
-		if stopped {
-			test.Fatalf("successful assertion stopped execution with message %q", recorder.message)
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
 		}
 	})
 
 	test.Run("should report failure when error is present", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 		expectedMessage := "unexpected error: connection lost - load case"
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			NoError(recorder, errors.New("connection lost"), "load case")
 		})
 
 		// Then
-		verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
 	})
 }
 
@@ -206,40 +253,40 @@ func TestErrorIs(test *testing.T) {
 		// Given
 		targetError := errors.New("expected")
 		wrappedError := fmt.Errorf("wrapped: %w", targetError)
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			ErrorIs(recorder, wrappedError, targetError, "wrapped error matches")
 		})
 
 		// Then
-		if stopped {
-			test.Fatalf("successful assertion stopped execution with message %q", recorder.message)
+		if failed {
+			test.Fatalf("successful assertion failed with message %q", recorder.message)
 		}
 	})
 
 	test.Run("should report failure when error does not match target", func(test *testing.T) {
 		// Given
-		recorder := &fatalRecorder{}
+		recorder := &failureRecorder{}
 		expectedMessage := "expected error expected, got actual - load case"
 
 		// When
-		stopped := recordFailure(func() {
+		failed := recordFailure(func() {
 			ErrorIs(recorder, errors.New("actual"), errors.New("expected"), "load case")
 		})
 
 		// Then
-		verifyRecordedFailure(test, recorder, stopped, expectedMessage)
+		verifyRecordedFailure(test, recorder, failed, expectedMessage)
 	})
 }
 
 // -- Internals ----------------------------------------------------------------
 
-func verifyRecordedFailure(test *testing.T, recorder *fatalRecorder, stopped bool, expectedMessage string) {
+func verifyRecordedFailure(test *testing.T, recorder *failureRecorder, failed bool, expectedMessage string) {
 	test.Helper()
 
-	if !stopped {
+	if !failed {
 		test.Fatal("failed assertion should stop execution")
 	}
 	if recorder.message != expectedMessage {
@@ -247,27 +294,27 @@ func verifyRecordedFailure(test *testing.T, recorder *fatalRecorder, stopped boo
 	}
 }
 
-type fatalRecorder struct {
+type failureRecorder struct {
 	testing.TB
 	message string
 }
 
-type assertionStopped struct{}
+type assertionFailed struct{}
 
-func (this *fatalRecorder) Helper() {}
+func (this *failureRecorder) Helper() {}
 
-func (this *fatalRecorder) Fatalf(format string, arguments ...any) {
+func (this *failureRecorder) Fatalf(format string, arguments ...any) {
 	this.message = fmt.Sprintf(format, arguments...)
-	panic(assertionStopped{})
+	panic(assertionFailed{})
 }
 
-func recordFailure(assertion func()) (stopped bool) {
+func recordFailure(assertion func()) (failed bool) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if _, isAssertionStop := recovered.(assertionStopped); !isAssertionStop {
+			if _, isAssertionStop := recovered.(assertionFailed); !isAssertionStop {
 				panic(recovered)
 			}
-			stopped = true
+			failed = true
 		}
 	}()
 	assertion()

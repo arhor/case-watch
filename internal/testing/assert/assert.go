@@ -7,10 +7,19 @@ import (
 	"testing"
 )
 
+// Equal reports whether expected and actual match. A comparable type that
+// defines Equal(T) bool, such as time.Time, uses that method. Other values use ==.
 func Equal[T comparable](t testing.TB, expected, actual T, reason ...any) {
 	t.Helper()
 
-	if expected != actual {
+	var matches bool
+	if equaler, ok := any(expected).(interface{ Equal(T) bool }); ok {
+		matches = equaler.Equal(actual)
+	} else {
+		matches = expected == actual
+	}
+
+	if !matches {
 		t.Fatalf("expected %#v, got %#v%s", expected, actual, formatReason(reason))
 	}
 }
