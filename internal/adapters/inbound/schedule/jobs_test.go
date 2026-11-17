@@ -142,7 +142,7 @@ func TestJobsRun(test *testing.T) {
 		assert.ErrorIs(test, err, context.Canceled)
 		assert.DeepEqual(test, []int64{1, 2, 3}, calls)
 		assert.Equal(test, 2, len(deadlines))
-		assert.True(test, deadlines[1].Equal(parseTime("2026-07-06T12:00:00Z")), "deadlines[1].Equal(parseTime(\"2026-07-06T12:00:00Z\")) should hold")
+		assert.Equal(test, parseTime("2026-07-06T12:00:00Z"), deadlines[1])
 	})
 
 	for _, start := range []string{"2026-07-06T06:00:00Z", "2026-07-06T07:59:59Z"} {
@@ -175,7 +175,7 @@ func TestJobsRun(test *testing.T) {
 			// Then
 			assert.ErrorIs(test, err, context.Canceled)
 			assert.Equal(test, 0, calls)
-			assert.True(test, waitedUntil.Equal(parseTime("2026-07-06T08:00:00Z")), "deadline.Equal(parseTime(\"2026-07-06T08:00:00Z\")) should hold")
+			assert.Equal(test, parseTime("2026-07-06T08:00:00Z"), waitedUntil)
 		})
 	}
 
@@ -206,7 +206,7 @@ func TestJobsRun(test *testing.T) {
 		// Then
 		select {
 		case err := <-done:
-			assert.True(test, false, "scheduler should wait for the active call to drain, got %v", err)
+			assert.Equal(test, context.Canceled, err)
 		default:
 		}
 		assert.ErrorIs(test, overlap, schedule.ErrScheduler)
