@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	telegramModels "github.com/go-telegram/bot/models"
+
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
@@ -33,6 +35,7 @@ func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
 		}, true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
+			// Given
 			f := setup(t)
 			current := testCase.modify(slices.Clone(botCommands))
 			var calls []string
@@ -47,11 +50,15 @@ func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
 				case strings.HasSuffix(r.URL.Path, "/setMyCommands"):
 					calls = append(calls, "setMyCommands")
 					if err := r.ParseMultipartForm(1 << 20); err != nil {
-						t.Fatal(err)
+						t.Error(err)
+						w.WriteHeader(http.StatusBadRequest)
+						return
 					}
 					var sent []telegramModels.BotCommand
 					if err := json.Unmarshal([]byte(r.FormValue("commands")), &sent); err != nil {
-						t.Fatal(err)
+						t.Error(err)
+						w.WriteHeader(http.StatusBadRequest)
+						return
 					}
 					if !slices.Equal(sent, botCommands) {
 						t.Errorf("published commands = %v, want %v", sent, botCommands)
@@ -67,24 +74,22 @@ func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
 			config := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
+			// When
 			a, err := New(context.Background(), config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			// Then
+			assert.NoError(t, err)
 			t.Cleanup(a.Close)
 
 			wantCalls := []string{"getMe", "getMyCommands"}
 			if testCase.wantSet {
 				wantCalls = append(wantCalls, "setMyCommands")
 			}
-			if !slices.Equal(calls, wantCalls) {
-				t.Fatalf("API calls = %v, want %v", calls, wantCalls)
-			}
+			assert.True(t, slices.Equal(calls, wantCalls), "startup should perform only the required command synchronization calls")
 		})
 	}
 }
 
-func TestNewShouldHandleCommandSynchronizationFailures(t *testing.T) {
+func TestNewShouldReportFailuresWhenCommandSynchronizationFails(t *testing.T) {
 	for _, testCase := range []struct {
 		name        string
 		failingStep string
@@ -99,6 +104,7 @@ func TestNewShouldHandleCommandSynchronizationFailures(t *testing.T) {
 		{"set unauthorized", "setMyCommands", 401, "", true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
+			// Given
 			f := setup(t)
 			var diagnostics []string
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -121,43 +127,36 @@ func TestNewShouldHandleCommandSynchronizationFailures(t *testing.T) {
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 			config.Diagnostic = func(category string) { diagnostics = append(diagnostics, category) }
+			// When
 			a, err := New(context.Background(), config)
+			// Then
 			if a != nil {
 				t.Cleanup(a.Close)
 			}
-			if (a == nil) != testCase.wantInvalid || (err == ErrInvalidToken) != testCase.wantInvalid {
-				t.Fatalf("bot = %v, error = %v", a, err)
-			}
+			assert.Equal(t, testCase.wantInvalid, (a == nil), "(a == nil) should match the expected value")
+			assert.Equal(t, testCase.wantInvalid, (err == ErrInvalidToken), "(err == ErrInvalidToken) should match the expected value")
 			wantDiagnostic := "telegram command synchronization failure"
 			if testCase.wantInvalid {
 				wantDiagnostic = "telegram_invalid_token"
 			}
-			if !slices.Equal(diagnostics, []string{wantDiagnostic}) {
-				t.Fatalf("diagnostics = %v, want %s", diagnostics, wantDiagnostic)
-			}
-			if err != nil && strings.Contains(err.Error(), "synthetic-secret") {
-				t.Fatal("Telegram response details leaked in startup error")
-			}
+			assert.True(t, slices.Equal(diagnostics, []string{wantDiagnostic}), "startup should emit the expected sanitized diagnostic")
+			assert.True(t, !(err != nil && strings.Contains(err.Error(), "synthetic-secret")), "Telegram response details leaked in startup error")
 		})
 	}
 }
 
-func TestBotShouldKeepCommandHandlersAndDescriptionsConsistent(t *testing.T) {
+func TestBotShouldKeepHandlersAndDescriptionsConsistentWhenCommandsArePublished(t *testing.T) {
+	// Given
 	f := setup(t)
-	if len(f.a.handlers) != len(botCommands) {
-		t.Fatalf("handlers = %d, published commands = %d", len(f.a.handlers), len(botCommands))
-	}
+	// When
 	f.message(101, "/help")
 	help := f.replies[len(f.replies)-1]
+	// Then
+	assert.Equal(t, len(botCommands), len(f.a.handlers), "every published command should have a handler")
 	for _, command := range botCommands {
-		if command.Description == "" {
-			t.Errorf("missing description for /%s", command.Command)
-		}
-		if _, ok := f.a.handlers["/"+command.Command]; !ok {
-			t.Errorf("published /%s has no handler", command.Command)
-		}
-		if !strings.Contains(help, "/"+command.Command+" — "+command.Description) {
-			t.Errorf("help does not describe /%s", command.Command)
-		}
+		assert.True(t, command.Description != "", "published command /"+command.Command+" should have a description")
+		_, ok := f.a.handlers["/"+command.Command]
+		assert.True(t, ok, "published command /"+command.Command+" should have a handler")
+		assert.True(t, strings.Contains(help, "/"+command.Command+" — "+command.Description), "help should describe /"+command.Command)
 	}
 }

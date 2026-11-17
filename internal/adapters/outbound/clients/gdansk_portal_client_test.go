@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 func newGdanskTestClient(baseURL string) *GdanskPortalClient {
@@ -61,9 +63,7 @@ func TestGdanskPortalClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenRe
 			t.Error("replayable request")
 		}
 		b, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 		response := reply(string(b))
 		if step == 0 {
 			response.Header.Set("Set-Cookie", "session=fresh; Path=/")
@@ -82,9 +82,14 @@ func TestGdanskPortalClientShouldCompleteWithFreshCookiesAndCompletionTimeWhenRe
 	firstStage, firstCheckedAt, err := c.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	secondStage, secondCheckedAt, err2 := c.Check(context.Background(), 1, "", "")
 	// Then
-	if err != nil || err2 != nil || calls != 10 || waits != 8 || firstStage != "Synthetic stage" || secondStage != firstStage || !secondCheckedAt.Equal(clock.now) || !firstCheckedAt.Before(secondCheckedAt) {
-		t.Fatalf("stages=%q/%q checkedAt=%v/%v errors=%v %v calls=%d waits=%d", firstStage, secondStage, firstCheckedAt, secondCheckedAt, err, err2, calls, waits)
-	}
+	assert.NoError(t, err)
+	assert.NoError(t, err2)
+	assert.Equal(t, 10, calls, "calls should match the expected value")
+	assert.Equal(t, 8, waits, "waits should match the expected value")
+	assert.Equal(t, "Synthetic stage", firstStage, "firstStage should match the expected value")
+	assert.Equal(t, firstStage, secondStage, "secondStage should match the expected value")
+	assert.True(t, secondCheckedAt.Equal(clock.now), "completion timestamp should use the injected clock")
+	assert.True(t, firstCheckedAt.Before(secondCheckedAt), "each check should record its own completion time")
 }
 
 func TestGdanskPortalClientShouldReturnSanitizedClassificationWhenExchangeFails(t *testing.T) {
@@ -111,9 +116,11 @@ func TestGdanskPortalClientShouldReturnSanitizedClassificationWhenExchangeFails(
 			stage, checkedAt, err := c.Check(context.Background(), 1, "", "secret-password")
 			// Then
 			var safe *Error
-			if !errors.As(err, &safe) || safe.Kind != tc.kind || strings.Contains(err.Error(), "secret") || stage != "" || !checkedAt.IsZero() {
-				t.Fatalf("stage=%q checkedAt=%v error=%v", stage, checkedAt, err)
-			}
+			assert.True(t, errors.As(err, &safe), "portal failure should expose a safe error classification")
+			assert.Equal(t, tc.kind, safe.Kind, "safe.Kind should match the expected value")
+			assert.True(t, !strings.Contains(err.Error(), "secret"), "portal error should not expose secrets")
+			assert.Equal(t, "", stage, "stage should match the expected value")
+			assert.True(t, checkedAt.IsZero(), "failed check should not report a completion timestamp")
 		})
 	}
 }
@@ -129,9 +136,8 @@ func TestGdanskPortalClientShouldStopWithoutRetryWhenOwnedDeadlineExpires(t *tes
 	// When
 	_, _, err := c.Check(context.Background(), 1, "", "")
 	// Then
-	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 func TestGdanskPortalClientShouldMakeNoRequestWhenAlreadyCanceled(t *testing.T) {
 	// Given
@@ -142,9 +148,8 @@ func TestGdanskPortalClientShouldMakeNoRequestWhenAlreadyCanceled(t *testing.T) 
 	// When
 	_, _, err := c.Check(ctx, 1, "", "")
 	// Then
-	if !errors.Is(err, context.Canceled) || calls != 0 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 0, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldStopWhenPerRequestDeadlineExpires(t *testing.T) {
@@ -159,9 +164,8 @@ func TestGdanskPortalClientShouldStopWhenPerRequestDeadlineExpires(t *testing.T)
 	// When
 	_, _, err := c.Check(context.Background(), 1, "", "")
 	// Then
-	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldCancelBetweenRequestsWhenWaitIsCanceled(t *testing.T) {
@@ -176,9 +180,8 @@ func TestGdanskPortalClientShouldCancelBetweenRequestsWhenWaitIsCanceled(t *test
 	// When
 	_, _, err := c.Check(ctx, 1, "", "")
 	// Then
-	if !errors.Is(err, context.Canceled) || calls != 1 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldRejectBootstrapWhenPageIsUnexpected(t *testing.T) {
@@ -187,11 +190,10 @@ func TestGdanskPortalClientShouldRejectBootstrapWhenPageIsUnexpected(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.Write([]byte("<html>unavailable</html>")) }))
 	defer server.Close()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+	_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err == nil || calls != 1 {
-		t.Fatalf("expected one request and an error; stage=%q error=%v calls=%d", stage, err, calls)
-	}
+	assert.True(t, err != nil, "operation should return an error")
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldStopWhenPortalRedirects(t *testing.T) {
@@ -206,9 +208,8 @@ func TestGdanskPortalClientShouldStopWhenPortalRedirects(t *testing.T) {
 	// When
 	_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err == nil || calls != 1 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.True(t, err != nil, "operation should return an error")
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldExtractStageWhenAuthenticationSucceeds(t *testing.T) {
@@ -224,7 +225,9 @@ func TestGdanskPortalClientShouldExtractStageWhenAuthenticationSucceeds(t *testi
 			http.SetCookie(w, &http.Cookie{Name: "session", Value: "synthetic-session"})
 			b, err := os.ReadFile("testdata/bootstrap.html")
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
 			}
 			w.Write(b)
 			return
@@ -262,7 +265,9 @@ func TestGdanskPortalClientShouldExtractStageWhenAuthenticationSucceeds(t *testi
 		}
 		b, err := os.ReadFile(fmt.Sprintf("testdata/rpc%d.json", index-1))
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		w.Write(b)
 	}))
@@ -272,9 +277,9 @@ func TestGdanskPortalClientShouldExtractStageWhenAuthenticationSucceeds(t *testi
 	// When
 	stage, _, err := newGdanskTestClient(server.URL).Check(ctx, 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err != nil || stage != "Synthetic stage" || calls != 5 {
-		t.Fatalf("stage=%q error=%v calls=%d", stage, err, calls)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "Synthetic stage", stage, "stage should match the expected value")
+	assert.Equal(t, 5, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldRejectRPCWhenChangesAreMalformed(t *testing.T) {
@@ -291,11 +296,10 @@ func TestGdanskPortalClientShouldRejectRPCWhenChangesAreMalformed(t *testing.T) 
 	}))
 	defer server.Close()
 	// When
-	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+	_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err == nil || calls != 2 {
-		t.Fatalf("stage=%q error=%v", stage, err)
-	}
+	assert.True(t, err != nil, "operation should return an error")
+	assert.Equal(t, 2, calls, "calls should match the expected value")
 }
 
 func TestGdanskPortalClientShouldStopWhenRepliesAreRejectedOrUnexpected(t *testing.T) {
@@ -328,9 +332,9 @@ func TestGdanskPortalClientShouldStopWhenRepliesAreRejectedOrUnexpected(t *testi
 			// When
 			stage, _, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 			// Then
-			if err == nil || stage != "" || calls != tc.wantRequests {
-				t.Fatalf("stage=%q error=%v calls=%d", stage, err, calls)
-			}
+			assert.True(t, err != nil, "operation should return an error")
+			assert.Equal(t, "", stage, "stage should match the expected value")
+			assert.Equal(t, tc.wantRequests, calls, "calls should match the expected value")
 		})
 	}
 }
@@ -347,7 +351,9 @@ func TestGdanskPortalClientShouldDiscoverComponentsWhenNodeIdentifiersChange(t *
 		}
 		b, err := os.ReadFile(name)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		if index == 0 {
 			u, _ := gdanskBootstrapObject(b, "var uidl =")
@@ -376,9 +382,8 @@ func TestGdanskPortalClientShouldDiscoverComponentsWhenNodeIdentifiersChange(t *
 	// When
 	stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err != nil || stage != "Synthetic stage" {
-		t.Fatalf("stage=%q error=%v", stage, err)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "Synthetic stage", stage, "stage should match the expected value")
 }
 
 func remapNodes(v map[string]any) {
@@ -407,9 +412,8 @@ func TestGdanskPortalClientShouldStopWhenCallerDeadlineExpires(t *testing.T) {
 	// When
 	_, _, err := client.Check(ctx, 1, "synthetic-case", "synthetic-password")
 	// Then
-	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
-		t.Fatalf("error=%v calls=%d", err, calls)
-	}
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, 1, calls, "calls should match the expected value")
 }
 
 // serveCheckFlow answers the five requests of one successful check by position within the check.
@@ -447,9 +451,10 @@ func TestGdanskPortalClientShouldReuseConnectionWhenChecksRunSequentially(t *tes
 	_, _, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
-	if err1 != nil || err2 != nil || requests.Load() != 10 || connections.Load() != 1 {
-		t.Fatalf("errors=%v/%v requests=%d connections=%d", err1, err2, requests.Load(), connections.Load())
-	}
+	assert.NoError(t, err1)
+	assert.NoError(t, err2)
+	assert.Equal(t, 10, requests.Load(), "requests.Load() should match the expected value")
+	assert.Equal(t, 1, connections.Load(), "connections.Load() should match the expected value")
 }
 
 func TestGdanskPortalClientShouldNotResendWhenReusedConnectionIsClosedByServer(t *testing.T) {
@@ -477,9 +482,10 @@ func TestGdanskPortalClientShouldNotResendWhenReusedConnectionIsClosedByServer(t
 	_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 	// Then
 	var safe *Error
-	if err1 != nil || !errors.As(err2, &safe) || safe.Kind != Transport || requests.Load() != 6 {
-		t.Fatalf("errors=%v/%v requests=%d", err1, err2, requests.Load())
-	}
+	assert.NoError(t, err1)
+	assert.True(t, errors.As(err2, &safe), "connection failure should expose a safe error classification")
+	assert.Equal(t, Transport, safe.Kind, "safe.Kind should match the expected value")
+	assert.Equal(t, 6, requests.Load(), "requests.Load() should match the expected value")
 }
 
 func TestGdanskPortalClientShouldLeaveInjectedTransportOpenWhenClosed(t *testing.T) {
@@ -491,9 +497,7 @@ func TestGdanskPortalClientShouldLeaveInjectedTransportOpenWhenClosed(t *testing
 	client.Close()
 	client.Close()
 	// Then
-	if client.httpClient == nil {
-		t.Fatal("injected transport must not be owned")
-	}
+	assert.True(t, client.httpClient != nil, "injected transport must not be owned")
 }
 
 func TestGdanskPortalClientShouldCloseRepeatedlyWhenTransportIsOwned(t *testing.T) {
@@ -503,9 +507,7 @@ func TestGdanskPortalClientShouldCloseRepeatedlyWhenTransportIsOwned(t *testing.
 	client.Close()
 	client.Close()
 	// Then
-	if client.httpClient == nil {
-		t.Fatal("default transport must be created once and shared")
-	}
+	assert.True(t, client.httpClient != nil, "default transport must be created once and shared")
 }
 
 func TestGdanskPortalClientShouldRejectBootstrapWhenLoginFieldsAreMissingOrAmbiguous(t *testing.T) {
@@ -535,11 +537,10 @@ func TestGdanskPortalClientShouldRejectBootstrapWhenLoginFieldsAreMissingOrAmbig
 			}))
 			defer server.Close()
 			// When
-			stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+			_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 			// Then
-			if err == nil || calls != 1 {
-				t.Fatalf("stage=%q error=%v", stage, err)
-			}
+			assert.True(t, err != nil, "operation should return an error")
+			assert.Equal(t, 1, calls, "calls should match the expected value")
 		})
 	}
 }

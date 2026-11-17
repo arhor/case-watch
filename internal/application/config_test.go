@@ -3,6 +3,8 @@ package application
 import (
 	"strings"
 	"testing"
+
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 func validEnv() map[string]string {
@@ -18,9 +20,9 @@ func TestLoadConfigShouldAcceptRequiredSettingsWhenAccessPolicyIsAbsent(t *testi
 	// When
 	c, err := loadConfig(lookup(env))
 	// Then
-	if err != nil || c.DBPath != env["CASE_WATCH_DB_PATH"] || c.TelegramBotToken != env["CASE_WATCH_TELEGRAM_BOT_TOKEN"] {
-		t.Fatalf("unexpected parsed configuration: error=%v", err)
-	}
+	assert.NoError(t, err, "unexpected parsed configuration")
+	assert.Equal(t, env["CASE_WATCH_DB_PATH"], c.DBPath, "unexpected parsed configuration")
+	assert.Equal(t, env["CASE_WATCH_TELEGRAM_BOT_TOKEN"], c.TelegramBotToken, "unexpected parsed configuration")
 }
 
 func TestLoadConfigShouldRejectInvalidConfigurationWhenValuesMalformed(t *testing.T) {
@@ -35,12 +37,9 @@ func TestLoadConfigShouldRejectInvalidConfigurationWhenValuesMalformed(t *testin
 			// When
 			_, err := loadConfig(lookup(env))
 			// Then
-			if err == nil || !strings.Contains(err.Error(), tc.key) {
-				t.Fatal("expected sanitized variable-specific error")
-			}
-			if len(tc.value) > 4 && strings.Contains(err.Error(), tc.value) {
-				t.Fatal("configuration error exposed supplied value")
-			}
+			assert.True(t, err != nil, "expected sanitized variable-specific error")
+			assert.True(t, strings.Contains(err.Error(), tc.key), "expected sanitized variable-specific error")
+			assert.True(t, !(len(tc.value) > 4 && strings.Contains(err.Error(), tc.value)), "configuration error exposed supplied value")
 		})
 	}
 }

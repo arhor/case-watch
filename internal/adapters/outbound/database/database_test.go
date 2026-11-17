@@ -9,6 +9,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.T) {
@@ -16,35 +17,36 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")
 	db, err := database.Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	store := repositories.NewStore(db)
 	id := "0123456789abcdef0123456789abcdef"
 	checked := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	stage := "B"
-	if err = store.Enrollments().Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked); err != nil {
-		t.Fatal(err)
+	{
+		err = store.Enrollments().Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked)
+		assert.NoError(t, err)
 	}
-	if err := store.History().Append(ctx, id, "A", stage, checked); err != nil {
-		t.Fatal(err)
+	{
+		err := store.History().Append(ctx, id, "A", stage, checked)
+		assert.NoError(t, err)
 	}
 	guard := models.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
-	if err = store.Cooldowns().Upsert(ctx, guard); err != nil {
-		t.Fatal(err)
+	{
+		err = store.Cooldowns().Upsert(ctx, guard)
+		assert.NoError(t, err)
 	}
 	caseGuard := models.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
-	if err := store.Cooldowns().Upsert(ctx, caseGuard); err != nil {
-		t.Fatal(err)
+	{
+		err := store.Cooldowns().Upsert(ctx, caseGuard)
+		assert.NoError(t, err)
 	}
 	// When
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
+	{
+		err := db.Close()
+		assert.NoError(t, err)
 	}
 	db, err = database.Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer db.Close()
 	store = repositories.NewStore(db)
 	enrollment, readErr := store.Enrollments().FindByOwner(ctx, 101)
@@ -57,7 +59,22 @@ func TestStoreShouldPreserveTrackingWhenReopeningInitializedDatabase(t *testing.
 	var obsolete int
 	schemaErr := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name IN ('pending','recipients','pending_recipient')").Scan(&obsolete)
 	// Then
-	if readErr != nil || historyErr != nil || guardErr != nil || caseGuardErr != nil || versionErr != nil || version != 1 || dirty || schemaErr != nil || enrollment.ID != id || enrollment.Number != "synthetic-number" || enrollment.Password != "synthetic-password" || enrollment.Stage != stage || !enrollment.CheckedAt.Equal(checked) || len(history) != 1 || history[0].Stage != "B" || !cooldown.StartedAt.Equal(checked) || !caseCooldown.StartedAt.Equal(checked) || obsolete != 0 {
-		t.Fatalf("reopening lost tracking: enrollment=%+v history=%+v guard=%+v caseGuard=%+v version=%d dirty=%t obsolete=%d errors=%v/%v/%v/%v/%v/%v", enrollment, history, cooldown, caseCooldown, version, dirty, obsolete, readErr, historyErr, guardErr, caseGuardErr, versionErr, schemaErr)
-	}
+	assert.NoError(t, readErr, "reopening lost tracking")
+	assert.NoError(t, historyErr, "reopening lost tracking")
+	assert.NoError(t, guardErr, "reopening lost tracking")
+	assert.NoError(t, caseGuardErr, "reopening lost tracking")
+	assert.NoError(t, versionErr, "reopening lost tracking")
+	assert.Equal(t, 1, version, "reopening lost tracking")
+	assert.True(t, !dirty, "reopening lost tracking")
+	assert.NoError(t, schemaErr, "reopening lost tracking")
+	assert.Equal(t, id, enrollment.ID, "reopening lost tracking")
+	assert.Equal(t, "synthetic-number", enrollment.Number, "reopening lost tracking")
+	assert.Equal(t, "synthetic-password", enrollment.Password, "reopening lost tracking")
+	assert.Equal(t, stage, enrollment.Stage, "reopening lost tracking")
+	assert.True(t, enrollment.CheckedAt.Equal(checked), "reopening lost tracking")
+	assert.Equal(t, 1, len(history), "reopening lost tracking")
+	assert.Equal(t, "B", history[0].Stage, "reopening lost tracking")
+	assert.True(t, cooldown.StartedAt.Equal(checked), "reopening lost tracking")
+	assert.True(t, caseCooldown.StartedAt.Equal(checked), "reopening lost tracking")
+	assert.Equal(t, 0, obsolete, "reopening lost tracking")
 }

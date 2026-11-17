@@ -3,8 +3,8 @@ package schedule_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 type clock struct{ now time.Time }
@@ -38,9 +39,7 @@ func parse(s string) time.Time {
 func newScheduler(t *testing.T, c schedule.Config) *schedule.Jobs {
 	t.Helper()
 	s, err := schedule.New(c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	return s
 }
 func TestNextShouldReturnStrictWarsawSlotsWhenDatesCrossSeasonsWeekendsAndHolidays(t *testing.T) {
@@ -69,9 +68,7 @@ func TestNextShouldReturnStrictWarsawSlotsWhenDatesCrossSeasonsWeekendsAndHolida
 	}
 	// Then
 	for i, c := range cases {
-		if !got[i].Equal(parse(c.want)) {
-			t.Errorf("after %s: %s want %s", c.after, got[i], c.want)
-		}
+		assert.True(t, got[i].Equal(parse(c.want)), fmt.Sprintf("next slot after %s should be %s, got %s", c.after, c.want, got[i]))
 	}
 }
 func TestRunShouldSkipCrossedSlotsAndRecheckQueuedAuthorizationWhenFirstCheckIsSlow(t *testing.T) {
@@ -99,9 +96,10 @@ func TestRunShouldSkipCrossedSlotsAndRecheckQueuedAuthorizationWhenFirstCheckIsS
 	// When
 	err := s.Run(ctx)
 	// Then
-	if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(calls, []int64{1, 2, 3}) || len(deadlines) != 2 || !deadlines[1].Equal(parse("2026-07-06T12:00:00Z")) {
-		t.Fatalf("calls=%v deadlines=%v err=%v", calls, deadlines, err)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.DeepEqual(t, []int64{1, 2, 3}, calls, "calls should match the expected values")
+	assert.Equal(t, 2, len(deadlines), "len(deadlines) should match the expected value")
+	assert.True(t, deadlines[1].Equal(parse("2026-07-06T12:00:00Z")), "deadlines[1].Equal(parse(\"2026-07-06T12:00:00Z\")) should hold")
 }
 func TestRunShouldWaitForFutureSlotWhenStartingAtBoundaryOrRestartingAfterMissedSlots(t *testing.T) {
 	// Given
@@ -114,9 +112,9 @@ func TestRunShouldWaitForFutureSlotWhenStartingAtBoundaryOrRestartingAfterMissed
 		// When
 		err := s.Run(ctx)
 		// Then
-		if !errors.Is(err, context.Canceled) || calls != 0 || !deadline.Equal(parse("2026-07-06T08:00:00Z")) {
-			t.Fatalf("start=%s deadline=%s calls=%d err=%v", start, deadline, calls, err)
-		}
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Equal(t, 0, calls, "calls should match the expected value")
+		assert.True(t, deadline.Equal(parse("2026-07-06T08:00:00Z")), "deadline.Equal(parse(\"2026-07-06T08:00:00Z\")) should hold")
 	}
 }
 func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
@@ -144,15 +142,14 @@ func TestRunShouldDrainActiveCallAndRejectOverlapWhenCanceled(t *testing.T) {
 	// Then
 	select {
 	case err := <-done:
-		t.Fatalf("returned before drain: %v", err)
+		assert.True(t, false, fmt.Sprintf("scheduler should wait for the active call to drain, got %v", err))
 	default:
 	}
-	if !errors.Is(overlap, schedule.ErrScheduler) {
-		t.Fatalf("overlap=%v", overlap)
-	}
+	assert.ErrorIs(t, overlap, schedule.ErrScheduler)
 	close(release)
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+	{
+		err := <-done
+		assert.ErrorIs(t, err, context.Canceled)
 	}
 }
 
@@ -178,18 +175,16 @@ func TestRunShouldSkipMissedMinuteAndAcceptTimerJitterWhenWaitReturnsLate(t *tes
 	// When
 	err := s.Run(ctx)
 	// Then
-	if !errors.Is(err, context.Canceled) || calls != 1 || waits != 3 {
-		t.Fatalf("err=%v calls=%d waits=%d", err, calls, waits)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, calls, "calls should match the expected value")
+	assert.Equal(t, 3, waits, "waits should match the expected value")
 }
 
 func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
 	calls := 0
@@ -202,8 +197,9 @@ func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *test
 		Clock: c,
 	})
 	t.Cleanup(caseService.Shutdown)
-	if _, _, err := caseService.Enroll(ctx, 101, "synthetic-number", "synthetic-password"); err != nil {
-		t.Fatal(err)
+	{
+		_, _, err := caseService.Enroll(ctx, 101, "synthetic-number", "synthetic-password")
+		assert.NoError(t, err)
 	}
 	monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
 	c.now = monday.Add(-time.Second)
@@ -224,15 +220,14 @@ func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *test
 			return nil
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	// When
 	runErr := s.Run(runCtx)
 	// Then
-	if manualErr != nil || !errors.Is(runErr, context.Canceled) || calls != 2 || waits != 2 {
-		t.Fatalf("manual=%v run=%v calls=%d waits=%d", manualErr, runErr, calls, waits)
-	}
+	assert.NoError(t, manualErr)
+	assert.ErrorIs(t, runErr, context.Canceled)
+	assert.Equal(t, 2, calls, "calls should match the expected value")
+	assert.Equal(t, 2, waits, "waits should match the expected value")
 }
 
 type scheduledPortal func(context.Context, string, string) (string, time.Time, error)

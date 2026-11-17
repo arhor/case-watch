@@ -18,6 +18,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
+	"github.com/arhor/case-watch/internal/testing/assert"
 	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
 )
@@ -72,9 +73,7 @@ func setup(t *testing.T) *fixture {
 	t.Cleanup(server.Close)
 	f.path = filepath.Join(t.TempDir(), "state.db")
 	db, err := database.Open(context.Background(), f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	f.store = repositories.NewStore(db)
 	t.Cleanup(func() { db.Close() })
 	caseService := services.NewCaseService(services.CaseServiceConfig{
@@ -115,7 +114,7 @@ func (this *fixture) message(id int64, text string) {
 		}
 	}
 }
-func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommands(t *testing.T) {
+func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommandsWhenRequested(t *testing.T) {
 	// Given
 	f := setup(t)
 
@@ -129,19 +128,15 @@ func TestStartShouldBeginEnrollmentAndHelpShouldExplainCommands(t *testing.T) {
 
 	// Then
 	for _, command := range []string{"/start", "/status", "/remove", "/cancel", "/help"} {
-		if !strings.Contains(help, command) {
-			t.Fatalf("help omits %s: %q", command, help)
-		}
+		assert.True(t, strings.Contains(help, command), "help should describe every supported command")
 	}
-	if !strings.Contains(help, "Доступные команды:") ||
-		strings.Contains(help, "/enroll") ||
-		strings.Contains(help, "08:00") ||
-		strings.Contains(help, "шифрованием") ||
-		legacy != "Неизвестная команда. Список доступных команд: /help." ||
-		!strings.Contains(started, "отправьте номер дела") ||
-		strings.Contains(started, "шифрованием") {
-		t.Fatalf("unexpected command behavior: help=%q legacy=%q start=%q", help, legacy, started)
-	}
+	assert.True(t, strings.Contains(help, "Доступные команды:"), "unexpected command behavior")
+	assert.True(t, !strings.Contains(help, "/enroll"), "unexpected command behavior")
+	assert.True(t, !strings.Contains(help, "08:00"), "unexpected command behavior")
+	assert.True(t, !strings.Contains(help, "шифрованием"), "unexpected command behavior")
+	assert.Equal(t, "Неизвестная команда. Список доступных команд: /help.", legacy, "unexpected command behavior")
+	assert.True(t, strings.Contains(started, "отправьте номер дела"), "unexpected command behavior")
+	assert.True(t, !strings.Contains(started, "шифрованием"), "unexpected command behavior")
 }
 
 func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAreSeparate(t *testing.T) {
@@ -161,19 +156,20 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(303, "Да")
 	_, removed := f.store.Enrollments().FindByOwner(context.Background(), 303)
 	// Then
-	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, repositories.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
-		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
-	}
-	if e.Number != "synthetic-number" || e.Password != "synthetic-password" {
-		t.Fatal("enrollment did not preserve the submitted case number and password")
-	}
+	assert.NoError(t, err, "unexpected enrollment/removal outcome")
+	assert.NoError(t, herr, "unexpected enrollment/removal outcome")
+	assert.Equal(t, 0, len(history), "unexpected enrollment/removal outcome")
+	assert.True(t, still == nil, "unexpected enrollment/removal outcome")
+	assert.ErrorIs(t, removed, repositories.ErrNotFound, "unexpected enrollment/removal outcome")
+	assert.Equal(t, 1, f.calls, "unexpected enrollment/removal outcome")
+	assert.Equal(t, 2, f.deletes, "unexpected enrollment/removal outcome")
+	assert.Equal(t, "synthetic-number", e.Number, "enrollment did not preserve the submitted case number and password")
+	assert.Equal(t, "synthetic-password", e.Password, "enrollment did not preserve the submitted case number and password")
 	combined := strings.Join(append(f.replies, f.logs...), "\n")
-	if strings.Contains(combined, "synthetic-password") || strings.Contains(combined, "synthetic-number") || strings.Contains(combined, "synthetic-token") {
-		t.Fatal("sensitive output")
-	}
-	if !strings.Contains(combined, "Статус дела: Etap <A>") {
-		t.Fatal("missing plain cached stage")
-	}
+	assert.True(t, !strings.Contains(combined, "synthetic-password"), "sensitive output")
+	assert.True(t, !strings.Contains(combined, "synthetic-number"), "sensitive output")
+	assert.True(t, !strings.Contains(combined, "synthetic-token"), "sensitive output")
+	assert.True(t, strings.Contains(combined, "Статус дела: Etap <A>"), "missing plain cached stage")
 }
 
 func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailability(t *testing.T) {
@@ -239,14 +235,12 @@ func TestFormatStatusShouldDescribeSuccessfulCheckWhenTimestampDeterminesAvailab
 			got := formatStatus(status, testCase.err)
 
 			// Then
-			if got != testCase.want {
-				t.Fatalf("formatStatus() = %q, want %q", got, testCase.want)
-			}
+			assert.Equal(t, testCase.want, got, "got should match the expected value")
 		})
 	}
 }
 
-func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswers(t *testing.T) {
+func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswersWhenConfirmationIsPending(t *testing.T) {
 	for _, testCase := range []struct {
 		name        string
 		answer      string
@@ -262,38 +256,40 @@ func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswers(t *testing.T) {
 		{"other answer is not accepted", "возможно", false, true, "Пожалуйста, ответьте «Да» или «Нет»."},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
+			// Given
 			f := setup(t)
 			f.message(101, "/start")
 			f.message(101, "synthetic-number")
 			f.message(101, "synthetic-password")
 			f.message(101, "/remove")
+			// When
 			f.message(101, testCase.answer)
 
+			// Then
 			_, err := f.store.Enrollments().FindByOwner(context.Background(), 101)
-			if errors.Is(err, repositories.ErrNotFound) != testCase.removed {
-				t.Fatalf("removed=%v, want %v", errors.Is(err, repositories.ErrNotFound), testCase.removed)
-			}
-			if got := f.replies[len(f.replies)-1]; !strings.Contains(got, testCase.wantMessage) {
-				t.Fatalf("last reply=%q, want %q", got, testCase.wantMessage)
+			assert.Equal(t, testCase.removed, errors.Is(err, repositories.ErrNotFound), "errors.Is(err, repositories.ErrNotFound) should match the expected value")
+			{
+				got := f.replies[len(f.replies)-1]
+				assert.True(t, strings.Contains(got, testCase.wantMessage), "reply should contain the expected confirmation message")
 			}
 			state := f.a.owner(101)
 			state.mu.Lock()
 			pending := !state.removal.IsZero()
 			state.mu.Unlock()
-			if pending != testCase.pending {
-				t.Fatalf("pending=%v, want %v", pending, testCase.pending)
-			}
+			assert.Equal(t, testCase.pending, pending, "pending should match the expected value")
 
 			if !testCase.removed && !testCase.pending {
 				f.message(101, "Да")
-				if _, err := f.store.Enrollments().FindByOwner(context.Background(), 101); err != nil {
-					t.Fatalf("case removed after declining removal: %v", err)
+				{
+					_, err := f.store.Enrollments().FindByOwner(context.Background(), 101)
+					assert.NoError(t, err, "case removed after declining removal")
 				}
 			}
 			if testCase.pending {
 				f.message(101, "Да")
-				if _, err := f.store.Enrollments().FindByOwner(context.Background(), 101); !errors.Is(err, repositories.ErrNotFound) {
-					t.Fatalf("case not removed after valid confirmation: %v", err)
+				{
+					_, err := f.store.Enrollments().FindByOwner(context.Background(), 101)
+					assert.ErrorIs(t, err, repositories.ErrNotFound, "case not removed after valid confirmation")
 				}
 			}
 		})
@@ -324,9 +320,11 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "Да")
 	_, cancelled := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
-	if !errors.Is(expired, repositories.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
-		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)
-	}
+	assert.ErrorIs(t, expired, repositories.ErrNotFound, "expiry/cancellation failure")
+	assert.True(t, retained == nil, "expiry/cancellation failure")
+	assert.True(t, cancelled == nil, "expiry/cancellation failure")
+	assert.Equal(t, 1, f.calls, "expiry/cancellation failure")
+	assert.Equal(t, 5, f.deletes, "expiry/cancellation failure")
 }
 
 type fakeServer struct {
@@ -373,9 +371,8 @@ func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActi
 	f.a.Close()
 	f.a.wg.Wait()
 	// Then
-	if f.deletes != 3 || strings.Contains(strings.Join(f.replies, " "), "synthetic-secret") {
-		t.Fatal("credential deletion or cancellation failed")
-	}
+	assert.Equal(t, 3, f.deletes, "credential deletion or cancellation failed")
+	assert.True(t, !strings.Contains(strings.Join(f.replies, " "), "synthetic-secret"), "credential deletion or cancellation failed")
 }
 func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing.T) {
 	// Given
@@ -422,12 +419,11 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("polling did not cancel")
+		assert.True(t, false, "polling should stop when its context is canceled")
 	}
 	// Then
-	if log != "telegram polling failure" || strings.Contains(log, "synthetic") {
-		t.Fatal("raw polling error leaked")
-	}
+	assert.Equal(t, "telegram polling failure", log, "raw polling error leaked")
+	assert.True(t, !strings.Contains(log, "synthetic"), "raw polling error leaked")
 }
 
 func TestRunShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
@@ -441,9 +437,8 @@ func TestRunShouldRejectAnotherRunWhenPollingHasAlreadyStarted(t *testing.T) {
 	second := f.a.Run(ctx)
 
 	// Then
-	if !errors.Is(first, context.Canceled) || !errors.Is(second, errPolling) {
-		t.Fatalf("first=%v second=%v", first, second)
-	}
+	assert.ErrorIs(t, first, context.Canceled)
+	assert.ErrorIs(t, second, errPolling)
 }
 
 func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
@@ -461,9 +456,7 @@ func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 202, "synthetic")
 	// Then
-	if calls != 2 {
-		t.Fatalf("calls=%d", calls)
-	}
+	assert.Equal(t, 2, calls, "calls should match the expected value")
 }
 
 func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
@@ -483,9 +476,8 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 			// When
 			a, err := New(context.Background(), c)
 			// Then
-			if a != nil || err == nil {
-				t.Fatalf("accepted missing %s", missing)
-			}
+			assert.True(t, a == nil, "failed startup should not return a bot")
+			assert.True(t, err != nil, "operation should return an error")
 		})
 	}
 }
@@ -516,9 +508,8 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 				a.erase(ctx, 101, 1)
 			}
 			// Then
-			if !reported || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				t.Fatal("unauthorized operation did not trigger shutdown")
-			}
+			assert.True(t, reported, "unauthorized operation did not trigger shutdown")
+			assert.True(t, !errors.Is(ctx.Err(), context.DeadlineExceeded), "unauthorized operation did not trigger shutdown")
 		})
 	}
 }
@@ -541,9 +532,7 @@ func (this *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 		server.handler.ServeHTTP(w, r)
 	}), server.URL}).Client()
 	a, err := New(context.Background(), c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	t.Cleanup(a.Close)
 	return a
 }
@@ -578,9 +567,10 @@ func TestBotShouldIgnoreUpdatesWhenPrivateSenderMetadataIsInvalid(t *testing.T) 
 				f.a.handle(context.Background(), &telegramModels.Update{MyChatMember: &telegramModels.ChatMemberUpdated{From: *testCase.sender, Chat: testCase.chat, NewChatMember: telegramModels.ChatMember{Type: telegramModels.ChatMemberTypeBanned}}})
 			}
 			// Then
-			if len(f.replies) != 0 || f.deletes != 0 || f.calls != 0 || len(f.a.owners) != 0 {
-				t.Fatalf("invalid transport metadata processed: replies=%v", f.replies)
-			}
+			assert.Equal(t, 0, len(f.replies), "invalid transport metadata processed")
+			assert.Equal(t, 0, f.deletes, "invalid transport metadata processed")
+			assert.Equal(t, 0, f.calls, "invalid transport metadata processed")
+			assert.Equal(t, 0, len(f.a.owners), "invalid transport metadata processed")
 		})
 	}
 }
@@ -613,9 +603,9 @@ func TestReplyShouldSuppressConcurrentSendsWhenTokenIsRejected(t *testing.T) {
 	}
 	wg.Wait()
 	// Then
-	if calls != 1 || rejected != 1 || failures != 9 {
-		t.Fatalf("calls=%d rejected=%d failures=%d", calls, rejected, failures)
-	}
+	assert.Equal(t, 1, calls, "calls should match the expected value")
+	assert.Equal(t, 1, rejected, "rejected should match the expected value")
+	assert.Equal(t, 9, failures, "failures should match the expected value")
 }
 
 func TestReplyShouldSkipSendWhenContextIsCanceledOrOwnerIsInvalid(t *testing.T) {
@@ -628,9 +618,8 @@ func TestReplyShouldSkipSendWhenContextIsCanceledOrOwnerIsInvalid(t *testing.T) 
 	f.a.reply(context.Background(), 0, "invalid")
 	f.a.reply(context.Background(), -1, "invalid")
 	// Then
-	if len(f.replies) != 0 || strings.Join(f.logs, ",") != "telegram reply failure" {
-		t.Fatalf("replies=%v logs=%v", f.replies, f.logs)
-	}
+	assert.Equal(t, 0, len(f.replies), "len(f.replies) should match the expected value")
+	assert.Equal(t, "telegram reply failure", strings.Join(f.logs, ","), "strings.Join(f.logs, \",\") should match the expected value")
 }
 
 func TestReplyShouldBoundSendWhenContextHasNoDeadline(t *testing.T) {
@@ -648,16 +637,13 @@ func TestReplyShouldBoundSendWhenContextHasNoDeadline(t *testing.T) {
 			return nil, errors.New("synthetic transport failure")
 		})}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	f.a.client = telegram
 	// When
 	f.a.reply(context.Background(), 101, "test")
 	// Then
-	if remaining <= 0 || remaining > 15*time.Second {
-		t.Fatalf("send deadline remaining=%v", remaining)
-	}
+	assert.True(t, remaining > 0, "send should have a future deadline")
+	assert.True(t, remaining <= 15*time.Second, "send deadline should be bounded to fifteen seconds")
 }
 
 func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
@@ -695,12 +681,10 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 			if code == 200 {
 				expectedCalls = 2
 			}
-			if calls != expectedCalls || (err == nil) != (code == 200) || errors.Is(err, ErrInvalidToken) != (code == 401) {
-				t.Fatalf("calls=%d error=%v", calls, err)
-			}
-			if err != nil && strings.Contains(err.Error(), "synthetic") {
-				t.Fatal("secret leaked")
-			}
+			assert.Equal(t, expectedCalls, calls, "calls should match the expected value")
+			assert.Equal(t, (code == 200), (err == nil), "(err == nil) should match the expected value")
+			assert.Equal(t, (code == 401), errors.Is(err, ErrInvalidToken), "errors.Is(err, ErrInvalidToken) should match the expected value")
+			assert.True(t, !(err != nil && strings.Contains(err.Error(), "synthetic")), "secret leaked")
 		})
 	}
 }
@@ -720,9 +704,8 @@ func TestNewShouldReturnNoBotWhenValidationIsCanceled(t *testing.T) {
 	// When
 	a, err := New(ctx, c)
 	// Then
-	if a != nil || err == nil {
-		t.Fatalf("bot=%v error=%v", a, err)
-	}
+	assert.True(t, a == nil, "failed startup should not return a bot")
+	assert.True(t, err != nil, "operation should return an error")
 }
 
 func (portal) ForgetSession(int64) {}

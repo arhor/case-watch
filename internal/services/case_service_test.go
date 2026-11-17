@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -48,9 +50,7 @@ func setup(t *testing.T, p portalFunc) *fixture {
 	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db")}
 	var err error
 	f.db, err = database.Open(context.Background(), f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	f.store = repositories.NewStore(f.db)
 	t.Cleanup(func() { f.db.Close() })
 	wrapped := portalFunc(func(ctx context.Context, number, password string) (string, time.Time, error) {
@@ -65,33 +65,31 @@ func setup(t *testing.T, p portalFunc) *fixture {
 }
 func (this *fixture) reopen(t *testing.T) {
 	t.Helper()
-	if err := this.db.Close(); err != nil {
-		t.Fatal(err)
+	{
+		err := this.db.Close()
+		assert.NoError(t, err)
 	}
 	db, err := database.Open(context.Background(), this.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	this.db = db
 	this.store = repositories.NewStore(db)
 }
 
 func (this *fixture) enroll(t *testing.T, owner int64) string {
 	t.Helper()
-	if _, _, err := this.c.Enroll(context.Background(), owner, number, password); err != nil {
-		t.Fatal(err)
+	{
+		_, _, err := this.c.Enroll(context.Background(), owner, number, password)
+		assert.NoError(t, err)
 	}
 	e, err := this.store.Enrollments().FindByOwner(context.Background(), owner)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	return e.ID
 }
 func obs(t *testing.T, s models.Status, stage string, checked time.Time) {
 	t.Helper()
-	if s.CheckedAt.IsZero() || s.Stage != stage || !s.CheckedAt.Equal(checked) {
-		t.Fatalf("unexpected observation: %+v", s)
-	}
+	assert.True(t, !s.CheckedAt.IsZero(), "observation should have the expected stage and completion timestamp")
+	assert.Equal(t, stage, s.Stage, "observation should have the expected stage and completion timestamp")
+	assert.True(t, s.CheckedAt.Equal(checked), "observation should have the expected stage and completion timestamp")
 }
 
 func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRecent(t *testing.T) {
@@ -108,9 +106,14 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	e, _ := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	deadline, e3 := f.c.checkEligibility(context.Background(), 101, e.ID, true)
 	// Then
-	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("freshness: recent=%+v at=%+v calls=%d errors=%v/%v/%v", recent, at, f.calls.Load(), e1, e2, e3)
-	}
+	assert.NoError(t, e1, "only completed checks should refresh cached status")
+	assert.NoError(t, e2, "only completed checks should refresh cached status")
+	assert.NoError(t, e3, "only completed checks should refresh cached status")
+	assert.True(t, !recent.Fresh, "only completed checks should refresh cached status")
+	assert.True(t, at.Fresh, "only completed checks should refresh cached status")
+	assert.Equal(t, 2, f.calls.Load(), "only completed checks should refresh cached status")
+	assert.True(t, recent.NextEligibleAt.Equal(epoch.Add(time.Minute)), "only completed checks should refresh cached status")
+	assert.True(t, deadline.Equal(epoch.Add(2*time.Minute)), "only completed checks should refresh cached status")
 	obs(t, recent, "A", epoch)
 	obs(t, at, "A", epoch.Add(time.Minute))
 }
@@ -139,9 +142,15 @@ func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *te
 	f.clock.set(epoch.Add(2 * time.Minute))
 	at, e3 := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || failed.Fresh || before.Fresh || at.Fresh || f.calls.Load() != 3 || strings.Contains(e1.Error(), "secret") || !before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("failure guard: %+v %+v errors=%v/%v/%v calls=%d", failed, before, e1, e2, e3, f.calls.Load())
-	}
+	assert.ErrorIs(t, e1, ErrCheck, "failed checks should retain stale status and the retry guard")
+	assert.NoError(t, e2, "failed checks should retain stale status and the retry guard")
+	assert.ErrorIs(t, e3, ErrCheck, "failed checks should retain stale status and the retry guard")
+	assert.True(t, !failed.Fresh, "failed checks should retain stale status and the retry guard")
+	assert.True(t, !before.Fresh, "failed checks should retain stale status and the retry guard")
+	assert.True(t, !at.Fresh, "failed checks should retain stale status and the retry guard")
+	assert.Equal(t, 3, f.calls.Load(), "failed checks should retain stale status and the retry guard")
+	assert.True(t, !strings.Contains(e1.Error(), "secret"), "failed checks should retain stale status and the retry guard")
+	assert.True(t, before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "failed checks should retain stale status and the retry guard")
 	obs(t, failed, "A", epoch)
 	obs(t, before, "A", epoch)
 	obs(t, at, "A", epoch)
@@ -161,9 +170,17 @@ func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *t
 	manual, e4 := f.c.Status(context.Background(), 101)
 	history, e5 := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
-	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || f.calls.Load() != 3 || !scheduled.Fresh || !guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) || cached.Fresh || !manual.Fresh || len(history) != 0 {
-		t.Fatalf("scheduled guard: %+v %+v %+v calls=%d errors=%v/%v/%v/%v/%v", scheduled, guarded, cached, f.calls.Load(), e1, e2, e3, e4, e5)
-	}
+	assert.NoError(t, e1, "scheduled checks should preserve the shared guard and manual budget")
+	assert.NoError(t, e2, "scheduled checks should preserve the shared guard and manual budget")
+	assert.NoError(t, e3, "scheduled checks should preserve the shared guard and manual budget")
+	assert.NoError(t, e4, "scheduled checks should preserve the shared guard and manual budget")
+	assert.NoError(t, e5, "scheduled checks should preserve the shared guard and manual budget")
+	assert.Equal(t, 3, f.calls.Load(), "scheduled checks should preserve the shared guard and manual budget")
+	assert.True(t, scheduled.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+	assert.True(t, guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "scheduled checks should preserve the shared guard and manual budget")
+	assert.True(t, !cached.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+	assert.True(t, manual.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+	assert.Equal(t, 0, len(history), "scheduled checks should preserve the shared guard and manual budget")
 }
 
 func TestScheduledShouldPreventManualRetryWhenScheduledAttemptFails(t *testing.T) {
@@ -185,9 +202,11 @@ func TestScheduledShouldPreventManualRetryWhenScheduledAttemptFails(t *testing.T
 	f.clock.set(epoch.Add(2 * time.Minute))
 	_, e3 := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || before.Fresh || f.calls.Load() != 3 {
-		t.Fatalf("failed schedule guard: %+v errors=%v/%v/%v calls=%d", before, e1, e2, e3, f.calls.Load())
-	}
+	assert.ErrorIs(t, e1, ErrCheck, "failed schedule guard")
+	assert.NoError(t, e2, "failed schedule guard")
+	assert.ErrorIs(t, e3, ErrCheck, "failed schedule guard")
+	assert.True(t, !before.Fresh, "failed schedule guard")
+	assert.Equal(t, 3, f.calls.Load(), "failed schedule guard")
 }
 
 // Notifies when a caller reaches the cancellable shared-flight wait, avoiding
@@ -250,9 +269,13 @@ func TestStatusShouldShareSingleFlightAndKeepOtherWaitersWhenOneCallerCancels(t 
 	f.clock.set(epoch.Add(189 * time.Second))
 	recent, e := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(canceled.err, context.Canceled) || joined1.err != nil || joined2.err != nil || e != nil || f.calls.Load() != 2 || recent.Fresh || !joined1.s.NextEligibleAt.Equal(epoch.Add(190*time.Second)) {
-		t.Fatalf("joins: %+v %+v %+v recent=%+v err=%v calls=%d", canceled, joined1, joined2, recent, e, f.calls.Load())
-	}
+	assert.ErrorIs(t, canceled.err, context.Canceled, "joins")
+	assert.NoError(t, joined1.err, "joins")
+	assert.NoError(t, joined2.err, "joins")
+	assert.True(t, e == nil, "joins")
+	assert.Equal(t, 2, f.calls.Load(), "joins")
+	assert.True(t, !recent.Fresh, "joins")
+	assert.True(t, joined1.s.NextEligibleAt.Equal(epoch.Add(190*time.Second)), "joins")
 	obs(t, joined1.s, "A", epoch.Add(130*time.Second))
 	obs(t, joined2.s, "A", epoch.Add(130*time.Second))
 }
@@ -269,13 +292,10 @@ func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.
 	_, other := f.c.Status(context.Background(), 202)
 	// Then
 	for _, err := range []error{e1, e2, e3, e4} {
-		if !errors.Is(err, ErrDenied) {
-			t.Fatalf("denial: %v", err)
-		}
+		assert.ErrorIs(t, err, ErrDenied, "denial")
 	}
-	if !errors.Is(other, repositories.ErrNotFound) || f.calls.Load() != 1 {
-		t.Fatalf("owner isolation: %v calls=%d", other, f.calls.Load())
-	}
+	assert.ErrorIs(t, other, repositories.ErrNotFound, "owners should only access their own enrollment")
+	assert.Equal(t, 1, f.calls.Load(), "owners should only access their own enrollment")
 }
 
 func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t *testing.T) {
@@ -286,12 +306,12 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	_, _, err := f.c.Enroll(context.Background(), 101, number, password)
 	e, read := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
-	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
-		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
-	}
-	if e.Number != number || e.Password != password {
-		t.Fatal("enrollment credentials missing")
-	}
+	assert.ErrorIs(t, err, repositories.ErrExists, "duplicate enrollment should preserve the original case without portal work")
+	assert.True(t, read == nil, "duplicate enrollment should preserve the original case without portal work")
+	assert.Equal(t, id, e.ID, "duplicate enrollment should preserve the original case without portal work")
+	assert.Equal(t, 1, f.calls.Load(), "duplicate enrollment should preserve the original case without portal work")
+	assert.Equal(t, number, e.Number, "enrollment credentials missing")
+	assert.Equal(t, password, e.Password, "enrollment credentials missing")
 }
 
 func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.T) {
@@ -323,9 +343,9 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			_, _, err := c.Enroll(ctx, 101, number, password)
 			_, read := f.store.Enrollments().FindByOwner(context.Background(), 101)
 			// Then
-			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
-				t.Fatalf("failed enrollment committed: %v/%v", err, read)
-			}
+			assert.True(t, err != nil, "failed enrollment should not persist data")
+			assert.True(t, !strings.Contains(err.Error(), "private"), "failed enrollment should not persist data")
+			assert.ErrorIs(t, read, repositories.ErrNotFound, "failed enrollment should not persist data")
 		})
 	}
 }
@@ -359,7 +379,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	before, beforeErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
-		t.Fatalf("removal returned without drain: %v", err)
+		assert.True(t, false, fmt.Sprintf("removal should wait for in-flight work to drain, got %v", err))
 	default:
 	}
 	close(release)
@@ -372,9 +392,18 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	f.clock.set(epoch.Add(119 * time.Second))
 	cached, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(busyStatus, ErrRemoving) || !errors.Is(busyEnroll, ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, ErrRemoving) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("removal results: late=%v remove=%v missing=%v lateObservation=%v status=%+v err=%v", late.err, removeErr, missing, lateObservation, cached, statusErr)
-	}
+	assert.ErrorIs(t, busyStatus, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+	assert.ErrorIs(t, busyEnroll, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+	assert.NoError(t, beforeErr, "removal should drain work, delete data, and retain the manual guard")
+	assert.Equal(t, id, before.ID, "removal should drain work, delete data, and retain the manual guard")
+	assert.ErrorIs(t, late.err, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+	assert.NoError(t, removeErr, "removal should drain work, delete data, and retain the manual guard")
+	assert.ErrorIs(t, missing, repositories.ErrNotFound, "removal should drain work, delete data, and retain the manual guard")
+	assert.True(t, newID != id, "removal should drain work, delete data, and retain the manual guard")
+	assert.ErrorIs(t, lateObservation, repositories.ErrNotFound, "removal should drain work, delete data, and retain the manual guard")
+	assert.NoError(t, statusErr, "removal should drain work, delete data, and retain the manual guard")
+	assert.True(t, !cached.Fresh, "removal should drain work, delete data, and retain the manual guard")
+	assert.True(t, cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "removal should drain work, delete data, and retain the manual guard")
 	obs(t, cached, "A", epoch.Add(time.Minute))
 }
 
@@ -400,9 +429,10 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	enrollErr, removeErr := <-enrolled, <-removed
 	_, missing := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
-	if !errors.Is(busy, ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
-		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
-	}
+	assert.ErrorIs(t, busy, ErrRemoving, "enrollment cancellation")
+	assert.ErrorIs(t, enrollErr, context.Canceled, "enrollment cancellation")
+	assert.ErrorIs(t, removeErr, repositories.ErrNotFound, "enrollment cancellation")
+	assert.ErrorIs(t, missing, repositories.ErrNotFound, "enrollment cancellation")
 }
 
 func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
@@ -431,9 +461,8 @@ func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
 	<-canceled
 	removed := f.c.Remove(context.Background(), 101)
 	// Then
-	if !errors.Is(err, context.Canceled) || removed != nil {
-		t.Fatalf("cancellation failed to drain: %v/%v", err, removed)
-	}
+	assert.ErrorIs(t, err, context.Canceled, "cancellation failed to drain")
+	assert.True(t, removed == nil, "cancellation failed to drain")
 }
 
 func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
@@ -453,9 +482,14 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		e, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 		history, historyErr := f.store.History().FindByEnrollment(context.Background(), 101, id)
 		// Then
-		if !errors.Is(err, ErrStorage) || readErr != nil || historyErr != nil || e.Stage != "A" || !e.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
-			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
-		}
+		assert.ErrorIs(t, err, ErrStorage, "failed refresh")
+		assert.NoError(t, readErr, "failed refresh")
+		assert.NoError(t, historyErr, "failed refresh")
+		assert.Equal(t, "A", e.Stage, "failed refresh")
+		assert.True(t, e.CheckedAt.Equal(epoch), "failed refresh")
+		assert.Equal(t, 0, len(history), "failed refresh")
+		assert.True(t, !status.Fresh, "failed refresh")
+		assert.Equal(t, 1, calls.Load(), "failed refresh")
 		obs(t, status, "A", epoch)
 	})
 }
@@ -477,9 +511,14 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
 	history, e3 := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
-	if e1 != nil || e2 != nil || e3 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || history[0].Stage != "B" || history[1].Stage != "A" {
-		t.Fatalf("shared observation transaction: history=%+v errors=%v/%v/%v", history, e1, e2, e3)
-	}
+	assert.NoError(t, e1, "shared observation transaction")
+	assert.NoError(t, e2, "shared observation transaction")
+	assert.NoError(t, e3, "shared observation transaction")
+	assert.True(t, manual.Fresh, "shared observation transaction")
+	assert.True(t, scheduled.Fresh, "shared observation transaction")
+	assert.Equal(t, 2, len(history), "shared observation transaction")
+	assert.Equal(t, "B", history[0].Stage, "shared observation transaction")
+	assert.Equal(t, "A", history[1].Stage, "shared observation transaction")
 }
 
 func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t *testing.T) {
@@ -514,9 +553,12 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	e, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
-	if !errors.Is(workErr, ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.CheckedAt.IsZero() {
-		t.Fatalf("canceled removal: work=%v remove=%v read=%v status=%v", workErr, removeErr, readErr, statusErr)
-	}
+	assert.ErrorIs(t, workErr, ErrRemoving, "canceled removal")
+	assert.ErrorIs(t, removeErr, context.Canceled, "canceled removal")
+	assert.NoError(t, readErr, "canceled removal")
+	assert.Equal(t, id, e.ID, "canceled removal")
+	assert.NoError(t, statusErr, "canceled removal")
+	assert.True(t, !status.CheckedAt.IsZero(), "canceled removal")
 }
 
 func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAfterRestart(t *testing.T) {
@@ -524,8 +566,9 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	f.reopen(t)
+	var portalCalls atomic.Int32
 	c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
-		t.Error("recent baseline triggered portal work")
+		portalCalls.Add(1)
 		return "", time.Time{}, nil
 	}), Clock: f.clock})
 	f.clock.set(epoch.Add(59 * time.Second))
@@ -533,9 +576,12 @@ func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAf
 	status, statusErr := c.Scheduled(context.Background(), 101)
 	next, guardErr := c.checkEligibility(context.Background(), 101, id, true)
 	// Then
-	if statusErr != nil || guardErr != nil || status.Fresh || !next.IsZero() || !status.NextEligibleAt.Equal(epoch.Add(time.Minute)) {
-		t.Fatalf("baseline reuse: %+v status=%v next=%v guard=%v", status, statusErr, next, guardErr)
-	}
+	assert.Equal(t, int32(0), portalCalls.Load(), "recent baseline should not trigger portal work")
+	assert.NoError(t, statusErr, "recent enrollment baseline should be reused without reserving a check")
+	assert.NoError(t, guardErr, "recent enrollment baseline should be reused without reserving a check")
+	assert.True(t, !status.Fresh, "recent enrollment baseline should be reused without reserving a check")
+	assert.True(t, next.IsZero(), "recent enrollment baseline should be reused without reserving a check")
+	assert.True(t, status.NextEligibleAt.Equal(epoch.Add(time.Minute)), "recent enrollment baseline should be reused without reserving a check")
 	obs(t, status, "A", epoch)
 }
 
@@ -570,22 +616,25 @@ func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
 	// Then
 	select {
 	case <-done:
-		t.Fatal("shutdown returned before callbacks drained")
+		assert.True(t, false, "shutdown should wait for all callbacks to drain")
 	default:
 	}
 	close(release)
 	<-done
 	for i := 0; i < 2; i++ {
-		if e := <-finished; !errors.Is(e, context.Canceled) {
-			t.Fatal(e)
+		{
+			e := <-finished
+			assert.ErrorIs(t, e, context.Canceled)
 		}
 	}
 	f.c.Shutdown()
-	if _, _, e := f.c.Enroll(context.Background(), 101, number, password); !errors.Is(e, ErrClosed) {
-		t.Fatal("enrollment admitted after shutdown")
+	{
+		_, _, e := f.c.Enroll(context.Background(), 101, number, password)
+		assert.ErrorIs(t, e, ErrClosed, "enrollment admitted after shutdown")
 	}
-	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, ErrClosed) {
-		t.Fatal("removal admitted after shutdown")
+	{
+		e := f.c.Remove(context.Background(), 101)
+		assert.ErrorIs(t, e, ErrClosed, "removal admitted after shutdown")
 	}
 }
 
@@ -599,12 +648,13 @@ func TestScheduledShouldRefreshAnyEnrolledOwnerWhenNoAccessPolicyIsConfigured(t 
 	status, err := f.c.Scheduled(context.Background(), 303)
 	_, otherErr := f.c.Status(context.Background(), 404)
 	// Then
-	if inventoryErr != nil || len(owners) != 1 || owners[0] != 303 || err != nil || !status.Fresh || f.calls.Load() != 2 {
-		t.Fatalf("owners=%v inventory=%v status=%+v err=%v calls=%d", owners, inventoryErr, status, err, f.calls.Load())
-	}
-	if !errors.Is(otherErr, repositories.ErrNotFound) {
-		t.Fatalf("another owner's case was accessible: %v", otherErr)
-	}
+	assert.NoError(t, inventoryErr)
+	assert.Equal(t, 1, len(owners), "len(owners) should match the expected value")
+	assert.Equal(t, 303, owners[0], "owners[0] should match the expected value")
+	assert.NoError(t, err)
+	assert.True(t, status.Fresh, "status.Fresh should hold")
+	assert.Equal(t, 2, f.calls.Load(), "f.calls.Load() should match the expected value")
+	assert.ErrorIs(t, otherErr, repositories.ErrNotFound, "another owner's case was accessible")
 }
 
 func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
@@ -612,36 +662,35 @@ func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
 	f := setup(t, nil)
 	id := f.enroll(t, 101)
 	db, err := sql.Open("sqlite", f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer db.Close()
-	if _, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
- BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`); err != nil {
-		t.Fatal(err)
+	{
+		_, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
+ BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`)
+		assert.NoError(t, err)
 	}
 	// When
 	observeErr := f.c.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
 	enrollment, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	history, historyErr := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
-	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Stage != "A" || !enrollment.CheckedAt.Equal(epoch) || len(history) != 0 {
-		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment, history, observeErr, readErr, historyErr)
-	}
+	assert.ErrorIs(t, observeErr, repositories.ErrStorage, "observation rollback")
+	assert.NoError(t, readErr, "observation rollback")
+	assert.NoError(t, historyErr, "observation rollback")
+	assert.Equal(t, "A", enrollment.Stage, "observation rollback")
+	assert.True(t, enrollment.CheckedAt.Equal(epoch), "observation rollback")
+	assert.Equal(t, 0, len(history), "observation rollback")
 }
 
 func rejectInsert(t *testing.T, path, table string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer db.Close()
-	if table != "history" && table != "enrollments" {
-		t.Fatal("invalid fixture table")
-	}
-	if _, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;"); err != nil {
-		t.Fatal(err)
+	assert.True(t, !(table != "history" && table != "enrollments"), "invalid fixture table")
+	{
+		_, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;")
+		assert.NoError(t, err)
 	}
 }
 
@@ -650,8 +699,9 @@ func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *tes
 		t.Run(map[bool]string{false: "active", true: "canceled"}[canceled], func(t *testing.T) {
 			// Given
 			f := setup(t, nil)
-			if err := f.db.Close(); err != nil {
-				t.Fatal(err)
+			{
+				err := f.db.Close()
+				assert.NoError(t, err)
 			}
 			reports := 0
 			f.c.onStorageError = func() { reports++ }
@@ -667,9 +717,8 @@ func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *tes
 			if canceled {
 				want = 0
 			}
-			if err == nil || reports != want {
-				t.Fatalf("storage failure: err=%v reports=%d want=%d", err, reports, want)
-			}
+			assert.True(t, err != nil, "storage failure")
+			assert.Equal(t, want, reports, "storage failure")
 		})
 	}
 }

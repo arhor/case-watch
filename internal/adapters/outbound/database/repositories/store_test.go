@@ -10,15 +10,14 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer db.Close()
 	store := repositories.NewStore(db)
 	id := "0123456789abcdef0123456789abcdef"
@@ -34,34 +33,34 @@ func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) 
 		return abort
 	})
 	// Then
-	if !errors.Is(err, abort) {
-		t.Fatalf("rollback returned %v, want %v", err, abort)
+	assert.ErrorIs(t, err, abort)
+	{
+		_, err := store.Enrollments().FindByOwner(ctx, 101)
+		assert.ErrorIs(t, err, repositories.ErrNotFound, "rolled-back record was visible")
 	}
-	if _, err := store.Enrollments().FindByOwner(ctx, 101); !errors.Is(err, repositories.ErrNotFound) {
-		t.Fatalf("rolled-back record was visible: %v", err)
+	{
+		err := store.RunInTx(ctx, func(store models.Store) error {
+			return store.Enrollments().Create(ctx, 101, id, number, password, stage, checkedAt)
+		})
+		assert.NoError(t, err)
 	}
-	if err := store.RunInTx(ctx, func(store models.Store) error {
-		return store.Enrollments().Create(ctx, 101, id, number, password, stage, checkedAt)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Enrollments().FindByOwner(ctx, 101); err != nil {
-		t.Fatalf("committed record was missing: %v", err)
+	{
+		_, err := store.Enrollments().FindByOwner(ctx, 101)
+		assert.NoError(t, err, "committed record was missing")
 	}
 }
 
-func TestRunInTxShouldRejectNestedTransaction(t *testing.T) {
+func TestRunInTxShouldRejectNestedTransactionWhenAlreadyInTransaction(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer db.Close()
 	store := repositories.NewStore(db)
+	// When
 	err = store.RunInTx(ctx, func(store models.Store) error {
 		return store.RunInTx(ctx, func(models.Store) error { return nil })
 	})
-	if !errors.Is(err, repositories.ErrTransaction) {
-		t.Fatalf("nested transaction returned %v, want %v", err, repositories.ErrTransaction)
-	}
+	// Then
+	assert.ErrorIs(t, err, repositories.ErrTransaction)
 }

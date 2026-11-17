@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
 type sessionTransport func(*http.Request) (*http.Response, error)
@@ -34,9 +36,7 @@ func TestHttpClientShouldIsolateCookiesWhenUsersShareTransport(t *testing.T) {
 	call := func(sessionID string) {
 		req, _ := http.NewRequest("GET", "https://example.test/", nil)
 		res, err := client.Do(sessionID, req)
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 		res.Body.Close()
 	}
 
@@ -53,7 +53,9 @@ func TestHttpClientShouldIsolateCookiesWhenUsersShareTransport(t *testing.T) {
 	call(session1ID)
 
 	// Then
-	if len(cookies) != 4 || cookies[0] != "" || cookies[1] != "session=value" || cookies[2] != "" || cookies[3] != "" {
-		t.Fatalf("cookies=%v", cookies)
-	}
+	assert.Equal(t, 4, len(cookies), "len(cookies) should match the expected value")
+	assert.Equal(t, "", cookies[0], "cookies[0] should match the expected value")
+	assert.Equal(t, "session=value", cookies[1], "cookies[1] should match the expected value")
+	assert.Equal(t, "", cookies[2], "cookies[2] should match the expected value")
+	assert.Equal(t, "", cookies[3], "cookies[3] should match the expected value")
 }
