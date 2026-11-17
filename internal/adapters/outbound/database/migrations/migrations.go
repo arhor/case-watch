@@ -35,6 +35,6 @@ func Run(db *sql.DB) error {
 }
 
 // -- Internals ----------------------------------------------------------------
-
+//
 //go:embed *.sql
 var migrations embed.FS

@@ -7,13 +7,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/arhor/case-watch/internal/clients"
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/entrypoints/schedule"
-	"github.com/arhor/case-watch/internal/entrypoints/telegram"
+	"github.com/arhor/case-watch/internal/adapters/inbound/schedule"
+	"github.com/arhor/case-watch/internal/adapters/inbound/telegram"
+	"github.com/arhor/case-watch/internal/adapters/outbound/clients"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
+	"github.com/arhor/case-watch/internal/platform/clock"
 	"github.com/arhor/case-watch/internal/services"
-	"github.com/arhor/case-watch/internal/utils"
 )
 
 func Run(ctx context.Context) error {
@@ -28,7 +28,7 @@ var (
 )
 
 func run(ctx context.Context) (result error) {
-	clock := utils.NewClock()
+	clock := clock.NewClock()
 
 	cfg, err := loadConfig(os.LookupEnv)
 	if err != nil {

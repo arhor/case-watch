@@ -1,4 +1,3 @@
-// Package schedule initiates case workflows at Warsaw weekday slots (ADR 0007).
 package schedule
 
 import (
@@ -6,12 +5,11 @@ import (
 	"errors"
 	"sync"
 	"time"
+
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
-	"github.com/robfig/cron/v3"
-
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/utils"
+	"github.com/robfig/cron/v3"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
@@ -24,7 +22,7 @@ type Cases interface {
 
 type Config struct {
 	CaseService Cases
-	Clock       utils.Clock
+	Clock       models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
@@ -38,22 +36,6 @@ type Jobs struct {
 	running  sync.Mutex
 }
 
-func New(c Config) (*Jobs, error) {
-	if c.CaseService == nil || c.Clock == nil {
-		return nil, ErrScheduler
-	}
-	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
-	if err != nil {
-		return nil, ErrScheduler
-	}
-	if c.Wait == nil {
-		c.Wait = wait
-	}
-	return &Jobs{c: c, schedule: schedule}, nil
-}
-
-// Next returns the first strictly future Warsaw slot. Startup at a slot never
-// replays that slot; holidays use the same weekday rules as every other date.
 func (this *Jobs) Next(after time.Time) time.Time {
 	return this.schedule.Next(after)
 }
@@ -104,6 +86,23 @@ func (this *Jobs) Run(ctx context.Context) error {
 		}
 	}
 }
+
+func New(c Config) (*Jobs, error) {
+	if c.CaseService == nil || c.Clock == nil {
+		return nil, ErrScheduler
+	}
+	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
+	if err != nil {
+		return nil, ErrScheduler
+	}
+	if c.Wait == nil {
+		c.Wait = wait
+	}
+	return &Jobs{c: c, schedule: schedule}, nil
+}
+
+// Next returns the first strictly future Warsaw slot. Startup at a slot never
+// replays that slot; holidays use the same weekday rules as every other date.
 
 // -- Internals ----------------------------------------------------------------
 

@@ -10,6 +10,8 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 )
 
+var _ models.CooldownRepository = (*CooldownRepository)(nil)
+
 type CooldownRepository struct {
 	executor QueryExecutor
 }
@@ -90,7 +92,6 @@ func (this *CooldownRepository) DeleteBySubjectTypeAndSubjectID(
 }
 
 // -- Internals ----------------------------------------------------------------
-
 const selectBySubjectTypeAndSubjectID = `
     SELECT subject_type, subject_id, started_at
       FROM cooldowns

@@ -1,4 +1,3 @@
-// Package clients contains administration-specific implementations for checking case stages.
 package clients
 
 import (
@@ -16,7 +15,8 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/utils"
+	realclock "github.com/arhor/case-watch/internal/platform/clock"
+	"github.com/arhor/case-watch/internal/platform/httpclient"
 )
 
 const (
@@ -27,6 +27,7 @@ const (
 	Deadline       Kind = "deadline"
 )
 
+// Session state belongs to a single check, never to the reusable client.
 type Kind string
 
 // Error contains only a stable classification, never remote text or credentials.
@@ -48,17 +49,19 @@ func (this *Error) Is(target error) bool {
 type GdanskPortalClientOptions struct {
 	BaseURL   string
 	Transport http.RoundTripper
-	Clock     utils.Clock
+	Clock     models.Clock
 	Wait      func(context.Context, time.Duration) error
 }
+
+var _ models.Portal = (*GdanskPortalClient)(nil)
 
 // GdanskPortalClient checks case stages through the Gdańsk administration portal.
 // Each Check reuses user cookies with fresh RPC state over a shared connection
 // pool and performs no automatic retries. Call Close on shutdown to release idle connections.
 type GdanskPortalClient struct {
 	base       string
-	httpClient *utils.HttpClient
-	clock      utils.Clock
+	httpClient *httpclient.HttpClient
+	clock      models.Clock
 	wait       func(context.Context, time.Duration) error
 	interval   time.Duration
 	overall    time.Duration
@@ -74,7 +77,7 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 	}
 	clock := options.Clock
 	if clock == nil {
-		clock = utils.NewClock()
+		clock = realclock.NewClock()
 	}
 	wait := options.Wait
 	if wait == nil {
@@ -82,7 +85,7 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 	}
 	return &GdanskPortalClient{
 		base:       strings.TrimRight(base, "/"),
-		httpClient: utils.NewHttpClient(utils.HttpClientOptions{Transport: options.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}),
+		httpClient: httpclient.NewHttpClient(httpclient.HttpClientOptions{Transport: options.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}),
 		clock:      clock,
 		wait:       wait,
 		interval:   2 * time.Second,
@@ -135,10 +138,6 @@ func (this *GdanskPortalClient) ForgetSession(ownerID int64) {
 }
 
 // -- Internals ----------------------------------------------------------------
-
-var _ models.Portal = (*GdanskPortalClient)(nil)
-
-// Session state belongs to a single check, never to the reusable client.
 type gdanskPortalSession struct {
 	config      *GdanskPortalClient
 	userID      string

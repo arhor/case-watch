@@ -1,4 +1,4 @@
-package utils
+package httpclient
 
 import (
 	"errors"
@@ -19,8 +19,6 @@ type Session struct {
 func (this *Session) Cookies(u *url.URL) []*http.Cookie { return this.jar.Cookies(u) }
 
 func (this *Session) SetCookies(u *url.URL, cookies []*http.Cookie) { this.jar.SetCookies(u, cookies) }
-
-// -- HTTP Session Manager -----------------------------------------------------
 
 type SessionManager struct {
 	mu       sync.Mutex
@@ -61,8 +59,6 @@ func (this *SessionManager) Clear() {
 	defer this.mu.Unlock()
 	this.sessions = nil
 }
-
-// -- HTTP Client --------------------------------------------------------------
 
 type HttpClientOptions struct {
 	Transport     http.RoundTripper

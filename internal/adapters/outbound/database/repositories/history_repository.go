@@ -7,6 +7,8 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 )
 
+var _ models.HistoryRepository = (*HistoryRepository)(nil)
+
 type HistoryRepository struct {
 	executor QueryExecutor
 }

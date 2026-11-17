@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 )
 
@@ -81,7 +81,7 @@ func (this *fixture) enroll(t *testing.T, owner int64) string {
 	if _, _, err := this.c.Enroll(context.Background(), owner, number, password); err != nil {
 		t.Fatal(err)
 	}
-	e, err := this.store.Enrollments.FindByOwner(context.Background(), owner)
+	e, err := this.store.Enrollments().FindByOwner(context.Background(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRece
 	recent, e1 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(time.Minute))
 	at, e2 := f.c.Status(context.Background(), 101)
-	e, _ := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	e, _ := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	deadline, e3 := f.c.checkEligibility(context.Background(), 101, e.ID, true)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
@@ -159,7 +159,7 @@ func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *t
 	cached, e3 := f.c.Status(context.Background(), 101)
 	f.clock.set(epoch.Add(2 * time.Minute))
 	manual, e4 := f.c.Status(context.Background(), 101)
-	history, e5 := f.store.History.FindByEnrollment(context.Background(), 101, id)
+	history, e5 := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || f.calls.Load() != 3 || !scheduled.Fresh || !guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) || cached.Fresh || !manual.Fresh || len(history) != 0 {
 		t.Fatalf("scheduled guard: %+v %+v %+v calls=%d errors=%v/%v/%v/%v/%v", scheduled, guarded, cached, f.calls.Load(), e1, e2, e3, e4, e5)
@@ -284,7 +284,7 @@ func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t
 	id := f.enroll(t, 101)
 	// When
 	_, _, err := f.c.Enroll(context.Background(), 101, number, password)
-	e, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	e, read := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
 		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
@@ -321,7 +321,7 @@ func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.
 			c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: p, Clock: f.clock})
 			// When
 			_, _, err := c.Enroll(ctx, 101, number, password)
-			_, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
+			_, read := f.store.Enrollments().FindByOwner(context.Background(), 101)
 			// Then
 			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
 				t.Fatalf("failed enrollment committed: %v/%v", err, read)
@@ -356,7 +356,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	<-canceled
 	_, busyStatus := f.c.Status(context.Background(), 101)
 	_, _, busyEnroll := f.c.Enroll(context.Background(), 101, number, password)
-	before, beforeErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	before, beforeErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	select {
 	case err := <-removed:
 		t.Fatalf("removal returned without drain: %v", err)
@@ -365,7 +365,7 @@ func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *
 	close(release)
 	late := <-checked
 	removeErr := <-removed
-	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	_, missing := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	block.Store(false)
 	newID := f.enroll(t, 101)
 	lateObservation := f.c.saveObservation(context.Background(), 101, id, "LATE", f.clock.Now())
@@ -398,7 +398,7 @@ func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t 
 	_, _, busy := f.c.Enroll(context.Background(), 101, number, password)
 	close(release)
 	enrollErr, removeErr := <-enrolled, <-removed
-	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	_, missing := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(busy, ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
 		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
@@ -450,8 +450,8 @@ func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
 		f.clock.set(epoch.Add(time.Minute))
 		// When
 		status, err := c.Status(context.Background(), 101)
-		e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-		history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
+		e, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
+		history, historyErr := f.store.History().FindByEnrollment(context.Background(), 101, id)
 		// Then
 		if !errors.Is(err, ErrStorage) || readErr != nil || historyErr != nil || e.Stage != "A" || !e.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
 			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
@@ -475,7 +475,7 @@ func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *
 	f.clock.set(epoch.Add(2 * time.Minute))
 	stage.Store("A")
 	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
-	history, e3 := f.store.History.FindByEnrollment(context.Background(), 101, id)
+	history, e3 := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if e1 != nil || e2 != nil || e3 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || history[0].Stage != "B" || history[1].Stage != "A" {
 		t.Fatalf("shared observation transaction: history=%+v errors=%v/%v/%v", history, e1, e2, e3)
@@ -511,7 +511,7 @@ func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t
 	cancel()
 	close(release)
 	workErr, removeErr := <-work, <-removed
-	e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	e, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	status, statusErr := f.c.Status(context.Background(), 101)
 	// Then
 	if !errors.Is(workErr, ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.CheckedAt.IsZero() {
@@ -622,8 +622,8 @@ func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
 	}
 	// When
 	observeErr := f.c.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
-	enrollment, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
+	enrollment, readErr := f.store.Enrollments().FindByOwner(context.Background(), 101)
+	history, historyErr := f.store.History().FindByEnrollment(context.Background(), 101, id)
 	// Then
 	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Stage != "A" || !enrollment.CheckedAt.Equal(epoch) || len(history) != 0 {
 		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment, history, observeErr, readErr, historyErr)

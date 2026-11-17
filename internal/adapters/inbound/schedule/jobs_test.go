@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/entrypoints/schedule"
+	"github.com/arhor/case-watch/internal/adapters/inbound/schedule"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
 )

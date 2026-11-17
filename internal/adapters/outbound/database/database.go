@@ -6,9 +6,8 @@ import (
 	"net/url"
 	"path/filepath"
 
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/migrations"
 	_ "modernc.org/sqlite"
-
-	"github.com/arhor/case-watch/internal/database/migrations"
 )
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {

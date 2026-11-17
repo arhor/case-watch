@@ -14,14 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
+	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/services"
 	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
-
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/services"
-
-	"github.com/arhor/case-watch/internal/models"
 )
 
 type portal func(context.Context, string, string) (string, time.Time, error)
@@ -153,15 +151,15 @@ func TestConversationShouldEnrollBaselineAndRemoveOnlyConfirmedOwnerWhenInputsAr
 	f.message(303, "/start")
 	f.message(303, "synthetic-number")
 	f.message(303, "synthetic-password")
-	e, err := f.store.Enrollments.FindByOwner(context.Background(), 303)
-	history, herr := f.store.History.FindByEnrollment(context.Background(), 303, e.ID)
+	e, err := f.store.Enrollments().FindByOwner(context.Background(), 303)
+	history, herr := f.store.History().FindByEnrollment(context.Background(), 303, e.ID)
 	f.message(303, "/status")
 	f.message(202, "/remove")
 	f.message(202, "Да")
-	_, still := f.store.Enrollments.FindByOwner(context.Background(), 303)
+	_, still := f.store.Enrollments().FindByOwner(context.Background(), 303)
 	f.message(303, "/remove")
 	f.message(303, "Да")
-	_, removed := f.store.Enrollments.FindByOwner(context.Background(), 303)
+	_, removed := f.store.Enrollments().FindByOwner(context.Background(), 303)
 	// Then
 	if err != nil || herr != nil || len(history) != 0 || still != nil || !errors.Is(removed, repositories.ErrNotFound) || f.calls != 1 || f.deletes != 2 {
 		t.Fatalf("unexpected enrollment/removal outcome: %v %v %v %v calls=%d deletes=%d", err, herr, still, removed, f.calls, f.deletes)
@@ -271,7 +269,7 @@ func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswers(t *testing.T) {
 			f.message(101, "/remove")
 			f.message(101, testCase.answer)
 
-			_, err := f.store.Enrollments.FindByOwner(context.Background(), 101)
+			_, err := f.store.Enrollments().FindByOwner(context.Background(), 101)
 			if errors.Is(err, repositories.ErrNotFound) != testCase.removed {
 				t.Fatalf("removed=%v, want %v", errors.Is(err, repositories.ErrNotFound), testCase.removed)
 			}
@@ -288,13 +286,13 @@ func TestRemoveShouldAcceptYesOrNoAndRejectOtherAnswers(t *testing.T) {
 
 			if !testCase.removed && !testCase.pending {
 				f.message(101, "Да")
-				if _, err := f.store.Enrollments.FindByOwner(context.Background(), 101); err != nil {
+				if _, err := f.store.Enrollments().FindByOwner(context.Background(), 101); err != nil {
 					t.Fatalf("case removed after declining removal: %v", err)
 				}
 			}
 			if testCase.pending {
 				f.message(101, "Да")
-				if _, err := f.store.Enrollments.FindByOwner(context.Background(), 101); !errors.Is(err, repositories.ErrNotFound) {
+				if _, err := f.store.Enrollments().FindByOwner(context.Background(), 101); !errors.Is(err, repositories.ErrNotFound) {
 					t.Fatalf("case not removed after valid confirmation: %v", err)
 				}
 			}
@@ -313,18 +311,18 @@ func TestConversationShouldExpireDraftAndConfirmationAtDeadlineWhenTimeAdvances(
 	f.message(101, "synthetic-number")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "synthetic-password")
-	_, expired := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	_, expired := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	f.message(101, "/start")
 	f.message(101, "synthetic-number")
 	f.message(101, "synthetic-password")
 	f.message(101, "/remove")
 	f.clock.now = f.clock.now.Add(10 * time.Minute)
 	f.message(101, "Да")
-	_, retained := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	_, retained := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	f.message(101, "/remove")
 	f.message(101, "/cancel")
 	f.message(101, "Да")
-	_, cancelled := f.store.Enrollments.FindByOwner(context.Background(), 101)
+	_, cancelled := f.store.Enrollments().FindByOwner(context.Background(), 101)
 	// Then
 	if !errors.Is(expired, repositories.ErrNotFound) || retained != nil || cancelled != nil || f.calls != 1 || f.deletes != 5 {
 		t.Fatalf("expiry/cancellation failure: %v %v %v calls=%d deletes=%d", expired, retained, cancelled, f.calls, f.deletes)

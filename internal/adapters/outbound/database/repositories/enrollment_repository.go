@@ -10,6 +10,8 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 )
 
+var _ models.EnrollmentRepository = (*EnrollmentRepository)(nil)
+
 type EnrollmentRepository struct {
 	executor QueryExecutor
 }

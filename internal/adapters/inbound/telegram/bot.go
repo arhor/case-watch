@@ -1,5 +1,3 @@
-// Package telegram handles Telegram commands and conversations that initiate case workflows.
-// Incoming commands follow ADR 0003 and are not durably acknowledged.
 package telegram
 
 import (
@@ -14,12 +12,10 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	telegramApi "github.com/go-telegram/bot"
-	telegramModels "github.com/go-telegram/bot/models"
-
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
-	"github.com/arhor/case-watch/internal/utils"
+	telegramApi "github.com/go-telegram/bot"
+	telegramModels "github.com/go-telegram/bot/models"
 )
 
 var ErrInvalidToken = errors.New("telegram token rejected")
@@ -29,7 +25,7 @@ type Config struct {
 	Endpoint    string
 	HTTPClient  *http.Client
 	CaseService *services.CaseService
-	Clock       utils.Clock
+	Clock       models.Clock
 	Diagnostic  func(string)
 }
 
@@ -40,7 +36,7 @@ type Bot struct {
 	caseService   *services.CaseService
 	replyMu       sync.Mutex
 	repliesFailed bool
-	clock         utils.Clock
+	clock         models.Clock
 	diagnostic    func(string)
 	owners        map[int64]*state
 	mu            sync.Mutex
@@ -48,6 +44,70 @@ type Bot struct {
 }
 
 // New constructs the bot and validates its token using ctx before returning.
+func (this *Bot) Run(ctx context.Context) error {
+	if !this.polling.CompareAndSwap(false, true) {
+		return errPolling
+	}
+	this.client.RegisterHandlerMatchFunc(
+		func(*telegramModels.Update) bool { return true },
+		func(ctx context.Context, _ *telegramApi.Bot, update *telegramModels.Update) { this.handle(ctx, update) },
+	)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				this.Sweep()
+			}
+		}
+	}()
+	this.client.Start(ctx)
+	cancel()
+	<-done
+	this.Close()
+	return ctx.Err()
+}
+
+// Sweep drops expired plaintext drafts even when no further update arrives.
+func (this *Bot) Sweep() {
+	withLock(&this.mu, func() {
+		now := this.clock.Now()
+		for _, state := range this.owners {
+			withLock(&state.mu, func() {
+				if !state.deadline.IsZero() && !now.Before(state.deadline) {
+					state.number = ""
+					state.deadline = time.Time{}
+				}
+				if !state.removal.IsZero() && !now.Before(state.removal) {
+					state.removal = time.Time{}
+				}
+			})
+		}
+	})
+}
+
+func (this *Bot) Close() {
+	withLock(&this.mu, func() {
+		for _, state := range this.owners {
+			withLock(&state.mu, func() {
+				if state.cancel != nil {
+					state.cancel()
+				}
+				state.number = ""
+				state.deadline = time.Time{}
+				state.removal = time.Time{}
+			})
+		}
+	})
+}
+
 func New(ctx context.Context, c Config) (*Bot, error) {
 	if c.CaseService == nil || c.Clock == nil {
 		return nil, errors.New("invalid Telegram configuration")
@@ -113,72 +173,8 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 }
 
 // Cancellation drains library handlers, cancels enrollment work and clears drafts.
-func (this *Bot) Run(ctx context.Context) error {
-	if !this.polling.CompareAndSwap(false, true) {
-		return errPolling
-	}
-	this.client.RegisterHandlerMatchFunc(
-		func(*telegramModels.Update) bool { return true },
-		func(ctx context.Context, _ *telegramApi.Bot, update *telegramModels.Update) { this.handle(ctx, update) },
-	)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				this.Sweep()
-			}
-		}
-	}()
-	this.client.Start(ctx)
-	cancel()
-	<-done
-	this.Close()
-	return ctx.Err()
-}
-
-// Sweep drops expired plaintext drafts even when no further update arrives.
-func (this *Bot) Sweep() {
-	withLock(&this.mu, func() {
-		now := this.clock.Now()
-		for _, state := range this.owners {
-			withLock(&state.mu, func() {
-				if !state.deadline.IsZero() && !now.Before(state.deadline) {
-					state.number = ""
-					state.deadline = time.Time{}
-				}
-				if !state.removal.IsZero() && !now.Before(state.removal) {
-					state.removal = time.Time{}
-				}
-			})
-		}
-	})
-}
-
-func (this *Bot) Close() {
-	withLock(&this.mu, func() {
-		for _, state := range this.owners {
-			withLock(&state.mu, func() {
-				if state.cancel != nil {
-					state.cancel()
-				}
-				state.number = ""
-				state.deadline = time.Time{}
-				state.removal = time.Time{}
-			})
-		}
-	})
-}
 
 // -- Internals ----------------------------------------------------------------
-
 var errPolling = errors.New("telegram polling already started")
 
 var botCommands = []telegramModels.BotCommand{

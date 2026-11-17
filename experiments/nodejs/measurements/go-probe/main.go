@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/arhor/case-watch/internal/clients"
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
-	"github.com/arhor/case-watch/internal/entrypoints/schedule"
-	"github.com/arhor/case-watch/internal/entrypoints/telegram"
+	"github.com/arhor/case-watch/internal/adapters/inbound/schedule"
+	"github.com/arhor/case-watch/internal/adapters/inbound/telegram"
+	"github.com/arhor/case-watch/internal/adapters/outbound/clients"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
+	"github.com/arhor/case-watch/internal/platform/clock"
 	"github.com/arhor/case-watch/internal/services"
-	"github.com/arhor/case-watch/internal/utils"
 )
 
 func main() {
@@ -36,11 +36,11 @@ func run() error {
 	}
 	defer db.Close()
 	store := repositories.NewStore(db)
-	err = store.Enrollments.Create(ctx, 1, "00000000000000000000000000000001", "synthetic-number", "synthetic-password", "Synthetic stage", time.Now().Add(-2*time.Minute))
+	err = store.Enrollments().Create(ctx, 1, "00000000000000000000000000000001", "synthetic-number", "synthetic-password", "Synthetic stage", time.Now().Add(-2*time.Minute))
 	if err != nil {
 		return err
 	}
-	clock := utils.NewClock()
+	clock := clock.NewClock()
 	portal := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{BaseURL: os.Getenv("BENCH_ENDPOINT"), Clock: clock})
 	defer portal.Close()
 	cases := services.NewCaseService(services.CaseServiceConfig{Store: store, Portal: portal, Clock: clock, OnStorageError: stop})
