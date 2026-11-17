@@ -9,53 +9,66 @@ import (
 	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
-type sessionTransport func(*http.Request) (*http.Response, error)
+func TestHttpClientDo(test *testing.T) {
+	test.Run("should isolate cookies when users share transport", func(test *testing.T) {
+		// Given
+		var cookies []string
+		client := NewHttpClient(HttpClientOptions{
+			Transport: sessionTransport(func(request *http.Request) (*http.Response, error) {
+				cookies = append(cookies, request.Header.Get("Cookie"))
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Set-Cookie": []string{"session=value; Path=/"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+			}),
+		})
+		test.Cleanup(client.Close)
 
-func (this sessionTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	return this(r)
+		// When
+		for _, sessionID := range []string{"session-1", "session-1", "session-2"} {
+			request, err := http.NewRequest(http.MethodGet, "https://example.test/", nil)
+			assert.NoError(test, err)
+			response, err := client.Do(sessionID, request)
+			assert.NoError(test, err)
+			assert.NoError(test, response.Body.Close())
+		}
+
+		// Then
+		assert.DeepEqual(test, []string{"", "session=value", ""}, cookies, "each session should retain only its own cookies")
+	})
 }
 
-func TestHttpClientShouldIsolateCookiesWhenUsersShareTransport(t *testing.T) {
-	// Given
-	var cookies []string
-	session1ID := "session-1"
-	session2ID := "session-2"
+func TestHttpClientInvalidateSession(test *testing.T) {
+	test.Run("should discard cookies when session is invalidated", func(test *testing.T) {
+		// Given
+		var cookies []string
+		client := NewHttpClient(HttpClientOptions{
+			Transport: sessionTransport(func(request *http.Request) (*http.Response, error) {
+				cookies = append(cookies, request.Header.Get("Cookie"))
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Set-Cookie": []string{"session=value; Path=/"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+			}),
+		})
+		test.Cleanup(client.Close)
+		request, err := http.NewRequest(http.MethodGet, "https://example.test/", nil)
+		assert.NoError(test, err)
+		response, err := client.Do("session-1", request)
+		assert.NoError(test, err)
+		assert.NoError(test, response.Body.Close())
 
-	client := NewHttpClient(HttpClientOptions{
-		Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
-			cookies = append(cookies, r.Header.Get("Cookie"))
-			return &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Set-Cookie": []string{"session=value; Path=/"}},
-				Body:       io.NopCloser(strings.NewReader("")),
-			}, nil
-		}),
+		// When
+		client.InvalidateSession("session-1")
+
+		// Then
+		request, err = http.NewRequest(http.MethodGet, "https://example.test/", nil)
+		assert.NoError(test, err)
+		response, err = client.Do("session-1", request)
+		assert.NoError(test, err)
+		assert.NoError(test, response.Body.Close())
+		assert.DeepEqual(test, []string{"", ""}, cookies, "invalidated session should start without previous cookies")
 	})
-	defer client.Close()
+}
 
-	call := func(sessionID string) {
-		req, _ := http.NewRequest("GET", "https://example.test/", nil)
-		res, err := client.Do(sessionID, req)
-		assert.NoError(t, err)
-		res.Body.Close()
-	}
+// -- Internals ----------------------------------------------------------------
 
-	// When
-	for _, sessionID := range []string{
-		session1ID,
-		session1ID,
-		session2ID,
-	} {
-		call(sessionID)
-	}
-	client.InvalidateSession(session1ID)
+type sessionTransport func(*http.Request) (*http.Response, error)
 
-	call(session1ID)
-
-	// Then
-	assert.Equal(t, 4, len(cookies), "len(cookies) should match the expected value")
-	assert.Equal(t, "", cookies[0], "cookies[0] should match the expected value")
-	assert.Equal(t, "session=value", cookies[1], "cookies[1] should match the expected value")
-	assert.Equal(t, "", cookies[2], "cookies[2] should match the expected value")
-	assert.Equal(t, "", cookies[3], "cookies[3] should match the expected value")
+func (this sessionTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return this(request)
 }

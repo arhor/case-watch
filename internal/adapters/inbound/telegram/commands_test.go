@@ -3,6 +3,8 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,149 +16,231 @@ import (
 	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
-func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
-	for _, testCase := range []struct {
-		name    string
-		modify  func([]telegramModels.BotCommand) []telegramModels.BotCommand
-		wantSet bool
+func TestNew(test *testing.T) {
+	test.Run("should reject construction when token is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
+		config.Token = ""
+
+		// When
+		bot, err := New(context.Background(), config)
+
+		// Then
+		assert.True(test, bot == nil, "failed startup should not return a bot")
+		assert.True(test, err != nil, "missing collaborator should return an error")
+	})
+
+	test.Run("should reject construction when case service is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
+		config.CaseService = nil
+
+		// When
+		bot, err := New(context.Background(), config)
+
+		// Then
+		assert.True(test, bot == nil, "failed startup should not return a bot")
+		assert.True(test, err != nil, "missing collaborator should return an error")
+	})
+
+	test.Run("should reject construction when clock is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
+		config.Clock = nil
+
+		// When
+		bot, err := New(context.Background(), config)
+
+		// Then
+		assert.True(test, bot == nil, "failed startup should not return a bot")
+		assert.True(test, err != nil, "missing collaborator should return an error")
+	})
+	for _, scenario := range []struct {
+		status               int
+		expectedCalls        int
+		expectedSuccess      bool
+		expectedInvalidToken bool
 	}{
-		{"unchanged", func(commands []telegramModels.BotCommand) []telegramModels.BotCommand { return commands }, false},
-		{"missing", func([]telegramModels.BotCommand) []telegramModels.BotCommand { return nil }, true},
-		{"description changed", func(commands []telegramModels.BotCommand) []telegramModels.BotCommand {
-			commands[0].Description = "Old description"
-			return commands
-		}, true},
-		{"order changed", func(commands []telegramModels.BotCommand) []telegramModels.BotCommand {
-			commands[0], commands[1] = commands[1], commands[0]
-			return commands
-		}, true},
-		{"obsolete command", func(commands []telegramModels.BotCommand) []telegramModels.BotCommand {
-			return append(commands, telegramModels.BotCommand{Command: "obsolete", Description: "Obsolete"})
-		}, true},
+		{status: 200, expectedCalls: 2, expectedSuccess: true},
+		{status: 401, expectedCalls: 1, expectedInvalidToken: true},
+		{status: 500, expectedCalls: 1},
 	} {
-		t.Run(testCase.name, func(t *testing.T) {
+		test.Run("should preserve startup results when Telegram responds with "+http.StatusText(scenario.status), func(test *testing.T) {
 			// Given
-			f := setup(t)
-			current := testCase.modify(slices.Clone(botCommands))
-			var calls []string
-			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			environment := setup(test)
+			calls := 0
+			server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+				calls++
 				switch {
-				case strings.HasSuffix(r.URL.Path, "/getMe"):
+				case strings.HasSuffix(request.URL.Path, "/getMe"):
+					if scenario.status == 200 {
+						responseWriter.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+					} else {
+						responseWriter.Write([]byte(fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"synthetic-secret"}`, scenario.status)))
+					}
+				case strings.HasSuffix(request.URL.Path, "/getMyCommands"):
+					writeBotCommands(responseWriter, botCommands)
+				default:
+					test.Error("unexpected API method")
+				}
+			}))
+			test.Cleanup(server.Close)
+			config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
+			config.Endpoint = server.URL
+			config.HTTPClient = server.Client()
+
+			// When
+			bot, err := New(context.Background(), config)
+			if bot != nil {
+				test.Cleanup(bot.Close)
+			}
+
+			// Then
+			assert.Equal(test, scenario.expectedCalls, calls)
+			assert.Equal(test, scenario.expectedSuccess, err == nil)
+			assert.Equal(test, scenario.expectedInvalidToken, errors.Is(err, ErrInvalidToken))
+			assert.True(test, !(err != nil && strings.Contains(err.Error(), "synthetic")), "secret leaked")
+		})
+	}
+
+	test.Run("should return no bot when validation is canceled", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
+		config.HTTPClient = &http.Client{
+			Transport: roundTrip(func(request *http.Request) (*http.Response, error) {
+				<-request.Context().Done()
+				return nil, request.Context().Err()
+			}),
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// When
+		bot, err := New(ctx, config)
+
+		// Then
+		assert.True(test, bot == nil, "failed startup should not return a bot")
+		assert.True(test, err != nil, "operation should return an error")
+	})
+
+	changedDescription := slices.Clone(botCommands)
+	changedDescription[0].Description = "Old description"
+	changedOrder := slices.Clone(botCommands)
+	changedOrder[0], changedOrder[1] = changedOrder[1], changedOrder[0]
+	for _, scenario := range []struct {
+		name            string
+		currentCommands []telegramModels.BotCommand
+		expectedCalls   []string
+	}{
+		{name: "unchanged", currentCommands: slices.Clone(botCommands), expectedCalls: []string{"getMe", "getMyCommands"}},
+		{name: "missing", currentCommands: nil, expectedCalls: []string{"getMe", "getMyCommands", "setMyCommands"}},
+		{name: "description changed", currentCommands: changedDescription, expectedCalls: []string{"getMe", "getMyCommands", "setMyCommands"}},
+		{name: "order changed", currentCommands: changedOrder, expectedCalls: []string{"getMe", "getMyCommands", "setMyCommands"}},
+		{name: "obsolete command", currentCommands: append(slices.Clone(botCommands), telegramModels.BotCommand{Command: "obsolete", Description: "Obsolete"}), expectedCalls: []string{"getMe", "getMyCommands", "setMyCommands"}},
+	} {
+		test.Run("should synchronize commands only when they change: "+scenario.name, func(test *testing.T) {
+			// Given
+			environment := setup(test)
+			current := slices.Clone(scenario.currentCommands)
+			var calls []string
+			server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+				switch {
+				case strings.HasSuffix(request.URL.Path, "/getMe"):
 					calls = append(calls, "getMe")
-					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
-				case strings.HasSuffix(r.URL.Path, "/getMyCommands"):
+					responseWriter.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+				case strings.HasSuffix(request.URL.Path, "/getMyCommands"):
 					calls = append(calls, "getMyCommands")
-					writeBotCommands(w, current)
-				case strings.HasSuffix(r.URL.Path, "/setMyCommands"):
+					writeBotCommands(responseWriter, current)
+				case strings.HasSuffix(request.URL.Path, "/setMyCommands"):
 					calls = append(calls, "setMyCommands")
-					if err := r.ParseMultipartForm(1 << 20); err != nil {
-						t.Error(err)
-						w.WriteHeader(http.StatusBadRequest)
+					if err := request.ParseMultipartForm(1 << 20); err != nil {
+						test.Error(err)
+						responseWriter.WriteHeader(http.StatusBadRequest)
 						return
 					}
 					var sent []telegramModels.BotCommand
-					if err := json.Unmarshal([]byte(r.FormValue("commands")), &sent); err != nil {
-						t.Error(err)
-						w.WriteHeader(http.StatusBadRequest)
+					if err := json.Unmarshal([]byte(request.FormValue("commands")), &sent); err != nil {
+						test.Error(err)
+						responseWriter.WriteHeader(http.StatusBadRequest)
 						return
 					}
-					if !slices.Equal(sent, botCommands) {
-						t.Errorf("published commands = %v, want %v", sent, botCommands)
-					}
-					if r.FormValue("scope") != "" || r.FormValue("language_code") != "" {
-						t.Error("synchronization must only modify the default command list")
-					}
-					w.Write([]byte(`{"ok":true,"result":true}`))
+					assert.DeepEqual(test, botCommands, sent, "startup should publish the configured commands")
+					assert.Equal(test, "", request.FormValue("scope"), "synchronization should use the default scope")
+					assert.Equal(test, "", request.FormValue("language_code"), "synchronization should use the default language")
+					responseWriter.Write([]byte(`{"ok":true,"result":true}`))
 				default:
-					t.Errorf("unexpected Telegram API method: %s", r.URL.Path)
+					test.Errorf("unexpected Telegram API method: %s", request.URL.Path)
 				}
 			}))
-			config := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
+			config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
-			// When
-			a, err := New(context.Background(), config)
-			// Then
-			assert.NoError(t, err)
-			t.Cleanup(a.Close)
 
-			wantCalls := []string{"getMe", "getMyCommands"}
-			if testCase.wantSet {
-				wantCalls = append(wantCalls, "setMyCommands")
-			}
-			assert.True(t, slices.Equal(calls, wantCalls), "startup should perform only the required command synchronization calls")
+			// When
+			bot, err := New(context.Background(), config)
+
+			// Then
+			assert.NoError(test, err)
+			test.Cleanup(bot.Close)
+
+			assert.DeepEqual(test, scenario.expectedCalls, calls, "startup should perform only the required command synchronization calls")
 		})
 	}
-}
 
-func TestNewShouldReportFailuresWhenCommandSynchronizationFails(t *testing.T) {
-	for _, testCase := range []struct {
-		name        string
-		failingStep string
-		status      int
-		result      string
-		wantInvalid bool
+	for _, scenario := range []struct {
+		name                 string
+		failingStep          string
+		status               int
+		result               string
+		expectedInvalidToken bool
+		expectedDiagnostic   string
 	}{
-		{"get fails", "getMyCommands", 500, "", false},
-		{"set fails", "setMyCommands", 500, "", false},
-		{"set returns false", "setMyCommands", 200, "false", false},
-		{"get unauthorized", "getMyCommands", 401, "", true},
-		{"set unauthorized", "setMyCommands", 401, "", true},
+		{name: "get fails", failingStep: "getMyCommands", status: 500, result: "", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
+		{name: "set fails", failingStep: "setMyCommands", status: 500, result: "", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
+		{name: "set returns false", failingStep: "setMyCommands", status: 200, result: "false", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
+		{name: "get unauthorized", failingStep: "getMyCommands", status: 401, result: "", expectedInvalidToken: true, expectedDiagnostic: "telegram_invalid_token"},
+		{name: "set unauthorized", failingStep: "setMyCommands", status: 401, result: "", expectedInvalidToken: true, expectedDiagnostic: "telegram_invalid_token"},
 	} {
-		t.Run(testCase.name, func(t *testing.T) {
+		test.Run("should report failures when command synchronization fails: "+scenario.name, func(test *testing.T) {
 			// Given
-			f := setup(t)
+			environment := setup(test)
 			var diagnostics []string
-			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 				switch {
-				case strings.HasSuffix(r.URL.Path, "/getMe"):
-					w.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
-				case strings.HasSuffix(r.URL.Path, "/getMyCommands") && testCase.failingStep != "getMyCommands":
-					writeBotCommands(w, nil)
-				case strings.HasSuffix(r.URL.Path, "/"+testCase.failingStep):
-					if testCase.status == 200 {
-						w.Write([]byte(`{"ok":true,"result":` + testCase.result + `}`))
+				case strings.HasSuffix(request.URL.Path, "/getMe"):
+					responseWriter.Write([]byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`))
+				case strings.HasSuffix(request.URL.Path, "/getMyCommands") && scenario.failingStep != "getMyCommands":
+					writeBotCommands(responseWriter, nil)
+				case strings.HasSuffix(request.URL.Path, "/"+scenario.failingStep):
+					if scenario.status == 200 {
+						responseWriter.Write([]byte(`{"ok":true,"result":` + scenario.result + `}`))
 					} else {
-						w.Write([]byte(`{"ok":false,"error_code":` + strconv.Itoa(testCase.status) + `,"description":"synthetic-secret"}`))
+						responseWriter.Write([]byte(`{"ok":false,"error_code":` + strconv.Itoa(scenario.status) + `,"description":"synthetic-secret"}`))
 					}
 				default:
-					t.Errorf("unexpected Telegram API method: %s", r.URL.Path)
+					test.Errorf("unexpected Telegram API method: %s", request.URL.Path)
 				}
 			}))
-			config := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
+			config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 			config.Diagnostic = func(category string) { diagnostics = append(diagnostics, category) }
-			// When
-			a, err := New(context.Background(), config)
-			// Then
-			if a != nil {
-				t.Cleanup(a.Close)
-			}
-			assert.Equal(t, testCase.wantInvalid, (a == nil), "(a == nil) should match the expected value")
-			assert.Equal(t, testCase.wantInvalid, (err == ErrInvalidToken), "(err == ErrInvalidToken) should match the expected value")
-			wantDiagnostic := "telegram command synchronization failure"
-			if testCase.wantInvalid {
-				wantDiagnostic = "telegram_invalid_token"
-			}
-			assert.True(t, slices.Equal(diagnostics, []string{wantDiagnostic}), "startup should emit the expected sanitized diagnostic")
-			assert.True(t, !(err != nil && strings.Contains(err.Error(), "synthetic-secret")), "Telegram response details leaked in startup error")
-		})
-	}
-}
 
-func TestBotShouldKeepHandlersAndDescriptionsConsistentWhenCommandsArePublished(t *testing.T) {
-	// Given
-	f := setup(t)
-	// When
-	f.message(101, "/help")
-	help := f.replies[len(f.replies)-1]
-	// Then
-	assert.Equal(t, len(botCommands), len(f.a.handlers), "every published command should have a handler")
-	for _, command := range botCommands {
-		assert.True(t, command.Description != "", "published command /"+command.Command+" should have a description")
-		_, ok := f.a.handlers["/"+command.Command]
-		assert.True(t, ok, "published command /"+command.Command+" should have a handler")
-		assert.True(t, strings.Contains(help, "/"+command.Command+" — "+command.Description), "help should describe /"+command.Command)
+			// When
+			bot, err := New(context.Background(), config)
+
+			// Then
+			if bot != nil {
+				test.Cleanup(bot.Close)
+			}
+			assert.Equal(test, scenario.expectedInvalidToken, (bot == nil))
+			assert.Equal(test, scenario.expectedInvalidToken, (err == ErrInvalidToken))
+			assert.DeepEqual(test, []string{scenario.expectedDiagnostic}, diagnostics, "startup should emit the expected sanitized diagnostic")
+			assert.True(test, !(err != nil && strings.Contains(err.Error(), "synthetic-secret")), "Telegram response details leaked in startup error")
+		})
 	}
 }

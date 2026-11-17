@@ -7,6 +7,16 @@ description: Write, refactor, or review Go code in the case-watch repository usi
 
 Apply these conventions in the case-watch repository. Read the applicable `AGENTS.md` for architecture and verification requirements. These are repository preferences, including where they differ from common Go style.
 
+## Import order
+
+Group imports in this order, with one blank line between groups and empty groups omitted:
+
+1. Standard library imports.
+2. Third-party library imports.
+3. Project imports from the case-watch module.
+
+Apply this order to both production and test Go files.
+
 ## Method receivers
 
 Name every named method receiver `this`, for pointer and value receivers alike. Never use single-letter receivers or type-derived receiver names. Update references in the method body when renaming a receiver. This rule also applies to methods in test files.
