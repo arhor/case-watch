@@ -40,7 +40,8 @@ type Bot struct {
 	caseService   *services.CaseService
 	replyMu       sync.Mutex
 	repliesFailed bool
-	config        Config
+	clock         utils.Clock
+	diagnostic    func(string)
 	owners        map[int64]*state
 	mu            sync.Mutex
 	wg            sync.WaitGroup
@@ -53,9 +54,18 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	}
 	bot := &Bot{
 		caseService: c.CaseService,
-		config:      c,
+		clock:       c.Clock,
 		owners:      make(map[int64]*state),
 	}
+
+	if c.Diagnostic != nil {
+		bot.diagnostic = c.Diagnostic
+	} else {
+		bot.diagnostic = func(s string) {
+			fmt.Println("telegram diagnostic: ", s)
+		}
+	}
+
 	opts := []telegramApi.Option{
 		telegramApi.WithSkipGetMe(),
 		telegramApi.WithNotAsyncHandlers(),
@@ -137,7 +147,7 @@ func (this *Bot) Run(ctx context.Context) error {
 // Sweep drops expired plaintext drafts even when no further update arrives.
 func (this *Bot) Sweep() {
 	withLock(&this.mu, func() {
-		now := this.config.Clock.Now()
+		now := this.clock.Now()
 		for _, state := range this.owners {
 			withLock(&state.mu, func() {
 				if !state.deadline.IsZero() && !now.Before(state.deadline) {
@@ -219,7 +229,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	s := this.owner(id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := this.config.Clock.Now()
+	now := this.clock.Now()
 	expiredEnrollment := !s.deadline.IsZero() && !now.Before(s.deadline)
 	expiredRemoval := !s.removal.IsZero() && !now.Before(s.removal)
 	if expiredEnrollment {
@@ -297,8 +307,8 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 	s.number = ""
 	s.deadline = time.Time{}
 	s.removal = time.Time{}
-	exists, e := this.exists(ctx, id)
-	if e != nil {
+	exists, err := this.exists(ctx, id)
+	if err != nil {
 		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n"+
 			"\n"+
 			"Попробуйте ещё раз позже.")
@@ -320,15 +330,15 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 
 func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
 	s.mu.Unlock()
-	status, e := this.caseService.Status(ctx, id)
+	status, err := this.caseService.Status(ctx, id)
 	s.mu.Lock()
-	if errors.Is(e, services.ErrNotFound) {
+	if errors.Is(err, services.ErrNotFound) {
 		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
 			"\n"+
 			"Чтобы добавить дело, отправьте /start.")
 		return
 	}
-	this.reply(ctx, id, formatStatus(status, e))
+	this.reply(ctx, id, formatStatus(status, err))
 }
 
 func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time) {
@@ -337,8 +347,8 @@ func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time
 	}
 	s.number = ""
 	s.deadline = time.Time{}
-	exists, e := this.exists(ctx, id)
-	if e != nil {
+	exists, err := this.exists(ctx, id)
+	if err != nil {
 		this.reply(ctx, id, "Не удалось проверить сохранённые данные.\n"+
 			"\n"+
 			"Попробуйте ещё раз позже.")
@@ -381,9 +391,9 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		e := this.caseService.Remove(ctx, id)
+		err := this.caseService.Remove(ctx, id)
 		s.mu.Lock()
-		if e != nil {
+		if err != nil {
 			this.reply(ctx, id, "Не удалось завершить удаление дела.\n\nПопробуйте ещё раз с помощью /remove.")
 		} else {
 			this.reply(ctx, id, "Дело удалено из отслеживания. Все связанные с ним данные удалены.")
@@ -426,12 +436,12 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 	this.reply(ctx, id, "Проверяю данные и подключаю отслеживание вашего дела.")
 	go func(number, password string) {
 		defer this.wg.Done()
-		_, _, e := this.caseService.Enroll(work, id, number, password)
+		_, _, err := this.caseService.Enroll(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.cancel = nil
-		if e != nil {
+		if err != nil {
 			this.reply(ctx, id, "Не удалось добавить дело для отслеживания.\n"+
 				"\n"+
 				"Проверьте номер дела и пароль или попробуйте ещё раз позже.\n"+
@@ -493,12 +503,6 @@ func (this *Bot) tokenRejected(err error) bool {
 		return true
 	}
 	return false
-}
-
-func (this *Bot) diagnostic(s string) {
-	if this.config.Diagnostic != nil {
-		this.config.Diagnostic(s)
-	}
 }
 
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {

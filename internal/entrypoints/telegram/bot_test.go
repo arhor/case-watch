@@ -413,7 +413,7 @@ func TestPollingShouldDispatchUpdatesAndSanitizeFailuresWhenCancelled(t *testing
 			t.Error("unexpected startup network")
 		}
 	}))
-	a := f.bot(t, server, Config{CaseService: f.a.config.CaseService, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
+	a := f.bot(t, server, Config{CaseService: f.a.caseService, Clock: f.clock, Diagnostic: func(s string) { logs <- s }})
 	done := make(chan struct{})
 	// When
 	go func() { a.Run(ctx); close(done) }()
@@ -458,7 +458,7 @@ func TestReplyShouldAttemptEverySendWhenRateLimitReported(t *testing.T) {
 		w.WriteHeader(429)
 		w.Write([]byte(`{"ok":false,"error_code":429,"description":"synthetic","parameters":{"retry_after":60}}`))
 	}))
-	a := f.bot(t, server, f.a.config)
+	a := f.bot(t, server, Config{CaseService: f.a.caseService, Clock: f.clock})
 	// When
 	a.reply(context.Background(), 101, "synthetic")
 	a.reply(context.Background(), 202, "synthetic")
@@ -473,7 +473,7 @@ func TestNewShouldRejectMissingCollaboratorsWhenBotIsConstructed(t *testing.T) {
 		t.Run(missing, func(t *testing.T) {
 			// Given
 			f := setup(t)
-			c := f.a.config
+			c := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
 			switch missing {
 			case "token":
 				c.Token = ""
@@ -502,7 +502,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 			server := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 			}))
-			config := f.a.config
+			config := Config{CaseService: f.a.caseService, Clock: f.clock}
 			reported := false
 			config.Diagnostic = func(category string) {
 				if category == "telegram_invalid_token" {
@@ -595,15 +595,14 @@ func TestReplyShouldSuppressConcurrentSendsWhenTokenIsRejected(t *testing.T) {
 		calls++
 		w.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 	}))
-	config := f.a.config
-	config.Diagnostic = func(category string) {
-		switch category {
+	config := Config{CaseService: f.a.caseService, Clock: f.clock, Diagnostic: func(s string) {
+		switch s {
 		case "telegram_invalid_token":
 			rejected++
 		case "telegram reply failure":
 			failures++
 		}
-	}
+	}}
 	a := f.bot(t, server, config)
 	var wg sync.WaitGroup
 	// When
@@ -685,7 +684,7 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 				}
 			}))
 			t.Cleanup(server.Close)
-			c := f.a.config
+			c := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
 			c.Endpoint = server.URL
 			c.HTTPClient = server.Client()
 			// When
@@ -711,11 +710,13 @@ func TestNewShouldPreserveStartupResultsWhenTelegramResponds(t *testing.T) {
 func TestNewShouldReturnNoBotWhenValidationIsCanceled(t *testing.T) {
 	// Given
 	f := setup(t)
-	c := f.a.config
-	c.HTTPClient = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		<-r.Context().Done()
-		return nil, r.Context().Err()
-	})}
+	c := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
+	c.HTTPClient = &http.Client{
+		Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+			<-r.Context().Done()
+			return nil, r.Context().Err()
+		}),
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	// When

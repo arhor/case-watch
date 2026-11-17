@@ -64,7 +64,7 @@ func TestNewShouldSynchronizeCommandsOnlyWhenTheyChange(t *testing.T) {
 					t.Errorf("unexpected Telegram API method: %s", r.URL.Path)
 				}
 			}))
-			config := f.a.config
+			config := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 			a, err := New(context.Background(), config)
@@ -117,7 +117,7 @@ func TestNewShouldHandleCommandSynchronizationFailures(t *testing.T) {
 					t.Errorf("unexpected Telegram API method: %s", r.URL.Path)
 				}
 			}))
-			config := f.a.config
+			config := Config{Token: "123:synthetic-token", CaseService: f.a.caseService, Clock: f.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 			config.Diagnostic = func(category string) { diagnostics = append(diagnostics, category) }
