@@ -20,6 +20,7 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
+	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
 func TestBotHandle(test *testing.T) {
@@ -198,7 +199,7 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "synthetic-number")
 
 		// When
-		environment.clock.now = environment.clock.now.Add(10 * time.Minute)
+		environment.clock.Set(environment.clock.Now().Add(10 * time.Minute))
 		environment.message(101, "synthetic-password")
 
 		// Then
@@ -217,7 +218,7 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "/remove")
 
 		// When
-		environment.clock.now = environment.clock.now.Add(10 * time.Minute)
+		environment.clock.Set(environment.clock.Now().Add(10 * time.Minute))
 		environment.message(101, "Да")
 
 		// Then
@@ -632,14 +633,6 @@ func TestBotErase(test *testing.T) {
 
 type portal func(context.Context, string, string) (string, time.Time, error)
 
-type fakeClock struct {
-	now time.Time
-}
-
-func (this *fakeClock) Now() time.Time {
-	return this.now
-}
-
 func (this portal) Check(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	return this(ctx, number, password)
 }
@@ -647,7 +640,7 @@ func (this portal) Check(ctx context.Context, owner int64, number, password stri
 type fixture struct {
 	bot     *Bot
 	store   *repositories.Store
-	clock   *fakeClock
+	clock   *fixedClock.FixedClock
 	mu      sync.Mutex
 	replies []string
 	deletes int
@@ -659,7 +652,7 @@ type fixture struct {
 
 func setup(test *testing.T) *fixture {
 	test.Helper()
-	environment := &fixture{clock: &fakeClock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}}
+	environment := &fixture{clock: fixedClock.New(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))}
 	server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		environment.mu.Lock()
 		defer environment.mu.Unlock()

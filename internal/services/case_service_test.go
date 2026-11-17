@@ -15,6 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/testing/assert"
+	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
 func TestCaseServiceStatus(test *testing.T) {
@@ -24,11 +25,11 @@ func TestCaseServiceStatus(test *testing.T) {
 			return "A", epoch.Add(-time.Hour), nil
 		})
 		environment.enroll(test, 101)
-		environment.clock.set(epoch.Add(59 * time.Second))
+		environment.clock.Set(epoch.Add(59 * time.Second))
 
 		// When
 		recent, firstError := environment.service.Status(context.Background(), 101)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		at, secondError := environment.service.Status(context.Background(), 101)
 		enrollment, _ := environment.store.Enrollments().FindByOwner(context.Background(), 101)
 		deadline, thirdError := environment.service.checkEligibility(context.Background(), 101, enrollment.ID, true)
@@ -57,7 +58,7 @@ func TestCaseServiceStatus(test *testing.T) {
 		})
 		environment.enroll(test, 101)
 		fail.Store(true)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
 		failed, firstError := environment.service.Status(context.Background(), 101)
@@ -66,9 +67,9 @@ func TestCaseServiceStatus(test *testing.T) {
 			environment.calls.Add(1)
 			return "", time.Time{}, errors.New("secret")
 		}), Clock: environment.clock})
-		environment.clock.set(epoch.Add(119 * time.Second))
+		environment.clock.Set(epoch.Add(119 * time.Second))
 		before, secondError := environment.service.Status(context.Background(), 101)
-		environment.clock.set(epoch.Add(2 * time.Minute))
+		environment.clock.Set(epoch.Add(2 * time.Minute))
 		at, thirdError := environment.service.Status(context.Background(), 101)
 
 		// Then
@@ -103,7 +104,7 @@ func TestCaseServiceStatus(test *testing.T) {
 		})
 		environment.enroll(test, 101)
 		block.Store(true)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		firstBase, cancel := context.WithCancel(context.Background())
 		first := waitingContext(firstBase)
 		second := waitingContext(context.Background())
@@ -120,10 +121,10 @@ func TestCaseServiceStatus(test *testing.T) {
 		<-third.entered
 		cancel()
 		canceled := <-firstResult
-		environment.clock.set(epoch.Add(130 * time.Second))
+		environment.clock.Set(epoch.Add(130 * time.Second))
 		close(release)
 		joined1, joined2 := <-secondResult, <-thirdResult
-		environment.clock.set(epoch.Add(189 * time.Second))
+		environment.clock.Set(epoch.Add(189 * time.Second))
 		recent, err := environment.service.Status(context.Background(), 101)
 
 		// Then
@@ -178,7 +179,7 @@ func TestCaseServiceStatus(test *testing.T) {
 			return "A", time.Time{}, nil
 		})
 		environment.enroll(test, 101)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
@@ -206,7 +207,7 @@ func TestCaseServiceStatus(test *testing.T) {
 			calls.Add(1)
 			return "B", time.Time{}, nil
 		}), Clock: environment.clock})
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
 		status, err := service.Status(context.Background(), 101)
@@ -235,10 +236,10 @@ func TestCaseServiceStatus(test *testing.T) {
 		id := environment.enroll(test, 101)
 
 		// When
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		stage.Store("B")
 		manual, firstError := environment.service.Status(context.Background(), 101)
-		environment.clock.set(epoch.Add(2 * time.Minute))
+		environment.clock.Set(epoch.Add(2 * time.Minute))
 		stage.Store("A")
 		scheduled, secondError := environment.service.Scheduled(context.Background(), 101)
 		history, thirdError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
@@ -260,14 +261,14 @@ func TestCaseServiceScheduled(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		id := environment.enroll(test, 101)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
 		scheduled, firstError := environment.service.Scheduled(context.Background(), 101)
-		environment.clock.set(epoch.Add(119 * time.Second))
+		environment.clock.Set(epoch.Add(119 * time.Second))
 		guarded, secondError := environment.service.Scheduled(context.Background(), 101)
 		cached, thirdError := environment.service.Status(context.Background(), 101)
-		environment.clock.set(epoch.Add(2 * time.Minute))
+		environment.clock.Set(epoch.Add(2 * time.Minute))
 		manual, fourthError := environment.service.Status(context.Background(), 101)
 		history, historyError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
 
@@ -296,13 +297,13 @@ func TestCaseServiceScheduled(test *testing.T) {
 		})
 		environment.enroll(test, 101)
 		fail.Store(true)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
 		_, firstError := environment.service.Scheduled(context.Background(), 101)
-		environment.clock.set(epoch.Add(119 * time.Second))
+		environment.clock.Set(epoch.Add(119 * time.Second))
 		before, secondError := environment.service.Status(context.Background(), 101)
-		environment.clock.set(epoch.Add(2 * time.Minute))
+		environment.clock.Set(epoch.Add(2 * time.Minute))
 		_, thirdError := environment.service.Status(context.Background(), 101)
 
 		// Then
@@ -336,7 +337,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 			portalCalls.Add(1)
 			return "", time.Time{}, nil
 		}), Clock: environment.clock})
-		environment.clock.set(epoch.Add(59 * time.Second))
+		environment.clock.Set(epoch.Add(59 * time.Second))
 
 		// When
 		status, statusErr := service.Scheduled(context.Background(), 101)
@@ -356,7 +357,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		environment.enroll(test, 303)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
 		owners, inventoryErr := environment.service.ScheduledOwners(context.Background())
@@ -511,7 +512,7 @@ func TestCaseServiceRemove(test *testing.T) {
 		})
 		id := environment.enroll(test, 101)
 		block.Store(true)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		checked := make(chan answer, 1)
 		go func() {
 			status, err := environment.service.Status(context.Background(), 101)
@@ -538,7 +539,7 @@ func TestCaseServiceRemove(test *testing.T) {
 		block.Store(false)
 		newID := environment.enroll(test, 101)
 		lateObservation := environment.service.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
-		environment.clock.set(epoch.Add(119 * time.Second))
+		environment.clock.Set(epoch.Add(119 * time.Second))
 		cached, statusErr := environment.service.Status(context.Background(), 101)
 
 		// Then
@@ -605,7 +606,7 @@ func TestCaseServiceRemove(test *testing.T) {
 			return "A", time.Time{}, nil
 		})
 		id := environment.enroll(test, 101)
-		environment.clock.set(epoch.Add(time.Minute))
+		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		work := make(chan error, 1)
 		go func() { _, err := environment.service.Status(context.Background(), 101); work <- err }()
@@ -762,15 +763,6 @@ var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 
 const number, password = "synthetic-number", "synthetic-password"
 
-type clock struct {
-	mu  sync.Mutex
-	now time.Time
-}
-
-func (this *clock) Now() time.Time { this.mu.Lock(); defer this.mu.Unlock(); return this.now }
-
-func (this *clock) set(value time.Time) { this.mu.Lock(); defer this.mu.Unlock(); this.now = value }
-
 type portalFunc func(context.Context, string, string) (string, time.Time, error)
 
 func (this portalFunc) Check(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
@@ -781,14 +773,14 @@ type fixture struct {
 	service *CaseService
 	db      *sql.DB
 	store   *repositories.Store
-	clock   *clock
+	clock   *fixedClock.FixedClock
 	path    string
 	calls   atomic.Int32
 }
 
 func setup(test *testing.T, portal portalFunc) *fixture {
 	test.Helper()
-	environment := &fixture{clock: &clock{now: epoch}, path: filepath.Join(test.TempDir(), "state.db")}
+	environment := &fixture{clock: fixedClock.New(epoch), path: filepath.Join(test.TempDir(), "state.db")}
 	var err error
 	environment.db, err = database.Open(context.Background(), environment.path)
 	assert.NoError(test, err)

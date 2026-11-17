@@ -17,13 +17,14 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/testing/assert"
+	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
 func TestGdanskPortalClientCheck(test *testing.T) {
 	test.Run("should complete with fresh cookies and completion time when reused", func(test *testing.T) {
 		// Given
 		calls := 0
-		clock := &fakeClock{now: time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)}
+		clock := fixedClock.New(time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC))
 		waits := 0
 		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			step := calls % 5
@@ -58,7 +59,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 				test.Errorf("interval=%s", delay)
 			}
 			waits++
-			clock.now = clock.now.Add(delay)
+			clock.Set(clock.Now().Add(delay))
 			return ctx.Err()
 		}})
 
@@ -73,7 +74,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		assert.Equal(test, 8, waits)
 		assert.Equal(test, "Synthetic stage", firstStage)
 		assert.Equal(test, firstStage, secondStage)
-		assert.True(test, secondCheckedAt.Equal(clock.now), "completion timestamp should use the injected clock")
+		assert.True(test, secondCheckedAt.Equal(clock.Now()), "completion timestamp should use the injected clock")
 		assert.True(test, firstCheckedAt.Before(secondCheckedAt), "each check should record its own completion time")
 	})
 
@@ -570,12 +571,6 @@ func newGdanskTestClient(baseURL string) *GdanskPortalClient {
 	client.interval = 0
 	return client
 }
-
-type fakeClock struct {
-	now time.Time
-}
-
-func (this *fakeClock) Now() time.Time { return this.now }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

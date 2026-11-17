@@ -13,6 +13,7 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
+	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
 func TestJobsNext(test *testing.T) {
@@ -90,7 +91,7 @@ func TestJobsNext(test *testing.T) {
 	} {
 		test.Run(scenario.name, func(test *testing.T) {
 			// Given
-			scheduler := newScheduler(test, schedule.Config{CaseService: tracking{}, Clock: &clock{}})
+			scheduler := newScheduler(test, schedule.Config{CaseService: tracking{}, Clock: fixedClock.New(time.Time{})})
 			after := parseTime(scenario.after)
 			expected := parseTime(scenario.expected)
 
@@ -106,20 +107,20 @@ func TestJobsNext(test *testing.T) {
 func TestJobsRun(test *testing.T) {
 	test.Run("should skip crossed slots and recheck queued authorization when first check is slow", func(test *testing.T) {
 		// Given
-		clockValue := &clock{now: parseTime("2026-07-06T05:00:00Z")}
+		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		var calls []int64
 		var deadlines []time.Time
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: clockValue,
+			Clock: clock,
 			CaseService: tracking{
 				owners: []int64{1, 2, 3},
 				scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 					calls = append(calls, owner)
 					if owner == 1 {
-						clockValue.now = parseTime("2026-07-06T10:30:00Z")
+						clock.Set(parseTime("2026-07-06T10:30:00Z"))
 					}
 					return models.Status{}, errors.New("synthetic failure")
 				},
@@ -130,7 +131,7 @@ func TestJobsRun(test *testing.T) {
 					cancel()
 					return ctx.Err()
 				}
-				clockValue.now = deadline
+				clock.Set(deadline)
 				return nil
 			},
 		})
@@ -150,11 +151,11 @@ func TestJobsRun(test *testing.T) {
 			// Given
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			clockValue := &clock{now: parseTime(start)}
+			clock := fixedClock.New(parseTime(start))
 			calls := 0
 			var waitedUntil time.Time
 			scheduler := newScheduler(test, schedule.Config{
-				Clock: clockValue,
+				Clock: clock,
 				CaseService: tracking{
 					owners: []int64{1},
 					scheduled: func(context.Context, int64) (models.Status, error) {
@@ -183,18 +184,18 @@ func TestJobsRun(test *testing.T) {
 		// Given
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		clockValue := &clock{now: parseTime("2026-07-06T05:00:00Z")}
+		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
 		entered := make(chan struct{})
 		canceled := make(chan struct{})
 		release := make(chan struct{})
 		done := make(chan error, 1)
-		scheduler := newScheduler(test, schedule.Config{Clock: clockValue, CaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
+		scheduler := newScheduler(test, schedule.Config{Clock: clock, CaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
 			close(entered)
 			<-ctx.Done()
 			close(canceled)
 			<-release
 			return models.Status{}, ctx.Err()
-		}}, Wait: func(_ context.Context, deadline time.Time) error { clockValue.now = deadline; return nil }})
+		}}, Wait: func(_ context.Context, deadline time.Time) error { clock.Set(deadline); return nil }})
 
 		// When
 		go func() { done <- scheduler.Run(ctx) }()
@@ -219,13 +220,13 @@ func TestJobsRun(test *testing.T) {
 
 	test.Run("should skip missed minute and accept timer jitter when wait returns late", func(test *testing.T) {
 		// Given
-		clockValue := &clock{now: parseTime("2026-07-06T05:00:00Z")}
+		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		waits, calls := 0, 0
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: clockValue,
+			Clock: clock,
 			CaseService: tracking{
 				owners: []int64{1},
 				scheduled: func(context.Context, int64) (models.Status, error) {
@@ -237,9 +238,9 @@ func TestJobsRun(test *testing.T) {
 				waits++
 				switch waits {
 				case 1:
-					clockValue.now = deadline.Add(time.Minute)
+					clock.Set(deadline.Add(time.Minute))
 				case 2:
-					clockValue.now = deadline.Add(time.Millisecond)
+					clock.Set(deadline.Add(time.Millisecond))
 				default:
 					cancel()
 					return ctx.Err()
@@ -263,7 +264,7 @@ func TestJobsRun(test *testing.T) {
 		db, err := database.Open(ctx, filepath.Join(test.TempDir(), "state.db"))
 		assert.NoError(test, err)
 		test.Cleanup(func() { _ = db.Close() })
-		clockValue := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
+		clock := fixedClock.New(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))
 		calls := 0
 		caseService := services.NewCaseService(services.CaseServiceConfig{
 			Store: repositories.NewStore(db),
@@ -271,7 +272,7 @@ func TestJobsRun(test *testing.T) {
 				calls++
 				return "A", time.Time{}, nil
 			}),
-			Clock: clockValue,
+			Clock: clock,
 		})
 		test.Cleanup(caseService.Shutdown)
 		{
@@ -279,21 +280,21 @@ func TestJobsRun(test *testing.T) {
 			assert.NoError(test, err)
 		}
 		monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
-		clockValue.now = monday.Add(-time.Second)
+		clock.Set(monday.Add(-time.Second))
 		_, manualErr := caseService.Status(ctx, 101)
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		waits := 0
 		scheduler, err := schedule.New(schedule.Config{
 			CaseService: caseService,
-			Clock:       clockValue,
+			Clock:       clock,
 			Wait: func(_ context.Context, deadline time.Time) error {
 				waits++
 				if waits == 2 {
 					cancel()
 					return runCtx.Err()
 				}
-				clockValue.now = deadline
+				clock.Set(deadline)
 				return nil
 			},
 		})
@@ -311,10 +312,6 @@ func TestJobsRun(test *testing.T) {
 }
 
 // -- Internals ----------------------------------------------------------------
-
-type clock struct{ now time.Time }
-
-func (this *clock) Now() time.Time { return this.now }
 
 type tracking struct {
 	owners    []int64
