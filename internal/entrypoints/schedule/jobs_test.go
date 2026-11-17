@@ -17,17 +17,17 @@ import (
 
 type clock struct{ now time.Time }
 
-func (c *clock) Now() time.Time { return c.now }
+func (this *clock) Now() time.Time { return this.now }
 
 type tracking struct {
 	owners    []int64
 	scheduled func(context.Context, int64) (models.Status, error)
 }
 
-func (f tracking) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
-	return f.scheduled(ctx, owner)
+func (this tracking) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
+	return this.scheduled(ctx, owner)
 }
-func (f tracking) ScheduledOwners(context.Context) ([]int64, error) { return f.owners, nil }
+func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, nil }
 func parse(s string) time.Time {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
@@ -237,8 +237,8 @@ func TestScheduledJobsShouldShareManualGuardWhenSlotFollowsManualAttempt(t *test
 
 type scheduledPortal func(context.Context, string, string) (string, time.Time, error)
 
-func (p scheduledPortal) Check(ctx context.Context, _ int64, number, password string) (string, time.Time, error) {
-	return p(ctx, number, password)
+func (this scheduledPortal) Check(ctx context.Context, _ int64, number, password string) (string, time.Time, error) {
+	return this(ctx, number, password)
 }
 
 func (scheduledPortal) ForgetSession(int64) {}

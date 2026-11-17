@@ -16,14 +16,16 @@ import (
 	"github.com/arhor/case-watch/internal/utils"
 )
 
+func Run(ctx context.Context) error {
+	return run(ctx)
+}
+
+// -- Internals ----------------------------------------------------------------
+
 var (
 	errStartup = errors.New("service startup validation failed")
 	errService = errors.New("service operation failed")
 )
-
-func Run(ctx context.Context) error {
-	return run(ctx)
-}
 
 func run(ctx context.Context) (result error) {
 	clock := utils.NewClock()

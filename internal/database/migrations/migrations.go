@@ -10,9 +10,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-//go:embed *.sql
-var migrations embed.FS
-
 func Run(db *sql.DB) error {
 	source, err := iofs.New(migrations, ".")
 	if err != nil {
@@ -36,3 +33,8 @@ func Run(db *sql.DB) error {
 
 	return nil
 }
+
+// -- Internals ----------------------------------------------------------------
+
+//go:embed *.sql
+var migrations embed.FS

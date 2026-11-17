@@ -89,7 +89,7 @@ func (this *CooldownRepository) DeleteBySubjectTypeAndSubjectID(
 	return nil
 }
 
-// ------------------------------ Internal Helpers ------------------------------
+// -- Internals ----------------------------------------------------------------
 
 const selectBySubjectTypeAndSubjectID = `
     SELECT subject_type, subject_id, started_at

@@ -30,12 +30,12 @@ type fakeClock struct {
 	now time.Time
 }
 
-func (c *fakeClock) Now() time.Time {
-	return c.now
+func (this *fakeClock) Now() time.Time {
+	return this.now
 }
 
-func (p portal) Check(c context.Context, owner int64, Number, Password string) (string, time.Time, error) {
-	return p(c, Number, Password)
+func (this portal) Check(c context.Context, owner int64, number, password string) (string, time.Time, error) {
+	return this(c, number, password)
 }
 
 type fixture struct {
@@ -98,12 +98,12 @@ func setup(t *testing.T) *fixture {
 	})
 	return f
 }
-func (f *fixture) message(id int64, text string) {
-	f.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: &telegramModels.User{ID: id}, Chat: telegramModels.Chat{ID: id, Type: telegramModels.ChatTypePrivate}, Text: text}})
+func (this *fixture) message(id int64, text string) {
+	this.a.handle(context.Background(), &telegramModels.Update{Message: &telegramModels.Message{ID: 7, From: &telegramModels.User{ID: id}, Chat: telegramModels.Chat{ID: id, Type: telegramModels.ChatTypePrivate}, Text: text}})
 	if text == "synthetic-password" {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
-			s := f.a.owner(id)
+			s := this.a.owner(id)
 			s.mu.Lock()
 			busy := s.cancel != nil
 			s.mu.Unlock()
@@ -348,7 +348,7 @@ func (this *fakeServer) Client() *http.Client {
 
 type roundTrip func(*http.Request) (*http.Response, error)
 
-func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (this roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return this(r) }
 
 func TestConversationShouldCancelPortalAndDeleteUnknownSlashInputWhenDraftIsActive(t *testing.T) {
 	// Given
@@ -527,7 +527,7 @@ func TestBotShouldReportTokenRejectionWhenPollingOrDeletionIsUnauthorized(t *tes
 
 // bot mirrors the production reply/intake construction order while
 // supplying only synthetic HTTP exchanges and a deterministic clock.
-func (f *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
+func (this *fixture) bot(t *testing.T, server *fakeServer, c Config) *Bot {
 	t.Helper()
 	c.Token = "123:synthetic-token"
 	c.Endpoint = server.URL

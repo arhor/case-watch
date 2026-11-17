@@ -22,11 +22,11 @@ func (this *Service) Close() {
 After the package declaration and imports, every non-test `.go` file MUST place declarations in this order, omitting empty groups:
 
 1. Public (exported) constants, then exported package variables such as sentinel errors.
-2. Public types.
-3. Public methods and functions, including constructors.
-4. Private (unexported) declarations: constants and variables, types, then methods and helper functions.
+2. Public types, each followed by its exported constructors and public methods for that receiver type before the next type declaration.
+3. Other public functions.
+4. Private (unexported) declarations: constants and variables, then types, then private constructors, methods and helper functions.
 
-Keep all private top-level declarations after the public API, even when a public type or function references a private type declared later. Private fields remain inside their owning structs; they are not separate top-level declarations. Do not export an implementation detail merely to place it earlier in the file.
+Keep public methods together directly below their receiver type declaration, whether the receiver is a pointer or value. Exported constructors belong between the type declaration and its public methods. Keep all private top-level declarations, including private constructors and methods, after the public API near the file end; private methods need not be adjacent to their receiver type declaration. This applies even when a public type or function references a private type declared later. Private fields remain inside their owning structs; they are not separate top-level declarations. Do not export an implementation detail merely to place it earlier in the file.
 
 Use an explicit section divider before private declarations when the file contains both public and private declarations. Divider comment lines must be exactly 80 characters, including `//` and spaces. For example:
 
@@ -34,9 +34,9 @@ Use an explicit section divider before private declarations when the file contai
 // -- Internals ----------------------------------------------------------------
 ```
 
-Use descriptive public section headings when they improve navigation, especially in files containing several related types. Keep those headings consistent and their divider lines 80 characters wide. Do not add empty sections.
+Descriptive section headers other than `Internals` are allowed but optional, such as the `// -- HTTP Client ...` headers in `internal/utils/http_client.go`. Preserve existing descriptive headers; they are not violations of the declaration-order rules. When used, keep their style consistent and their divider lines 80 characters wide. Do not add empty sections. The `Internals` divider remains required when the file contains both public and private declarations.
 
-`internal/utils/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/case_service.go` and `internal/entrypoints/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can mix types with methods, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
+`internal/utils/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/case_service.go` and `internal/entrypoints/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can separate public methods from their receiver types, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
 
 The declaration-order and divider requirements do not apply to `*_test.go`; preserve useful test organization there.
 

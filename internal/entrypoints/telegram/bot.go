@@ -22,20 +22,16 @@ import (
 	"github.com/arhor/case-watch/internal/utils"
 )
 
-var (
-	ErrInvalidToken = errors.New("telegram token rejected")
-	errPolling      = errors.New("telegram polling already started")
-)
+var ErrInvalidToken = errors.New("telegram token rejected")
 
-var botCommands = []telegramModels.BotCommand{
-	{Command: "start", Description: "Добавить дело для отслеживания"},
-	{Command: "status", Description: "Проверить статус дела"},
-	{Command: "remove", Description: "Удалить дело и связанные с ним данные"},
-	{Command: "cancel", Description: "Отменить текущее действие"},
-	{Command: "help", Description: "Показать эту справку"},
+type Config struct {
+	Token       string
+	Endpoint    string
+	HTTPClient  *http.Client
+	CaseService *services.CaseService
+	Clock       utils.Clock
+	Diagnostic  func(string)
 }
-
-type commandHandler func(context.Context, int64, *state, time.Time)
 
 type Bot struct {
 	handlers      map[string]commandHandler
@@ -48,22 +44,6 @@ type Bot struct {
 	owners        map[int64]*state
 	mu            sync.Mutex
 	wg            sync.WaitGroup
-}
-
-type Config struct {
-	Token       string
-	Endpoint    string
-	HTTPClient  *http.Client
-	CaseService *services.CaseService
-	Clock       utils.Clock
-	Diagnostic  func(string)
-}
-
-type state struct {
-	mu                sync.Mutex
-	number            string
-	deadline, removal time.Time
-	cancel            context.CancelFunc
 }
 
 // New constructs the bot and validates its token using ctx before returning.
@@ -154,7 +134,59 @@ func (this *Bot) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// -- Internal implementation ---------------------------------------------------------------------
+// Sweep drops expired plaintext drafts even when no further update arrives.
+func (this *Bot) Sweep() {
+	withLock(&this.mu, func() {
+		now := this.config.Clock.Now()
+		for _, state := range this.owners {
+			withLock(&state.mu, func() {
+				if !state.deadline.IsZero() && !now.Before(state.deadline) {
+					state.number = ""
+					state.deadline = time.Time{}
+				}
+				if !state.removal.IsZero() && !now.Before(state.removal) {
+					state.removal = time.Time{}
+				}
+			})
+		}
+	})
+}
+
+func (this *Bot) Close() {
+	withLock(&this.mu, func() {
+		for _, state := range this.owners {
+			withLock(&state.mu, func() {
+				if state.cancel != nil {
+					state.cancel()
+				}
+				state.number = ""
+				state.deadline = time.Time{}
+				state.removal = time.Time{}
+			})
+		}
+	})
+}
+
+// -- Internals ----------------------------------------------------------------
+
+var errPolling = errors.New("telegram polling already started")
+
+var botCommands = []telegramModels.BotCommand{
+	{Command: "start", Description: "Добавить дело для отслеживания"},
+	{Command: "status", Description: "Проверить статус дела"},
+	{Command: "remove", Description: "Удалить дело и связанные с ним данные"},
+	{Command: "cancel", Description: "Отменить текущее действие"},
+	{Command: "help", Description: "Показать эту справку"},
+}
+
+type commandHandler func(context.Context, int64, *state, time.Time)
+
+type state struct {
+	mu                sync.Mutex
+	number            string
+	deadline, removal time.Time
+	cancel            context.CancelFunc
+}
 
 // Synchronize the default command menu without overwriting chat- or language-specific menus.
 func (this *Bot) syncCommands(ctx context.Context) error {
@@ -411,39 +443,6 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 			"\n"+
 			"Чтобы узнать текущий статус, отправьте /status.")
 	}(number, text)
-}
-
-// Sweep drops expired plaintext drafts even when no further update arrives.
-func (this *Bot) Sweep() {
-	withLock(&this.mu, func() {
-		now := this.config.Clock.Now()
-		for _, state := range this.owners {
-			withLock(&state.mu, func() {
-				if !state.deadline.IsZero() && !now.Before(state.deadline) {
-					state.number = ""
-					state.deadline = time.Time{}
-				}
-				if !state.removal.IsZero() && !now.Before(state.removal) {
-					state.removal = time.Time{}
-				}
-			})
-		}
-	})
-}
-
-func (this *Bot) Close() {
-	withLock(&this.mu, func() {
-		for _, state := range this.owners {
-			withLock(&state.mu, func() {
-				if state.cancel != nil {
-					state.cancel()
-				}
-				state.number = ""
-				state.deadline = time.Time{}
-				state.removal = time.Time{}
-			})
-		}
-	})
 }
 
 func (this *Bot) owner(id int64) *state {

@@ -21,13 +21,13 @@ func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) 
 	defer db.Close()
 	store := repositories.NewStore(db)
 	id := "0123456789abcdef0123456789abcdef"
-	Number, Password := "synthetic-number", "synthetic-password"
+	number, password := "synthetic-number", "synthetic-password"
 	stage := "A"
 	checkedAt := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	abort := errors.New("abort transaction")
 	// When
 	err = store.RunInTx(ctx, func(store *repositories.Store) error {
-		if err := store.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt); err != nil {
+		if err := store.Enrollments.Create(ctx, 101, id, number, password, stage, checkedAt); err != nil {
 			return err
 		}
 		return abort
@@ -40,7 +40,7 @@ func TestRunInTxShouldCommitAndRollbackWhenCallbacksSucceedOrFail(t *testing.T) 
 		t.Fatalf("rolled-back record was visible: %v", err)
 	}
 	if err := store.RunInTx(ctx, func(store *repositories.Store) error {
-		return store.Enrollments.Create(ctx, 101, id, Number, Password, stage, checkedAt)
+		return store.Enrollments.Create(ctx, 101, id, number, password, stage, checkedAt)
 	}); err != nil {
 		t.Fatal(err)
 	}

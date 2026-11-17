@@ -34,6 +34,14 @@ type Error struct {
 	Kind Kind
 }
 
+func (this *Error) Error() string {
+	return "portal check failed: " + string(this.Kind)
+}
+
+func (this *Error) Is(target error) bool {
+	return this.Kind == Canceled && target == context.Canceled || this.Kind == Deadline && target == context.DeadlineExceeded
+}
+
 // GdanskPortalClientOptions injects endpoints and dependencies for offline operation. Transport must
 // perform a single exchange without retries. Nil dependencies use production defaults.
 // Wait must honor cancellation; production callers should leave it nil.
@@ -124,14 +132,6 @@ func (this *GdanskPortalClient) Close() {
 
 func (this *GdanskPortalClient) ForgetSession(ownerID int64) {
 	this.httpClient.InvalidateSession(strconv.FormatInt(ownerID, 10))
-}
-
-func (this *Error) Error() string {
-	return "portal check failed: " + string(this.Kind)
-}
-
-func (this *Error) Is(target error) bool {
-	return this.Kind == Canceled && target == context.Canceled || this.Kind == Deadline && target == context.DeadlineExceeded
 }
 
 // -- Internals ----------------------------------------------------------------
@@ -523,8 +523,7 @@ func classify(err error) error {
 	if err == nil {
 		return nil
 	}
-	var safe *Error
-	if errors.As(err, &safe) {
+	if safe, ok := errors.AsType[*Error](err); ok {
 		return safe
 	}
 	if errors.Is(err, context.Canceled) {

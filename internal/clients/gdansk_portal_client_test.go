@@ -27,11 +27,11 @@ type fakeClock struct {
 	now time.Time
 }
 
-func (c *fakeClock) Now() time.Time { return c.now }
+func (this *fakeClock) Now() time.Time { return this.now }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (this roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return this(r) }
 func reply(body string) *http.Response {
 	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
 }

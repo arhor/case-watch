@@ -54,9 +54,58 @@ func New(c Config) (*Jobs, error) {
 
 // Next returns the first strictly future Warsaw slot. Startup at a slot never
 // replays that slot; holidays use the same weekday rules as every other date.
-func (s *Jobs) Next(after time.Time) time.Time {
-	return s.schedule.Next(after)
+func (this *Jobs) Next(after time.Time) time.Time {
+	return this.schedule.Next(after)
 }
+
+// Run does no startup check. Runs and case calls are sequential; computing the
+// next slot after completion discards every slot crossed by a slow run. Repeated
+// concurrent Run calls are rejected rather than queued. Cancellation drains the
+// active Scheduled call before returning; the shared case service owns its I/O.
+func (this *Jobs) Run(ctx context.Context) error {
+	if !this.running.TryLock() {
+		return ErrScheduler
+	}
+	defer this.running.Unlock()
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		slot := this.Next(this.c.Clock.Now())
+		if err := this.c.Wait(ctx, slot); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return ErrScheduler
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// Allow ordinary timer jitter within the cron minute; suspension past
+		// that minute misses the slot and must not trigger catch-up.
+		if now := this.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
+			continue
+		}
+		owners, err := this.c.CaseService.ScheduledOwners(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			this.report("inventory_failed")
+			continue
+		}
+		for _, owner := range owners {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if _, err := this.c.CaseService.Scheduled(ctx, owner); err != nil {
+				this.report("check_failed")
+			}
+		}
+	}
+}
+
+// -- Internals ----------------------------------------------------------------
 
 func wait(ctx context.Context, deadline time.Time) error {
 	timer := time.NewTimer(time.Until(deadline))
@@ -68,55 +117,9 @@ func wait(ctx context.Context, deadline time.Time) error {
 		return nil
 	}
 }
-func (s *Jobs) report(category string) {
-	if s.c.Report != nil {
-		s.c.Report(category)
-	}
-}
 
-// Run does no startup check. Runs and case calls are sequential; computing the
-// next slot after completion discards every slot crossed by a slow run. Repeated
-// concurrent Run calls are rejected rather than queued. Cancellation drains the
-// active Scheduled call before returning; the shared case service owns its I/O.
-func (s *Jobs) Run(ctx context.Context) error {
-	if !s.running.TryLock() {
-		return ErrScheduler
-	}
-	defer s.running.Unlock()
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		slot := s.Next(s.c.Clock.Now())
-		if err := s.c.Wait(ctx, slot); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return ErrScheduler
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		// Allow ordinary timer jitter within the cron minute; suspension past
-		// that minute misses the slot and must not trigger catch-up.
-		if now := s.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
-			continue
-		}
-		owners, err := s.c.CaseService.ScheduledOwners(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			s.report("inventory_failed")
-			continue
-		}
-		for _, owner := range owners {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if _, err := s.c.CaseService.Scheduled(ctx, owner); err != nil {
-				s.report("check_failed")
-			}
-		}
+func (this *Jobs) report(category string) {
+	if this.c.Report != nil {
+		this.c.Report(category)
 	}
 }

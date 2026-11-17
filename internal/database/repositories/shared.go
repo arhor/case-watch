@@ -24,6 +24,8 @@ func NewEnrollmentID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// -- Internals ----------------------------------------------------------------
+
 func validID(id string) bool {
 	b, e := hex.DecodeString(id)
 	return e == nil && len(b) == 16 && id == strings.ToLower(id)

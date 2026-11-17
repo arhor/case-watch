@@ -157,7 +157,7 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 	)
 }
 
-// ---- Internal implementation --------------------------------------------------------------------
+// -- Internals ----------------------------------------------------------------
 
 func scanEnrollment(
 	row interface {
