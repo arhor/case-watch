@@ -50,10 +50,7 @@ func run() error {
 		return err
 	}
 	defer bot.Close()
-	jobs, err := schedule.New(schedule.Config{CaseService: cases, Clock: clock})
-	if err != nil {
-		return err
-	}
+	jobs := schedule.New(schedule.Config{CaseService: cases, Clock: clock})
 	var workers sync.WaitGroup
 	workers.Add(2)
 	go func() { defer workers.Done(); _ = bot.Run(ctx) }()
