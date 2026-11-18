@@ -16,6 +16,38 @@ import (
 	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
+func TestJobsNew(test *testing.T) {
+	test.Run("should panic when case service is missing", func(test *testing.T) {
+		// Given
+		config := schedule.Config{Clock: fixedClock.New(time.Time{})}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			schedule.New(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: CaseService", recovered)
+	})
+
+	test.Run("should panic when clock is missing", func(test *testing.T) {
+		// Given
+		config := schedule.Config{CaseService: tracking{}}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			schedule.New(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
+	})
+}
+
 func TestJobsNext(test *testing.T) {
 	for _, scenario := range []struct{ name, after, expected string }{
 		{
@@ -285,7 +317,7 @@ func TestJobsRun(test *testing.T) {
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		waits := 0
-		scheduler, err := schedule.New(schedule.Config{
+		scheduler := schedule.New(schedule.Config{
 			CaseService: caseService,
 			Clock:       clock,
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -298,7 +330,6 @@ func TestJobsRun(test *testing.T) {
 				return nil
 			},
 		})
-		assert.NoError(test, err)
 
 		// When
 		runErr := scheduler.Run(runCtx)
@@ -334,9 +365,7 @@ func parseTime(value string) time.Time {
 
 func newScheduler(test *testing.T, config schedule.Config) *schedule.Jobs {
 	test.Helper()
-	scheduler, err := schedule.New(config)
-	assert.NoError(test, err)
-	return scheduler
+	return schedule.New(config)
 }
 
 type scheduledPortal func(context.Context, string, string) (string, time.Time, error)

@@ -31,32 +31,40 @@ func TestNew(test *testing.T) {
 		assert.True(test, err != nil, "missing collaborator should return an error")
 	})
 
-	test.Run("should reject construction when case service is missing", func(test *testing.T) {
+	test.Run("should panic when case service is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 		config.CaseService = nil
 
+		var recovered any
+
 		// When
-		bot, err := New(context.Background(), config)
+		func() {
+			defer func() { recovered = recover() }()
+			_, _ = New(context.Background(), config)
+		}()
 
 		// Then
-		assert.True(test, bot == nil, "failed startup should not return a bot")
-		assert.True(test, err != nil, "missing collaborator should return an error")
+		assert.Equal[any](test, "required property is missing: CaseService", recovered)
 	})
 
-	test.Run("should reject construction when clock is missing", func(test *testing.T) {
+	test.Run("should panic when clock is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 		config.Clock = nil
 
+		var recovered any
+
 		// When
-		bot, err := New(context.Background(), config)
+		func() {
+			defer func() { recovered = recover() }()
+			_, _ = New(context.Background(), config)
+		}()
 
 		// Then
-		assert.True(test, bot == nil, "failed startup should not return a bot")
-		assert.True(test, err != nil, "missing collaborator should return an error")
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
 	})
 	for _, scenario := range []struct {
 		status               int

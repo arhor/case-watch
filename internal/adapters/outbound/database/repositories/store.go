@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
 var ErrTransaction = errors.New("invalid transaction lifecycle operation")
@@ -22,7 +23,7 @@ type Store struct {
 
 func NewStore(db *sql.DB) *Store {
 	return &Store{
-		db:          db,
+		db:          guard.Require("DB", db),
 		enrollments: NewEnrollmentRepository(db),
 		history:     NewHistoryRepository(db),
 		cooldowns:   NewCooldownRepository(db),

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
 var (
@@ -49,9 +50,9 @@ type CaseService struct {
 func NewCaseService(config CaseServiceConfig) *CaseService {
 	return &CaseService{
 		owners:         make(map[int64]*ownerState),
-		store:          config.Store,
-		portal:         config.Portal,
-		clock:          config.Clock,
+		store:          guard.Require("Store", config.Store),
+		portal:         guard.Require("Portal", config.Portal),
+		clock:          guard.Require("Clock", config.Clock),
 		onStorageError: config.OnStorageError,
 	}
 }

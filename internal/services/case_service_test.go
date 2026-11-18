@@ -18,6 +18,56 @@ import (
 	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
+func TestNewCaseService(test *testing.T) {
+	test.Run("should panic when store is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Portal: environment.service.portal, Clock: environment.clock}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Store", recovered)
+	})
+
+	test.Run("should panic when portal is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Store: environment.store, Clock: environment.clock}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Portal", recovered)
+	})
+
+	test.Run("should panic when clock is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Store: environment.store, Portal: environment.service.portal}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
+	})
+}
+
 func TestCaseServiceStatus(test *testing.T) {
 	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {
 		// Given

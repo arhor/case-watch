@@ -9,6 +9,7 @@ import (
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/platform/guard"
 	"github.com/robfig/cron/v3"
 )
 
@@ -87,18 +88,14 @@ func (this *Jobs) Run(ctx context.Context) error {
 	}
 }
 
-func New(c Config) (*Jobs, error) {
-	if c.CaseService == nil || c.Clock == nil {
-		return nil, ErrScheduler
-	}
-	schedule, err := cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5")
-	if err != nil {
-		return nil, ErrScheduler
-	}
+func New(c Config) *Jobs {
+	c.CaseService = guard.Require("CaseService", c.CaseService)
+	c.Clock = guard.Require("Clock", c.Clock)
+	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
 	if c.Wait == nil {
 		c.Wait = wait
 	}
-	return &Jobs{c: c, schedule: schedule}, nil
+	return &Jobs{c: c, schedule: schedule}
 }
 
 // Next returns the first strictly future Warsaw slot. Startup at a slot never

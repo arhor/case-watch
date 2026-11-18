@@ -13,6 +13,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/platform/clock"
+	"github.com/arhor/case-watch/internal/platform/guard"
 	"github.com/arhor/case-watch/internal/services"
 )
 
@@ -22,23 +23,18 @@ func Run(ctx context.Context) error {
 
 // -- Internals ----------------------------------------------------------------
 
-var (
-	errStartup = errors.New("service startup validation failed")
-	errService = errors.New("service operation failed")
-)
+var errService = errors.New("service operation failed")
 
 func run(ctx context.Context) (result error) {
 	clock := clock.NewClock()
 
-	cfg, err := loadConfig(os.LookupEnv)
-	if err != nil {
-		return err
-	}
+	cfg := guard.Must(loadConfig(os.LookupEnv))
 
 	db, err := database.Open(ctx, cfg.DBPath)
-	if err != nil {
-		return errStartup
+	if err != nil && ctx.Err() != nil {
+		return nil
 	}
+	db = guard.Must(db, err)
 	defer func() {
 		if err := db.Close(); err != nil {
 			result = errors.Join(result, errService)
@@ -78,22 +74,17 @@ func run(ctx context.Context) (result error) {
 		Clock:       clock,
 		Diagnostic:  diagnostic,
 	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return errStartup
+	if err != nil && ctx.Err() != nil {
+		return nil
 	}
+	telegramBot = guard.Must(telegramBot, err)
 	defer telegramBot.Close()
 
-	scheduled, err := schedule.New(schedule.Config{
+	scheduled := schedule.New(schedule.Config{
 		CaseService: caseService,
 		Clock:       clock,
 		Report:      diagnostic,
 	})
-	if err != nil {
-		return errStartup
-	}
 
 	if ctx.Err() != nil {
 		return nil
