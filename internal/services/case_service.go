@@ -34,7 +34,7 @@ type CaseServiceConfig struct {
 	Store          models.Store
 	Portal         models.Portal
 	Clock          models.Clock
-	OnStorageError func()
+	OnFatal        func(error)
 }
 
 type CaseService struct {
@@ -42,7 +42,7 @@ type CaseService struct {
 	closed         bool
 	owners         map[int64]*ownerState
 	store          models.Store
-	onStorageError func()
+	onFatal       func(error)
 	portal         models.Portal
 	clock          models.Clock
 }
@@ -53,7 +53,7 @@ func NewCaseService(config CaseServiceConfig) *CaseService {
 		store:          guard.Require("Store", config.Store),
 		portal:         guard.Require("Portal", config.Portal),
 		clock:          guard.Require("Clock", config.Clock),
-		onStorageError: config.OnStorageError,
+		onFatal:       config.OnFatal,
 	}
 }
 
@@ -286,8 +286,8 @@ func (this *CaseService) storageError(ctx context.Context, err error) error {
 	if errors.Is(err, models.ErrExists) {
 		return models.ErrExists
 	}
-	if ctx.Err() == nil && this.onStorageError != nil {
-		this.onStorageError()
+	if ctx.Err() == nil && this.onFatal != nil {
+		this.onFatal(ErrStorage)
 	}
 	return ErrStorage
 }

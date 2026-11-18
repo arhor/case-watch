@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"log"
 	"os"
 	"sync"
 
@@ -47,15 +46,6 @@ func run(ctx context.Context) (result error) {
 
 	defer stop(nil)
 
-	fail := func() { stop(errService) }
-
-	diagnostic := func(category string) {
-		log.Print(category)
-		if category == "telegram_invalid_token" || category == "inventory_failed" {
-			fail()
-		}
-	}
-
 	portalClient := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{Clock: clock})
 	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
 	defer portalClient.Close()
@@ -64,7 +54,7 @@ func run(ctx context.Context) (result error) {
 		Store:          store,
 		Portal:         portalClient,
 		Clock:          clock,
-		OnStorageError: fail,
+		OnFatal:        stop,
 	})
 	defer caseService.Shutdown()
 
@@ -72,7 +62,7 @@ func run(ctx context.Context) (result error) {
 		Token:       cfg.TelegramBotToken,
 		CaseService: caseService,
 		Clock:       clock,
-		Diagnostic:  diagnostic,
+		OnFatal:     stop,
 	})
 	if err != nil && ctx.Err() != nil {
 		return nil
@@ -83,7 +73,6 @@ func run(ctx context.Context) (result error) {
 	scheduled := schedule.New(schedule.Config{
 		CaseService: caseService,
 		Clock:       clock,
-		Report:      diagnostic,
 	})
 
 	if ctx.Err() != nil {
@@ -94,9 +83,12 @@ func run(ctx context.Context) (result error) {
 		var running sync.WaitGroup
 		start := func(loop func(context.Context) error) {
 			running.Go(func() {
-				_ = loop(work)
+				err := loop(work)
 				if work.Err() == nil {
-					fail()
+					if err == nil {
+						err = errService
+					}
+					stop(err)
 				}
 			})
 		}
@@ -107,8 +99,11 @@ func run(ctx context.Context) (result error) {
 		running.Wait()
 	}
 
-	if errors.Is(context.Cause(work), errService) {
-		return errService
+	if ctx.Err() != nil {
+		return nil
+	}
+	if cause := context.Cause(work); cause != nil && !errors.Is(cause, context.Canceled) {
+		return cause
 	}
 	return nil
 }

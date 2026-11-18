@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -27,8 +28,6 @@ type Config struct {
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
-	// Report receives fixed categories only, never collaborator errors.
-	Report func(string)
 }
 
 type Jobs struct {
@@ -74,15 +73,14 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			this.report("inventory_failed")
-			continue
+			return ErrScheduler
 		}
 		for _, owner := range owners {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if _, err := this.c.CaseService.Scheduled(ctx, owner); err != nil {
-				this.report("check_failed")
+			if _, err := this.c.CaseService.Scheduled(ctx, owner); err != nil && ctx.Err() == nil {
+				log.Print("scheduled case check failed")
 			}
 		}
 	}
@@ -114,8 +112,4 @@ func wait(ctx context.Context, deadline time.Time) error {
 	}
 }
 
-func (this *Jobs) report(category string) {
-	if this.c.Report != nil {
-		this.c.Report(category)
-	}
-}
+

@@ -43,9 +43,9 @@ func run() error {
 	clock := clock.NewClock()
 	portal := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{BaseURL: os.Getenv("BENCH_ENDPOINT"), Clock: clock})
 	defer portal.Close()
-	cases := services.NewCaseService(services.CaseServiceConfig{Store: store, Portal: portal, Clock: clock, OnStorageError: stop})
+	cases := services.NewCaseService(services.CaseServiceConfig{Store: store, Portal: portal, Clock: clock, OnFatal: func(error) { stop() }})
 	defer cases.Shutdown()
-	bot, err := telegram.New(ctx, telegram.Config{Token: "123:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Endpoint: os.Getenv("BENCH_ENDPOINT"), CaseService: cases, Clock: clock, Diagnostic: func(category string) { fmt.Fprintln(os.Stderr, category) }})
+	bot, err := telegram.New(ctx, telegram.Config{Token: "123:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Endpoint: os.Getenv("BENCH_ENDPOINT"), CaseService: cases, Clock: clock, OnFatal: func(err error) { fmt.Fprintln(os.Stderr, err); stop() }})
 	if err != nil {
 		return err
 	}
