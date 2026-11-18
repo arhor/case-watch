@@ -137,6 +137,29 @@ func TestJobsNext(test *testing.T) {
 }
 
 func TestJobsRun(test *testing.T) {
+	test.Run("should stop when scheduled owner inventory fails", func(test *testing.T) {
+		// Given
+		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		scheduler := schedule.New(schedule.Config{
+			Clock: clock,
+			CaseService: tracking{
+				ownersError: errors.New("private storage details"),
+			},
+			Wait: func(_ context.Context, deadline time.Time) error {
+				clock.Set(deadline)
+				return nil
+			},
+		})
+
+		// When
+		err := scheduler.Run(context.Background())
+
+		// Then
+		assert.ErrorIs(test, err, schedule.ErrScheduler)
+		assert.Equal(test, "scheduler operation failed", err.Error(), "internal storage details should not leak")
+	})
+
+
 	test.Run("should skip crossed slots and recheck queued authorization when first check is slow", func(test *testing.T) {
 		// Given
 		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
@@ -345,15 +368,16 @@ func TestJobsRun(test *testing.T) {
 // -- Internals ----------------------------------------------------------------
 
 type tracking struct {
-	owners    []int64
-	scheduled func(context.Context, int64) (models.Status, error)
+	owners      []int64
+	ownersError error
+	scheduled   func(context.Context, int64) (models.Status, error)
 }
 
 func (this tracking) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return this.scheduled(ctx, owner)
 }
 
-func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, nil }
+func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, this.ownersError }
 
 func parseTime(value string) time.Time {
 	parsed, err := time.Parse(time.RFC3339, value)

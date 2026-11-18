@@ -771,12 +771,16 @@ func TestCaseServiceSaveObservation(test *testing.T) {
 }
 
 func TestCaseServiceHasEnrollment(test *testing.T) {
-	test.Run("should report storage failure when database read fails for active caller", func(test *testing.T) {
+	test.Run("should signal fatal storage failure when database read fails for active caller", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		assert.NoError(test, environment.db.Close())
 		reports := 0
-		environment.service.onStorageError = func() { reports++ }
+		var fatalError error
+		environment.service.onFatal = func(err error) {
+			reports++
+			fatalError = err
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -786,14 +790,15 @@ func TestCaseServiceHasEnrollment(test *testing.T) {
 		// Then
 		assert.True(test, err != nil, "database read should return an error")
 		assert.Equal(test, 1, reports, "only active storage failures should be reported")
+		assert.ErrorIs(test, fatalError, ErrStorage)
 	})
 
-	test.Run("should suppress storage diagnostic when caller is canceled", func(test *testing.T) {
+	test.Run("should not signal fatal storage failure when caller is canceled", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		assert.NoError(test, environment.db.Close())
 		reports := 0
-		environment.service.onStorageError = func() { reports++ }
+		environment.service.onFatal = func(error) { reports++ }
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		cancel()

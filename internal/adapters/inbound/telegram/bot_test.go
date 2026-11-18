@@ -86,7 +86,7 @@ func TestBotHandle(test *testing.T) {
 		assert.Equal(test, 2, environment.deletes, "submitted credentials should be deleted")
 		assert.Equal(test, "synthetic-number", enrollment.Number)
 		assert.Equal(test, "synthetic-password", enrollment.Password)
-		combined := strings.Join(append(environment.replies, environment.logs...), "\n")
+		combined := strings.Join(environment.replies, "\n")
 		assert.True(test, !strings.Contains(combined, "synthetic-password"), "output should not expose the password")
 		assert.True(test, !strings.Contains(combined, "synthetic-number"), "output should not expose the case number")
 		assert.True(test, !strings.Contains(combined, "synthetic-token"), "output should not expose the token")
@@ -406,12 +406,10 @@ func TestBotRun(test *testing.T) {
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
 		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock}
-		reported := false
-		config.Diagnostic = func(category string) {
-			if category == "telegram_invalid_token" {
-				reported = true
-				cancel()
-			}
+		var fatalError error
+		config.OnFatal = func(err error) {
+			fatalError = err
+			cancel()
 		}
 		bot := environment.newBot(test, server, config)
 
@@ -419,7 +417,7 @@ func TestBotRun(test *testing.T) {
 		bot.Run(ctx)
 
 		// Then
-		assert.True(test, reported, "unauthorized operation did not trigger shutdown")
+		assert.ErrorIs(test, fatalError, ErrInvalidToken)
 		assert.True(test, !errors.Is(ctx.Err(), context.DeadlineExceeded), "unauthorized operation did not trigger shutdown")
 	})
 
@@ -432,7 +430,7 @@ func TestBotRun(test *testing.T) {
 		polls := 0
 		replied := make(chan struct{})
 		failed := make(chan struct{})
-		logs := make(chan string, 10)
+		fatalErrors := make(chan error, 1)
 		server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			switch {
 			case strings.HasSuffix(request.URL.Path, "getUpdates"):
@@ -457,14 +455,13 @@ func TestBotRun(test *testing.T) {
 				test.Error("unexpected startup network")
 			}
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock, Diagnostic: func(state string) { logs <- state }})
+		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) { fatalErrors <- err }})
 		done := make(chan struct{})
 
 		// When
 		go func() { bot.Run(ctx); close(done) }()
 		<-replied
 		<-failed
-		log := <-logs
 		cancel()
 		select {
 		case <-done:
@@ -473,8 +470,7 @@ func TestBotRun(test *testing.T) {
 		}
 
 		// Then
-		assert.Equal(test, "telegram polling failure", log, "raw polling error leaked")
-		assert.True(test, !strings.Contains(log, "synthetic"), "raw polling error leaked")
+		assert.Equal(test, 0, len(fatalErrors), "transient polling errors must not stop the application")
 	})
 
 	test.Run("should reject another run when polling has already started", func(test *testing.T) {
@@ -517,17 +513,14 @@ func TestBotReply(test *testing.T) {
 	test.Run("should suppress concurrent sends when token is rejected", func(test *testing.T) {
 		// Given
 		environment := setup(test)
-		calls, rejected, failures := 0, 0, 0
+		calls, rejected := 0, 0
 		server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			calls++
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
-		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock, Diagnostic: func(state string) {
-			switch state {
-			case "telegram_invalid_token":
+		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) {
+			if errors.Is(err, ErrInvalidToken) {
 				rejected++
-			case "telegram reply failure":
-				failures++
 			}
 		}}
 		bot := environment.newBot(test, server, config)
@@ -546,7 +539,6 @@ func TestBotReply(test *testing.T) {
 		// Then
 		assert.Equal(test, 1, calls)
 		assert.Equal(test, 1, rejected)
-		assert.Equal(test, 9, failures)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -555,9 +547,8 @@ func TestBotReply(test *testing.T) {
 		name         string
 		context      context.Context
 		owner        int64
-		expectedLogs []string
 	}{
-		{name: "should skip send when context is canceled", context: ctx, owner: 101, expectedLogs: []string{"telegram reply failure"}},
+		{name: "should skip send when context is canceled", context: ctx, owner: 101},
 		{name: "should skip send when owner is zero", context: context.Background(), owner: 0},
 		{name: "should skip send when owner is negative", context: context.Background(), owner: -1},
 	} {
@@ -570,7 +561,6 @@ func TestBotReply(test *testing.T) {
 
 			// Then
 			assert.Equal(test, 0, len(environment.replies))
-			assert.DeepEqual(test, scenario.expectedLogs, environment.logs)
 		})
 	}
 
@@ -611,12 +601,10 @@ func TestBotErase(test *testing.T) {
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
 		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock}
-		reported := false
-		config.Diagnostic = func(category string) {
-			if category == "telegram_invalid_token" {
-				reported = true
-				cancel()
-			}
+		var fatalError error
+		config.OnFatal = func(err error) {
+			fatalError = err
+			cancel()
 		}
 		bot := environment.newBot(test, server, config)
 
@@ -624,7 +612,7 @@ func TestBotErase(test *testing.T) {
 		bot.erase(ctx, 101, 1)
 
 		// Then
-		assert.True(test, reported, "unauthorized operation did not trigger shutdown")
+		assert.ErrorIs(test, fatalError, ErrInvalidToken)
 		assert.True(test, !errors.Is(ctx.Err(), context.DeadlineExceeded), "unauthorized operation did not trigger shutdown")
 	})
 }
@@ -647,7 +635,6 @@ type fixture struct {
 	calls   int
 	stage   string
 	path    string
-	logs    []string
 }
 
 func setup(test *testing.T) *fixture {
@@ -691,7 +678,6 @@ func setup(test *testing.T) *fixture {
 	environment.bot = environment.newBot(test, server, Config{
 		CaseService: caseService,
 		Clock:       environment.clock,
-		Diagnostic:  func(state string) { environment.logs = append(environment.logs, state) },
 	})
 	return environment
 }
