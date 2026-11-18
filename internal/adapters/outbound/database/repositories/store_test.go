@@ -13,6 +13,22 @@ import (
 	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
+func TestNewStore(test *testing.T) {
+	test.Run("should panic when database is missing", func(test *testing.T) {
+		// Given
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			repositories.NewStore(nil)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: DB", recovered)
+	})
+}
+
 func TestStoreRunInTx(test *testing.T) {
 	test.Run("should commit when callback succeeds", func(test *testing.T) {
 		// Given

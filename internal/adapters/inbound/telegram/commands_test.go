@@ -31,32 +31,40 @@ func TestNew(test *testing.T) {
 		assert.True(test, err != nil, "missing collaborator should return an error")
 	})
 
-	test.Run("should reject construction when case service is missing", func(test *testing.T) {
+	test.Run("should panic when case service is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 		config.CaseService = nil
 
+		var recovered any
+
 		// When
-		bot, err := New(context.Background(), config)
+		func() {
+			defer func() { recovered = recover() }()
+			_, _ = New(context.Background(), config)
+		}()
 
 		// Then
-		assert.True(test, bot == nil, "failed startup should not return a bot")
-		assert.True(test, err != nil, "missing collaborator should return an error")
+		assert.Equal[any](test, "required property is missing: CaseService", recovered)
 	})
 
-	test.Run("should reject construction when clock is missing", func(test *testing.T) {
+	test.Run("should panic when clock is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 		config.Clock = nil
 
+		var recovered any
+
 		// When
-		bot, err := New(context.Background(), config)
+		func() {
+			defer func() { recovered = recover() }()
+			_, _ = New(context.Background(), config)
+		}()
 
 		// Then
-		assert.True(test, bot == nil, "failed startup should not return a bot")
-		assert.True(test, err != nil, "missing collaborator should return an error")
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
 	})
 	for _, scenario := range []struct {
 		status               int
@@ -197,18 +205,17 @@ func TestNew(test *testing.T) {
 		status               int
 		result               string
 		expectedInvalidToken bool
-		expectedDiagnostic   string
 	}{
-		{name: "get fails", failingStep: "getMyCommands", status: 500, result: "", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
-		{name: "set fails", failingStep: "setMyCommands", status: 500, result: "", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
-		{name: "set returns false", failingStep: "setMyCommands", status: 200, result: "false", expectedInvalidToken: false, expectedDiagnostic: "telegram command synchronization failure"},
-		{name: "get unauthorized", failingStep: "getMyCommands", status: 401, result: "", expectedInvalidToken: true, expectedDiagnostic: "telegram_invalid_token"},
-		{name: "set unauthorized", failingStep: "setMyCommands", status: 401, result: "", expectedInvalidToken: true, expectedDiagnostic: "telegram_invalid_token"},
+		{name: "get fails", failingStep: "getMyCommands", status: 500, result: "", expectedInvalidToken: false},
+		{name: "set fails", failingStep: "setMyCommands", status: 500, result: "", expectedInvalidToken: false},
+		{name: "set returns false", failingStep: "setMyCommands", status: 200, result: "false", expectedInvalidToken: false},
+		{name: "get unauthorized", failingStep: "getMyCommands", status: 401, result: "", expectedInvalidToken: true},
+		{name: "set unauthorized", failingStep: "setMyCommands", status: 401, result: "", expectedInvalidToken: true},
 	} {
-		test.Run("should report failures when command synchronization fails: "+scenario.name, func(test *testing.T) {
+		test.Run("should handle failures when command synchronization fails: "+scenario.name, func(test *testing.T) {
 			// Given
 			environment := setup(test)
-			var diagnostics []string
+			var fatalErrors []error
 			server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 				switch {
 				case strings.HasSuffix(request.URL.Path, "/getMe"):
@@ -228,7 +235,7 @@ func TestNew(test *testing.T) {
 			config := Config{Token: "123:synthetic-token", CaseService: environment.bot.caseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
-			config.Diagnostic = func(category string) { diagnostics = append(diagnostics, category) }
+			config.OnFatal = func(err error) { fatalErrors = append(fatalErrors, err) }
 
 			// When
 			bot, err := New(context.Background(), config)
@@ -239,7 +246,7 @@ func TestNew(test *testing.T) {
 			}
 			assert.Equal(test, scenario.expectedInvalidToken, (bot == nil))
 			assert.Equal(test, scenario.expectedInvalidToken, (err == ErrInvalidToken))
-			assert.DeepEqual(test, []string{scenario.expectedDiagnostic}, diagnostics, "startup should emit the expected sanitized diagnostic")
+			assert.Equal(test, 0, len(fatalErrors), "startup failures are returned, not signaled asynchronously")
 			assert.True(test, !(err != nil && strings.Contains(err.Error(), "synthetic-secret")), "Telegram response details leaked in startup error")
 		})
 	}

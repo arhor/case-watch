@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/platform/guard"
 	"github.com/arhor/case-watch/internal/services"
 	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
@@ -26,7 +28,7 @@ type Config struct {
 	HTTPClient  *http.Client
 	CaseService *services.CaseService
 	Clock       models.Clock
-	Diagnostic  func(string)
+	OnFatal     func(error)
 }
 
 type Bot struct {
@@ -37,7 +39,7 @@ type Bot struct {
 	replyMu       sync.Mutex
 	repliesFailed bool
 	clock         models.Clock
-	diagnostic    func(string)
+	onFatal       func(error)
 	owners        map[int64]*state
 	mu            sync.Mutex
 	wg            sync.WaitGroup
@@ -109,21 +111,13 @@ func (this *Bot) Close() {
 }
 
 func New(ctx context.Context, c Config) (*Bot, error) {
-	if c.CaseService == nil || c.Clock == nil {
-		return nil, errors.New("invalid Telegram configuration")
-	}
+	c.CaseService = guard.Require("CaseService", c.CaseService)
+	c.Clock = guard.Require("Clock", c.Clock)
 	bot := &Bot{
 		caseService: c.CaseService,
 		clock:       c.Clock,
 		owners:      make(map[int64]*state),
-	}
-
-	if c.Diagnostic != nil {
-		bot.diagnostic = c.Diagnostic
-	} else {
-		bot.diagnostic = func(s string) {
-			fmt.Println("telegram diagnostic: ", s)
-		}
+		onFatal:     c.OnFatal,
 	}
 
 	opts := []telegramApi.Option{
@@ -132,7 +126,7 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 		telegramApi.WithAllowedUpdates(telegramApi.AllowedUpdates{"message"}),
 		telegramApi.WithErrorsHandler(func(err error) {
 			if !bot.tokenRejected(err) {
-				bot.diagnostic("telegram polling failure")
+				log.Print("telegram polling failure")
 			}
 		}),
 	}
@@ -150,10 +144,10 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if _, err := bot.client.GetMe(bounded); err != nil {
-		if bot.tokenRejected(err) {
+		if errors.Is(err, telegramApi.ErrorUnauthorized) {
 			return nil, ErrInvalidToken
 		}
-		bot.diagnostic("telegram validation failure")
+		log.Print("telegram validation failure")
 		return nil, errors.New("telegram validation failed")
 	}
 	bot.handlers = map[string]commandHandler{
@@ -164,10 +158,10 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 		"/remove": bot.onRemove,
 	}
 	if err := bot.syncCommands(bounded); err != nil {
-		if bot.tokenRejected(err) {
+		if errors.Is(err, telegramApi.ErrorUnauthorized) {
 			return nil, ErrInvalidToken
 		}
-		bot.diagnostic("telegram command synchronization failure")
+		log.Print("telegram command synchronization failure")
 	}
 	return bot, nil
 }
@@ -467,7 +461,7 @@ func (this *Bot) reply(ctx context.Context, id int64, text string) {
 	this.replyMu.Lock()
 	defer this.replyMu.Unlock()
 	if this.repliesFailed || ctx.Err() != nil {
-		this.diagnostic("telegram reply failure")
+		log.Print("telegram reply failure")
 		return
 	}
 	if id <= 0 {
@@ -476,26 +470,27 @@ func (this *Bot) reply(ctx context.Context, id int64, text string) {
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 	_, err := this.client.SendMessage(bounded, &telegramApi.SendMessageParams{ChatID: id, Text: text})
 	cancel()
-	if errors.Is(err, telegramApi.ErrorUnauthorized) {
+	if this.tokenRejected(err) {
 		this.repliesFailed = true
-		this.diagnostic("telegram_invalid_token")
 		return
 	}
 	if err != nil {
-		this.diagnostic("telegram reply failure")
+		log.Print("telegram reply failure")
 	}
 }
 
 func (this *Bot) erase(ctx context.Context, id int64, message int) {
 	_, err := this.client.DeleteMessage(ctx, &telegramApi.DeleteMessageParams{ChatID: id, MessageID: message})
 	if err != nil && !this.tokenRejected(err) {
-		this.diagnostic("telegram credential deletion failure")
+		log.Print("telegram credential deletion failure")
 	}
 }
 
 func (this *Bot) tokenRejected(err error) bool {
 	if errors.Is(err, telegramApi.ErrorUnauthorized) {
-		this.diagnostic("telegram_invalid_token")
+		if this.onFatal != nil {
+			this.onFatal(ErrInvalidToken)
+		}
 		return true
 	}
 	return false

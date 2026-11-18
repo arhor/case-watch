@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"log"
 	"os"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/platform/clock"
+	"github.com/arhor/case-watch/internal/platform/guard"
 	"github.com/arhor/case-watch/internal/services"
 )
 
@@ -22,23 +22,18 @@ func Run(ctx context.Context) error {
 
 // -- Internals ----------------------------------------------------------------
 
-var (
-	errStartup = errors.New("service startup validation failed")
-	errService = errors.New("service operation failed")
-)
+var errService = errors.New("service operation failed")
 
 func run(ctx context.Context) (result error) {
 	clock := clock.NewClock()
 
-	cfg, err := loadConfig(os.LookupEnv)
-	if err != nil {
-		return err
-	}
+	cfg := guard.Must(loadConfig(os.LookupEnv))
 
 	db, err := database.Open(ctx, cfg.DBPath)
-	if err != nil {
-		return errStartup
+	if err != nil && ctx.Err() != nil {
+		return nil
 	}
+	db = guard.Must(db, err)
 	defer func() {
 		if err := db.Close(); err != nil {
 			result = errors.Join(result, errService)
@@ -51,15 +46,6 @@ func run(ctx context.Context) (result error) {
 
 	defer stop(nil)
 
-	fail := func() { stop(errService) }
-
-	diagnostic := func(category string) {
-		log.Print(category)
-		if category == "telegram_invalid_token" || category == "inventory_failed" {
-			fail()
-		}
-	}
-
 	portalClient := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{Clock: clock})
 	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
 	defer portalClient.Close()
@@ -68,7 +54,7 @@ func run(ctx context.Context) (result error) {
 		Store:          store,
 		Portal:         portalClient,
 		Clock:          clock,
-		OnStorageError: fail,
+		OnFatal:        stop,
 	})
 	defer caseService.Shutdown()
 
@@ -76,24 +62,18 @@ func run(ctx context.Context) (result error) {
 		Token:       cfg.TelegramBotToken,
 		CaseService: caseService,
 		Clock:       clock,
-		Diagnostic:  diagnostic,
+		OnFatal:     stop,
 	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return errStartup
+	if err != nil && ctx.Err() != nil {
+		return nil
 	}
+	telegramBot = guard.Must(telegramBot, err)
 	defer telegramBot.Close()
 
-	scheduled, err := schedule.New(schedule.Config{
+	scheduled := schedule.New(schedule.Config{
 		CaseService: caseService,
 		Clock:       clock,
-		Report:      diagnostic,
 	})
-	if err != nil {
-		return errStartup
-	}
 
 	if ctx.Err() != nil {
 		return nil
@@ -103,9 +83,12 @@ func run(ctx context.Context) (result error) {
 		var running sync.WaitGroup
 		start := func(loop func(context.Context) error) {
 			running.Go(func() {
-				_ = loop(work)
+				err := loop(work)
 				if work.Err() == nil {
-					fail()
+					if err == nil {
+						err = errService
+					}
+					stop(err)
 				}
 			})
 		}
@@ -116,8 +99,11 @@ func run(ctx context.Context) (result error) {
 		running.Wait()
 	}
 
-	if errors.Is(context.Cause(work), errService) {
-		return errService
+	if ctx.Err() != nil {
+		return nil
+	}
+	if cause := context.Cause(work); cause != nil && !errors.Is(cause, context.Canceled) {
+		return cause
 	}
 	return nil
 }

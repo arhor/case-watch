@@ -16,6 +16,38 @@ import (
 	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
 
+func TestJobsNew(test *testing.T) {
+	test.Run("should panic when case service is missing", func(test *testing.T) {
+		// Given
+		config := schedule.Config{Clock: fixedClock.New(time.Time{})}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			schedule.New(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: CaseService", recovered)
+	})
+
+	test.Run("should panic when clock is missing", func(test *testing.T) {
+		// Given
+		config := schedule.Config{CaseService: tracking{}}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			schedule.New(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
+	})
+}
+
 func TestJobsNext(test *testing.T) {
 	for _, scenario := range []struct{ name, after, expected string }{
 		{
@@ -105,6 +137,29 @@ func TestJobsNext(test *testing.T) {
 }
 
 func TestJobsRun(test *testing.T) {
+	test.Run("should stop when scheduled owner inventory fails", func(test *testing.T) {
+		// Given
+		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		scheduler := schedule.New(schedule.Config{
+			Clock: clock,
+			CaseService: tracking{
+				ownersError: errors.New("private storage details"),
+			},
+			Wait: func(_ context.Context, deadline time.Time) error {
+				clock.Set(deadline)
+				return nil
+			},
+		})
+
+		// When
+		err := scheduler.Run(context.Background())
+
+		// Then
+		assert.ErrorIs(test, err, schedule.ErrScheduler)
+		assert.Equal(test, "scheduler operation failed", err.Error(), "internal storage details should not leak")
+	})
+
+
 	test.Run("should skip crossed slots and recheck queued authorization when first check is slow", func(test *testing.T) {
 		// Given
 		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
@@ -285,7 +340,7 @@ func TestJobsRun(test *testing.T) {
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		waits := 0
-		scheduler, err := schedule.New(schedule.Config{
+		scheduler := schedule.New(schedule.Config{
 			CaseService: caseService,
 			Clock:       clock,
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -298,7 +353,6 @@ func TestJobsRun(test *testing.T) {
 				return nil
 			},
 		})
-		assert.NoError(test, err)
 
 		// When
 		runErr := scheduler.Run(runCtx)
@@ -314,15 +368,16 @@ func TestJobsRun(test *testing.T) {
 // -- Internals ----------------------------------------------------------------
 
 type tracking struct {
-	owners    []int64
-	scheduled func(context.Context, int64) (models.Status, error)
+	owners      []int64
+	ownersError error
+	scheduled   func(context.Context, int64) (models.Status, error)
 }
 
 func (this tracking) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return this.scheduled(ctx, owner)
 }
 
-func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, nil }
+func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, this.ownersError }
 
 func parseTime(value string) time.Time {
 	parsed, err := time.Parse(time.RFC3339, value)
@@ -334,9 +389,7 @@ func parseTime(value string) time.Time {
 
 func newScheduler(test *testing.T, config schedule.Config) *schedule.Jobs {
 	test.Helper()
-	scheduler, err := schedule.New(config)
-	assert.NoError(test, err)
-	return scheduler
+	return schedule.New(config)
 }
 
 type scheduledPortal func(context.Context, string, string) (string, time.Time, error)
