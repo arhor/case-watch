@@ -4,11 +4,9 @@ package guard
 // It panics with the property name when a zero value is provided.
 func Require[T comparable](name string, value T) T {
 	var zero T
-
 	if value == zero {
 		panic("required property is missing: " + name)
 	}
-
 	return value
 }
 
@@ -17,6 +15,5 @@ func Must[T any](value T, err error) T {
 	if err != nil {
 		panic(err)
 	}
-
 	return value
 }
