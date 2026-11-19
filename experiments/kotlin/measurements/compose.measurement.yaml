@@ -1,3 +1,0 @@
-volumes:
-  kotlin-data:
-    name: case-watch-kotlin-measurement-data
