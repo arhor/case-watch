@@ -10,9 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
-	"github.com/arhor/case-watch/internal/utils"
+	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
 var (
@@ -23,33 +22,38 @@ var (
 	ErrCheck    = errors.New("portal check failed")
 	ErrStorage  = errors.New("case storage operation failed")
 	ErrInvalid  = errors.New("invalid enrollment input")
-	ErrNotFound = repositories.ErrNotFound
+	ErrNotFound = models.ErrNotFound
+)
+
+const (
+	caseCheckCooldown   = "case_check"
+	manualCheckCooldown = "manual_check"
 )
 
 type CaseServiceConfig struct {
-	Store          *repositories.Store
+	Store          models.Store
 	Portal         models.Portal
-	Clock          utils.Clock
-	OnStorageError func()
+	Clock          models.Clock
+	OnFatal        func(error)
 }
 
 type CaseService struct {
 	mu             sync.Mutex
 	closed         bool
 	owners         map[int64]*ownerState
-	store          *repositories.Store
-	onStorageError func()
+	store          models.Store
+	onFatal       func(error)
 	portal         models.Portal
-	clock          utils.Clock
+	clock          models.Clock
 }
 
 func NewCaseService(config CaseServiceConfig) *CaseService {
 	return &CaseService{
 		owners:         make(map[int64]*ownerState),
-		store:          config.Store,
-		portal:         config.Portal,
-		clock:          config.Clock,
-		onStorageError: config.OnStorageError,
+		store:          guard.Require("Store", config.Store),
+		portal:         guard.Require("Portal", config.Portal),
+		clock:          guard.Require("Clock", config.Clock),
+		onFatal:       config.OnFatal,
 	}
 }
 
@@ -59,8 +63,8 @@ func (this *CaseService) HasEnrollment(ctx context.Context, owner int64) (bool, 
 	if owner <= 0 {
 		return false, ErrDenied
 	}
-	_, err := this.store.Enrollments.FindByOwner(ctx, owner)
-	if errors.Is(err, repositories.ErrNotFound) {
+	_, err := this.store.Enrollments().FindByOwner(ctx, owner)
+	if errors.Is(err, models.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -72,7 +76,7 @@ func (this *CaseService) HasEnrollment(ctx context.Context, owner int64) (bool, 
 // ScheduledOwners returns the enrolled owners available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
 func (this *CaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
-	items, err := this.store.Enrollments.FindAll(ctx)
+	items, err := this.store.Enrollments().FindAll(ctx)
 	if err != nil {
 		return nil, this.storageError(ctx, err)
 	}
@@ -109,12 +113,12 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 		this.mu.Unlock()
 		return "", time.Time{}, ErrBusy
 	}
-	_, err := this.store.Enrollments.FindByOwner(ctx, owner)
+	_, err := this.store.Enrollments().FindByOwner(ctx, owner)
 	if err == nil {
 		this.mu.Unlock()
-		return "", time.Time{}, repositories.ErrExists
+		return "", time.Time{}, models.ErrExists
 	}
-	if !errors.Is(err, repositories.ErrNotFound) {
+	if !errors.Is(err, models.ErrNotFound) {
 		this.mu.Unlock()
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
@@ -129,7 +133,7 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 			this.portal.ForgetSession(owner)
 		}
 	}()
-	id, err := repositories.NewEnrollmentID()
+	id, err := models.NewEnrollmentID()
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
@@ -205,7 +209,7 @@ func (this *CaseService) Remove(ctx context.Context, owner int64) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	e, err := this.store.Enrollments.FindByOwner(ctx, owner)
+	e, err := this.store.Enrollments().FindByOwner(ctx, owner)
 	if err != nil {
 		return this.storageError(ctx, err)
 	}
@@ -242,12 +246,6 @@ func (this *CaseService) Shutdown() {
 }
 
 // -- Internals ----------------------------------------------------------------
-
-const (
-	caseCheckCooldown   = "case_check"
-	manualCheckCooldown = "manual_check"
-)
-
 type check struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
@@ -282,14 +280,14 @@ func (this *CaseService) storageError(ctx context.Context, err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	if errors.Is(err, repositories.ErrNotFound) {
-		return repositories.ErrNotFound
+	if errors.Is(err, models.ErrNotFound) {
+		return models.ErrNotFound
 	}
-	if errors.Is(err, repositories.ErrExists) {
-		return repositories.ErrExists
+	if errors.Is(err, models.ErrExists) {
+		return models.ErrExists
 	}
-	if ctx.Err() == nil && this.onStorageError != nil {
-		this.onStorageError()
+	if ctx.Err() == nil && this.onFatal != nil {
+		this.onFatal(ErrStorage)
 	}
 	return ErrStorage
 }
@@ -344,7 +342,7 @@ func (this *CaseService) check(ctx context.Context, owner int64, manual bool) (m
 		this.mu.Unlock()
 		return this.wait(ctx, check, !manual)
 	}
-	enrollment, err := this.store.Enrollments.FindByOwner(ctx, owner)
+	enrollment, err := this.store.Enrollments().FindByOwner(ctx, owner)
 	if err != nil {
 		this.mu.Unlock()
 		return models.Status{}, this.storageError(ctx, err)
@@ -461,8 +459,8 @@ func (this *CaseService) saveEnrollment(
 	stage string,
 	checkedAt time.Time,
 ) error {
-	return this.store.RunInTx(ctx, func(store *repositories.Store) error {
-		return store.Enrollments.Create(ctx, owner, id, number, password, stage, checkedAt)
+	return this.store.RunInTx(ctx, func(store models.Store) error {
+		return store.Enrollments().Create(ctx, owner, id, number, password, stage, checkedAt)
 	})
 }
 
@@ -473,18 +471,18 @@ func (this *CaseService) saveObservation(
 	stage string,
 	checkedAt time.Time,
 ) error {
-	return this.store.RunInTx(ctx, func(store *repositories.Store) error {
-		e, err := store.Enrollments.FindByIdentity(ctx, owner, id)
+	return this.store.RunInTx(ctx, func(store models.Store) error {
+		e, err := store.Enrollments().FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
 		}
-		if err = store.Enrollments.UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
+		if err = store.Enrollments().UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
 			return err
 		}
 		if e.Stage == stage {
 			return nil
 		}
-		return store.History.Append(ctx, id, e.Stage, stage, checkedAt)
+		return store.History().Append(ctx, id, e.Stage, stage, checkedAt)
 	})
 }
 
@@ -493,14 +491,14 @@ func (this *CaseService) deleteEnrollment(
 	owner int64,
 	id string,
 ) error {
-	return this.store.RunInTx(ctx, func(store *repositories.Store) error {
-		if err := store.Enrollments.SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
+	return this.store.RunInTx(ctx, func(store models.Store) error {
+		if err := store.Enrollments().SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
-		if err := store.History.DeleteByEnrollmentID(ctx, id); err != nil {
+		if err := store.History().DeleteByEnrollmentID(ctx, id); err != nil {
 			return err
 		}
-		return store.Cooldowns.DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+		return store.Cooldowns().DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
 	})
 }
 
@@ -511,7 +509,7 @@ func (this *CaseService) checkEligibility(
 	manual bool,
 ) (time.Time, error) {
 	var next time.Time
-	err := this.store.RunInTx(ctx, func(store *repositories.Store) error {
+	err := this.store.RunInTx(ctx, func(store models.Store) error {
 		var err error
 		next, err = eligibility(ctx, store, owner, id, manual)
 		return err
@@ -527,10 +525,10 @@ func (this *CaseService) reserveCheck(
 	now time.Time,
 ) (models.CheckReservation, error) {
 	if now.IsZero() {
-		return models.CheckReservation{}, repositories.ErrInvalid
+		return models.CheckReservation{}, models.ErrInvalid
 	}
 	var result models.CheckReservation
-	err := this.store.RunInTx(ctx, func(store *repositories.Store) error {
+	err := this.store.RunInTx(ctx, func(store models.Store) error {
 		next, err := eligibility(ctx, store, owner, id, manual)
 		if err != nil {
 			return err
@@ -539,7 +537,7 @@ func (this *CaseService) reserveCheck(
 		if now.Before(next) {
 			return nil
 		}
-		if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
+		if err = store.Cooldowns().Upsert(ctx, models.Cooldown{
 			SubjectType: caseCheckCooldown,
 			SubjectID:   id,
 			StartedAt:   now,
@@ -547,7 +545,7 @@ func (this *CaseService) reserveCheck(
 			return err
 		}
 		if manual {
-			if err = store.Cooldowns.Upsert(ctx, models.Cooldown{
+			if err = store.Cooldowns().Upsert(ctx, models.Cooldown{
 				SubjectType: manualCheckCooldown,
 				SubjectID:   strconv.FormatInt(owner, 10),
 				StartedAt:   now,
@@ -569,22 +567,22 @@ func (this *CaseService) reserveCheck(
 
 func eligibility(
 	ctx context.Context,
-	store *repositories.Store,
+	store models.Store,
 	owner int64,
 	id string,
 	manual bool,
 ) (time.Time, error) {
-	if _, err := store.Enrollments.FindByIdentity(ctx, owner, id); err != nil {
+	if _, err := store.Enrollments().FindByIdentity(ctx, owner, id); err != nil {
 		return time.Time{}, err
 	}
-	c, err := store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
-	if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+	c, err := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
+	if err != nil && !errors.Is(err, models.ErrNotFound) {
 		return time.Time{}, err
 	}
 	caseStart := c.StartedAt
 	if manual {
-		c, err = store.Cooldowns.FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
-		if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+		c, err = store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
+		if err != nil && !errors.Is(err, models.ErrNotFound) {
 			return time.Time{}, err
 		}
 		if c.StartedAt.After(caseStart) {

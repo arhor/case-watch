@@ -8,7 +8,7 @@ import (
 // Portal performs one bounded logical check without automatic retries and
 // returns the portal's stage text verbatim with its completion time.
 type Portal interface {
-	Check(ctx context.Context, ownerID int64, Number, Password string) (stage string, checkedAt time.Time, err error)
+	Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error)
 	ForgetSession(ownerID int64)
 }
 

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services`. Telegram commands and timed checks enter through `internal/entrypoints/telegram` and `internal/entrypoints/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/database`; shared domain contracts are in `internal/models`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
+`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services`. Telegram commands and timed checks enter through `internal/adapters/inbound/telegram` and `internal/adapters/inbound/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/adapters/outbound/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/adapters/outbound/database`; shared domain contracts are in `internal/models`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/adapters/outbound/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
 
 ## Build, Test, and Development Commands
 
@@ -17,7 +17,13 @@ Set `CASE_WATCH_TELEGRAM_BOT_TOKEN` and `CASE_WATCH_DB_PATH` before running `./c
 
 ## Coding Style & Naming Conventions
 
-Use standard Go formatting (`gofmt -w .`) and tabs as emitted by `gofmt`. Keep package names short and lowercase, exported identifiers in `PascalCase`, and unexported identifiers in `camelCase`. Preserve the existing layered boundaries: domain contracts should not depend on adapters, and external API or database details belong in their respective packages. Wrap errors with useful operation context, but never include tokens or other secrets.
+Go community conventions are optional in this project. Prioritize readability, maintainability, clear intent, and established software engineering practices over conformity to Go idioms. Do not introduce, recommend, or defend a style solely because it is "idiomatic Go." Explain choices through their concrete benefits and tradeoffs, and follow explicit project and maintainer preferences when they differ from community conventions.
+
+Use descriptive names for local variables and parameters rather than single-letter names or cryptic abbreviations. Name method receivers `this`. Use `camelCase` for unexported identifiers and multiword package names, such as `fixedClock`; use `PascalCase` for exported identifiers as required by Go's visibility rules. Keep package directories consistent with their package names. Prefer concise constructors such as `fixedClock.New` when the package already supplies the context.
+
+Keep functions focused and readable. Extract cohesive helpers when they clarify intent or separate responsibilities; avoid long, dense functions and unnecessary boilerplate. Keep error context useful and concise, and never include tokens or other secrets.
+
+Use standard Go formatting (`gofmt -w .`) and tabs as emitted by `gofmt`. Preserve the existing layered boundaries: domain contracts should not depend on adapters, and external API or database details belong in their respective packages.
 
 ## Testing Guidelines
 

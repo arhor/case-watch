@@ -1,0 +1,3 @@
+interface:
+  display_name: "Writing Go Tests"
+  short_description: "Readable Go suites with focused, data-driven subtests"

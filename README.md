@@ -2,6 +2,10 @@
 
 Case Watch is a Telegram bot for monitoring administrative case statuses. It checks tracked cases periodically, lets users request a status update, and saves status changes in history.
 
+## Code style
+
+I don't give a fuck about Go's conventions. Readability, maintainability, and established software engineering practices take precedence here. "Idiomatic Go" is not a justification on its own: use descriptive names, keep functions focused, and explain choices through concrete benefits and tradeoffs.
+
 ## Build
 
 Requires Go 1.27.3.

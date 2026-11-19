@@ -12,6 +12,8 @@ type Config struct {
 	DBPath           string
 }
 
+// -- Internals ----------------------------------------------------------------
+
 var tokenPattern = regexp.MustCompile(`^[1-9][0-9]*:[A-Za-z0-9_-]{35}$`)
 
 // loadConfig validates syntax only. Lifecycle startup separately validates the database.

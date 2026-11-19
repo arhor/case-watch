@@ -11,22 +11,812 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arhor/case-watch/internal/database"
-	"github.com/arhor/case-watch/internal/database/repositories"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database"
+	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/testing/assert"
+	"github.com/arhor/case-watch/internal/testing/fixedClock"
 )
+
+func TestNewCaseService(test *testing.T) {
+	test.Run("should panic when store is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Portal: environment.service.portal, Clock: environment.clock}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Store", recovered)
+	})
+
+	test.Run("should panic when portal is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Store: environment.store, Clock: environment.clock}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Portal", recovered)
+	})
+
+	test.Run("should panic when clock is missing", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		config := CaseServiceConfig{Store: environment.store, Portal: environment.service.portal}
+		var recovered any
+
+		// When
+		func() {
+			defer func() { recovered = recover() }()
+			NewCaseService(config)
+		}()
+
+		// Then
+		assert.Equal[any](test, "required property is missing: Clock", recovered)
+	})
+}
+
+func TestCaseServiceStatus(test *testing.T) {
+	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {
+		// Given
+		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
+			return "A", epoch.Add(-time.Hour), nil
+		})
+		environment.enroll(test, 101)
+		environment.clock.Set(epoch.Add(59 * time.Second))
+
+		// When
+		recent, firstError := environment.service.Status(context.Background(), 101)
+		environment.clock.Set(epoch.Add(time.Minute))
+		at, secondError := environment.service.Status(context.Background(), 101)
+		enrollment, _ := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		deadline, thirdError := environment.service.checkEligibility(context.Background(), 101, enrollment.ID, true)
+
+		// Then
+		assert.NoError(test, firstError, "only completed checks should refresh cached status")
+		assert.NoError(test, secondError, "only completed checks should refresh cached status")
+		assert.NoError(test, thirdError, "only completed checks should refresh cached status")
+		assert.True(test, !recent.Fresh, "only completed checks should refresh cached status")
+		assert.True(test, at.Fresh, "only completed checks should refresh cached status")
+		assert.Equal(test, 2, environment.calls.Load(), "only completed checks should refresh cached status")
+		assert.True(test, recent.NextEligibleAt.Equal(epoch.Add(time.Minute)), "only completed checks should refresh cached status")
+		assert.True(test, deadline.Equal(epoch.Add(2*time.Minute)), "only completed checks should refresh cached status")
+		verifyObservation(test, recent, "A", epoch)
+		verifyObservation(test, at, "A", epoch.Add(time.Minute))
+	})
+
+	test.Run("should retain stale cache and guard when refresh fails across restart", func(test *testing.T) {
+		// Given
+		var fail atomic.Bool
+		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
+			if fail.Load() {
+				return "", time.Time{}, errors.New("secret remote details")
+			}
+			return "A", time.Time{}, nil
+		})
+		environment.enroll(test, 101)
+		fail.Store(true)
+		environment.clock.Set(epoch.Add(time.Minute))
+
+		// When
+		failed, firstError := environment.service.Status(context.Background(), 101)
+		environment.reopen(test)
+		environment.service = NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+			environment.calls.Add(1)
+			return "", time.Time{}, errors.New("secret")
+		}), Clock: environment.clock})
+		environment.clock.Set(epoch.Add(119 * time.Second))
+		before, secondError := environment.service.Status(context.Background(), 101)
+		environment.clock.Set(epoch.Add(2 * time.Minute))
+		at, thirdError := environment.service.Status(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, firstError, ErrCheck, "failed checks should retain stale status and the retry guard")
+		assert.NoError(test, secondError, "failed checks should retain stale status and the retry guard")
+		assert.ErrorIs(test, thirdError, ErrCheck, "failed checks should retain stale status and the retry guard")
+		assert.True(test, !failed.Fresh, "failed checks should retain stale status and the retry guard")
+		assert.True(test, !before.Fresh, "failed checks should retain stale status and the retry guard")
+		assert.True(test, !at.Fresh, "failed checks should retain stale status and the retry guard")
+		assert.Equal(test, 3, environment.calls.Load(), "failed checks should retain stale status and the retry guard")
+		assert.True(test, !strings.Contains(firstError.Error(), "secret"), "failed checks should retain stale status and the retry guard")
+		assert.True(test, before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "failed checks should retain stale status and the retry guard")
+		verifyObservation(test, failed, "A", epoch)
+		verifyObservation(test, before, "A", epoch)
+		verifyObservation(test, at, "A", epoch)
+	})
+
+	test.Run("should share single flight and keep other waiters when one caller cancels", func(test *testing.T) {
+		// Given
+		entered, release := make(chan struct{}), make(chan struct{})
+		var block atomic.Bool
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			if block.Load() {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return "", time.Time{}, ctx.Err()
+				}
+			}
+			return "A", time.Time{}, nil
+		})
+		environment.enroll(test, 101)
+		block.Store(true)
+		environment.clock.Set(epoch.Add(time.Minute))
+		firstBase, cancel := context.WithCancel(context.Background())
+		first := waitingContext(firstBase)
+		second := waitingContext(context.Background())
+		third := waitingContext(context.Background())
+		firstResult, secondResult, thirdResult := make(chan answer, 1), make(chan answer, 1), make(chan answer, 1)
+
+		// When
+		go func() { status, err := environment.service.Status(first, 101); firstResult <- answer{status, err} }()
+		<-entered
+		<-first.entered
+		go func() { status, err := environment.service.Scheduled(second, 101); secondResult <- answer{status, err} }()
+		<-second.entered
+		go func() { status, err := environment.service.Status(third, 101); thirdResult <- answer{status, err} }()
+		<-third.entered
+		cancel()
+		canceled := <-firstResult
+		environment.clock.Set(epoch.Add(130 * time.Second))
+		close(release)
+		joined1, joined2 := <-secondResult, <-thirdResult
+		environment.clock.Set(epoch.Add(189 * time.Second))
+		recent, err := environment.service.Status(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, canceled.err, context.Canceled, "joins")
+		assert.NoError(test, joined1.err, "joins")
+		assert.NoError(test, joined2.err, "joins")
+		assert.NoError(test, err, "joins")
+		assert.Equal(test, 2, environment.calls.Load(), "joins")
+		assert.True(test, !recent.Fresh, "joins")
+		assert.True(test, joined1.status.NextEligibleAt.Equal(epoch.Add(190*time.Second)), "joins")
+		verifyObservation(test, joined1.status, "A", epoch.Add(130*time.Second))
+		verifyObservation(test, joined2.status, "A", epoch.Add(130*time.Second))
+	})
+
+	test.Run("should deny work when owner is invalid", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 101)
+
+		// When
+		_, err := environment.service.Status(context.Background(), 0)
+
+		// Then
+		assert.ErrorIs(test, err, ErrDenied)
+		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
+	})
+
+	test.Run("should return not found when owner has no enrollment", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 101)
+
+		// When
+		_, err := environment.service.Status(context.Background(), 202)
+
+		// Then
+		assert.ErrorIs(test, err, repositories.ErrNotFound, "owners should only access their own enrollment")
+		assert.Equal(test, 1, environment.calls.Load())
+	})
+
+	test.Run("should cancel underlying flight when last waiter leaves", func(test *testing.T) {
+		// Given
+		var block atomic.Bool
+		entered, canceled := make(chan struct{}), make(chan struct{})
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			if block.Load() {
+				close(entered)
+				<-ctx.Done()
+				close(canceled)
+				return "", time.Time{}, ctx.Err()
+			}
+			return "A", time.Time{}, nil
+		})
+		environment.enroll(test, 101)
+		environment.clock.Set(epoch.Add(time.Minute))
+		block.Store(true)
+		ctx, cancel := context.WithCancel(context.Background())
+		result := make(chan error, 1)
+
+		// When
+		go func() { _, err := environment.service.Status(ctx, 101); result <- err }()
+		<-entered
+		cancel()
+		err := <-result
+		<-canceled
+		removed := environment.service.Remove(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, err, context.Canceled, "cancellation failed to drain")
+		assert.NoError(test, removed, "cancellation failed to drain")
+	})
+
+	test.Run("should preserve old cache when observation commit fails", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.enroll(test, 101)
+		var calls atomic.Int32
+		rejectInsert(test, environment.path, "history")
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+			calls.Add(1)
+			return "B", time.Time{}, nil
+		}), Clock: environment.clock})
+		environment.clock.Set(epoch.Add(time.Minute))
+
+		// When
+		status, err := service.Status(context.Background(), 101)
+		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		history, historyErr := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+
+		// Then
+		assert.ErrorIs(test, err, ErrStorage, "failed refresh")
+		assert.NoError(test, readErr, "failed refresh")
+		assert.NoError(test, historyErr, "failed refresh")
+		assert.Equal(test, "A", enrollment.Stage, "failed refresh")
+		assert.True(test, enrollment.CheckedAt.Equal(epoch), "failed refresh")
+		assert.Equal(test, 0, len(history), "failed refresh")
+		assert.True(test, !status.Fresh, "failed refresh")
+		assert.Equal(test, 1, calls.Load(), "failed refresh")
+		verifyObservation(test, status, "A", epoch)
+	})
+
+	test.Run("should create durable transitions from both sources when stages change", func(test *testing.T) {
+		// Given
+		var stage atomic.Value
+		stage.Store("A")
+		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
+			return stage.Load().(string), time.Time{}, nil
+		})
+		id := environment.enroll(test, 101)
+
+		// When
+		environment.clock.Set(epoch.Add(time.Minute))
+		stage.Store("B")
+		manual, firstError := environment.service.Status(context.Background(), 101)
+		environment.clock.Set(epoch.Add(2 * time.Minute))
+		stage.Store("A")
+		scheduled, secondError := environment.service.Scheduled(context.Background(), 101)
+		history, thirdError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+
+		// Then
+		assert.NoError(test, firstError, "shared observation transaction")
+		assert.NoError(test, secondError, "shared observation transaction")
+		assert.NoError(test, thirdError, "shared observation transaction")
+		assert.True(test, manual.Fresh, "shared observation transaction")
+		assert.True(test, scheduled.Fresh, "shared observation transaction")
+		assert.Equal(test, 2, len(history), "shared observation transaction")
+		assert.Equal(test, "B", history[0].Stage, "shared observation transaction")
+		assert.Equal(test, "A", history[1].Stage, "shared observation transaction")
+	})
+}
+
+func TestCaseServiceScheduled(test *testing.T) {
+	test.Run("should skip guarded case and preserve manual budget when run at slot", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.enroll(test, 101)
+		environment.clock.Set(epoch.Add(time.Minute))
+
+		// When
+		scheduled, firstError := environment.service.Scheduled(context.Background(), 101)
+		environment.clock.Set(epoch.Add(119 * time.Second))
+		guarded, secondError := environment.service.Scheduled(context.Background(), 101)
+		cached, thirdError := environment.service.Status(context.Background(), 101)
+		environment.clock.Set(epoch.Add(2 * time.Minute))
+		manual, fourthError := environment.service.Status(context.Background(), 101)
+		history, historyError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+
+		// Then
+		assert.NoError(test, firstError, "scheduled checks should preserve the shared guard and manual budget")
+		assert.NoError(test, secondError, "scheduled checks should preserve the shared guard and manual budget")
+		assert.NoError(test, thirdError, "scheduled checks should preserve the shared guard and manual budget")
+		assert.NoError(test, fourthError, "scheduled checks should preserve the shared guard and manual budget")
+		assert.NoError(test, historyError, "scheduled checks should preserve the shared guard and manual budget")
+		assert.Equal(test, 3, environment.calls.Load(), "scheduled checks should preserve the shared guard and manual budget")
+		assert.True(test, scheduled.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+		assert.True(test, guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "scheduled checks should preserve the shared guard and manual budget")
+		assert.True(test, !cached.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+		assert.True(test, manual.Fresh, "scheduled checks should preserve the shared guard and manual budget")
+		assert.Equal(test, 0, len(history), "scheduled checks should preserve the shared guard and manual budget")
+	})
+
+	test.Run("should prevent manual retry when scheduled attempt fails", func(test *testing.T) {
+		// Given
+		var fail atomic.Bool
+		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
+			if fail.Load() {
+				return "", time.Time{}, errors.New("private")
+			}
+			return "A", time.Time{}, nil
+		})
+		environment.enroll(test, 101)
+		fail.Store(true)
+		environment.clock.Set(epoch.Add(time.Minute))
+
+		// When
+		_, firstError := environment.service.Scheduled(context.Background(), 101)
+		environment.clock.Set(epoch.Add(119 * time.Second))
+		before, secondError := environment.service.Status(context.Background(), 101)
+		environment.clock.Set(epoch.Add(2 * time.Minute))
+		_, thirdError := environment.service.Status(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, firstError, ErrCheck, "failed schedule guard")
+		assert.NoError(test, secondError, "failed schedule guard")
+		assert.ErrorIs(test, thirdError, ErrCheck, "failed schedule guard")
+		assert.True(test, !before.Fresh, "failed schedule guard")
+		assert.Equal(test, 3, environment.calls.Load(), "failed schedule guard")
+	})
+
+	test.Run("should deny work when owner is invalid", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 101)
+
+		// When
+		_, err := environment.service.Scheduled(context.Background(), 0)
+
+		// Then
+		assert.ErrorIs(test, err, ErrDenied)
+		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
+	})
+
+	test.Run("should reuse recent enrollment baseline without reservation when run after restart", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.enroll(test, 101)
+		environment.reopen(test)
+		var portalCalls atomic.Int32
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+			portalCalls.Add(1)
+			return "", time.Time{}, nil
+		}), Clock: environment.clock})
+		environment.clock.Set(epoch.Add(59 * time.Second))
+
+		// When
+		status, statusErr := service.Scheduled(context.Background(), 101)
+		next, guardErr := service.checkEligibility(context.Background(), 101, id, true)
+
+		// Then
+		assert.Equal(test, int32(0), portalCalls.Load(), "recent baseline should not trigger portal work")
+		assert.NoError(test, statusErr, "recent enrollment baseline should be reused without reserving a check")
+		assert.NoError(test, guardErr, "recent enrollment baseline should be reused without reserving a check")
+		assert.True(test, !status.Fresh, "recent enrollment baseline should be reused without reserving a check")
+		assert.True(test, next.IsZero(), "recent enrollment baseline should be reused without reserving a check")
+		assert.True(test, status.NextEligibleAt.Equal(epoch.Add(time.Minute)), "recent enrollment baseline should be reused without reserving a check")
+		verifyObservation(test, status, "A", epoch)
+	})
+
+	test.Run("should refresh any enrolled owner when no access policy is configured", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 303)
+		environment.clock.Set(epoch.Add(time.Minute))
+
+		// When
+		owners, inventoryErr := environment.service.ScheduledOwners(context.Background())
+		status, err := environment.service.Scheduled(context.Background(), 303)
+		_, otherErr := environment.service.Status(context.Background(), 404)
+
+		// Then
+		assert.NoError(test, inventoryErr)
+		assert.Equal(test, 1, len(owners))
+		assert.Equal(test, 303, owners[0])
+		assert.NoError(test, err)
+		assert.True(test, status.Fresh, "status.Fresh should hold")
+		assert.Equal(test, 2, environment.calls.Load())
+		assert.ErrorIs(test, otherErr, repositories.ErrNotFound, "another owner's case was accessible")
+	})
+}
+
+func TestCaseServiceEnroll(test *testing.T) {
+	test.Run("should deny work when owner is invalid", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 101)
+
+		// When
+		_, _, err := environment.service.Enroll(context.Background(), 0, number, password)
+
+		// Then
+		assert.ErrorIs(test, err, ErrDenied)
+		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
+	})
+
+	test.Run("should refuse replacement without portal check when owner already exists", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.enroll(test, 101)
+
+		// When
+		_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
+		enrollment, read := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, err, repositories.ErrExists, "duplicate enrollment should preserve the original case without portal work")
+		assert.NoError(test, read, "duplicate enrollment should preserve the original case without portal work")
+		assert.Equal(test, id, enrollment.ID, "duplicate enrollment should preserve the original case without portal work")
+		assert.Equal(test, 1, environment.calls.Load(), "duplicate enrollment should preserve the original case without portal work")
+		assert.Equal(test, number, enrollment.Number, "enrollment credentials missing")
+		assert.Equal(test, password, enrollment.Password, "enrollment credentials missing")
+	})
+
+	test.Run("should leave no committed case when portal check fails", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		ctx := context.Background()
+		portal := portalFunc(func(context.Context, string, string) (string, time.Time, error) {
+			return "", time.Time{}, errors.New("private remote detail")
+		})
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
+
+		// When
+		_, _, err := service.Enroll(ctx, 101, number, password)
+		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.True(test, err != nil, "failed enrollment should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+	})
+
+	test.Run("should leave no committed case when store insert fails", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		ctx := context.Background()
+		rejectInsert(test, environment.path, "enrollments")
+		portal := portalFunc(func(context.Context, string, string) (string, time.Time, error) { return "A", time.Time{}, nil })
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
+
+		// When
+		_, _, err := service.Enroll(ctx, 101, number, password)
+		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.True(test, err != nil, "failed enrollment should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+	})
+
+	test.Run("should leave no committed case when caller is canceled", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		ctx := context.Background()
+		canceledContext, cancel := context.WithCancel(ctx)
+		cancel()
+		ctx = canceledContext
+		portal := portalFunc(func(context.Context, string, string) (string, time.Time, error) { return "A", time.Time{}, nil })
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
+
+		// When
+		_, _, err := service.Enroll(ctx, 101, number, password)
+		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.True(test, err != nil, "failed enrollment should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+	})
+
+	test.Run("should leave no committed case when password is empty", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		ctx := context.Background()
+		portal := portalFunc(func(context.Context, string, string) (string, time.Time, error) { return "A", time.Time{}, nil })
+		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
+
+		// When
+		_, _, err := service.Enroll(ctx, 101, number, "")
+		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.True(test, err != nil, "failed enrollment should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+	})
+}
+
+func TestCaseServiceRemove(test *testing.T) {
+	test.Run("should deny work when owner is invalid", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		environment.enroll(test, 101)
+
+		// When
+		err := environment.service.Remove(context.Background(), 0)
+
+		// Then
+		assert.ErrorIs(test, err, ErrDenied)
+		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
+	})
+
+	test.Run("should cancel and drain portal before deleting when late results arrive", func(test *testing.T) {
+		// Given
+		entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		var block atomic.Bool
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			if block.Load() {
+				close(entered)
+				<-ctx.Done()
+				close(canceled)
+				<-release
+				return "LATE", time.Time{}, nil
+			}
+			return "A", time.Time{}, nil
+		})
+		id := environment.enroll(test, 101)
+		block.Store(true)
+		environment.clock.Set(epoch.Add(time.Minute))
+		checked := make(chan answer, 1)
+		go func() {
+			status, err := environment.service.Status(context.Background(), 101)
+			checked <- answer{status, err}
+		}()
+		<-entered
+		removed := make(chan error, 1)
+
+		// When
+		go func() { removed <- environment.service.Remove(context.Background(), 101) }()
+		<-canceled
+		_, busyStatus := environment.service.Status(context.Background(), 101)
+		_, _, busyEnroll := environment.service.Enroll(context.Background(), 101, number, password)
+		before, beforeErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		select {
+		case err := <-removed:
+			assert.True(test, false, "removal should wait for in-flight work to drain, got %v", err)
+		default:
+		}
+		close(release)
+		late := <-checked
+		removeErr := <-removed
+		_, missing := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		block.Store(false)
+		newID := environment.enroll(test, 101)
+		lateObservation := environment.service.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
+		environment.clock.Set(epoch.Add(119 * time.Second))
+		cached, statusErr := environment.service.Status(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, busyStatus, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+		assert.ErrorIs(test, busyEnroll, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+		assert.NoError(test, beforeErr, "removal should drain work, delete data, and retain the manual guard")
+		assert.Equal(test, id, before.ID, "removal should drain work, delete data, and retain the manual guard")
+		assert.ErrorIs(test, late.err, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+		assert.NoError(test, removeErr, "removal should drain work, delete data, and retain the manual guard")
+		assert.ErrorIs(test, missing, repositories.ErrNotFound, "removal should drain work, delete data, and retain the manual guard")
+		assert.True(test, newID != id, "removal should drain work, delete data, and retain the manual guard")
+		assert.ErrorIs(test, lateObservation, repositories.ErrNotFound, "removal should drain work, delete data, and retain the manual guard")
+		assert.NoError(test, statusErr, "removal should drain work, delete data, and retain the manual guard")
+		assert.True(test, !cached.Fresh, "removal should drain work, delete data, and retain the manual guard")
+		assert.True(test, cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)), "removal should drain work, delete data, and retain the manual guard")
+		verifyObservation(test, cached, "A", epoch.Add(time.Minute))
+	})
+
+	test.Run("should prevent baseline commit when enrollment is canceled during check", func(test *testing.T) {
+		// Given
+		entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			close(entered)
+			<-ctx.Done()
+			close(canceled)
+			<-release
+			return "late", time.Time{}, nil
+		})
+		enrolled := make(chan error, 1)
+		go func() {
+			_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
+			enrolled <- err
+		}()
+		<-entered
+		removed := make(chan error, 1)
+
+		// When
+		go func() { removed <- environment.service.Remove(context.Background(), 101) }()
+		<-canceled
+		_, _, busy := environment.service.Enroll(context.Background(), 101, number, password)
+		close(release)
+		enrollErr, removeErr := <-enrolled, <-removed
+		_, missing := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, busy, ErrRemoving, "enrollment cancellation")
+		assert.ErrorIs(test, enrollErr, context.Canceled, "enrollment cancellation")
+		assert.ErrorIs(test, removeErr, repositories.ErrNotFound, "enrollment cancellation")
+		assert.ErrorIs(test, missing, repositories.ErrNotFound, "enrollment cancellation")
+	})
+
+	test.Run("should retain enrollment and reopen work when caller cancels during drain", func(test *testing.T) {
+		// Given
+		entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		var block atomic.Bool
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			if block.Load() {
+				close(entered)
+				<-ctx.Done()
+				close(canceled)
+				<-release
+				return "", time.Time{}, ctx.Err()
+			}
+			return "A", time.Time{}, nil
+		})
+		id := environment.enroll(test, 101)
+		environment.clock.Set(epoch.Add(time.Minute))
+		block.Store(true)
+		work := make(chan error, 1)
+		go func() { _, err := environment.service.Status(context.Background(), 101); work <- err }()
+		<-entered
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		removed := make(chan error, 1)
+
+		// When
+		go func() { removed <- environment.service.Remove(ctx, 101) }()
+		<-canceled
+		cancel()
+		close(release)
+		workErr, removeErr := <-work, <-removed
+		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		status, statusErr := environment.service.Status(context.Background(), 101)
+
+		// Then
+		assert.ErrorIs(test, workErr, ErrRemoving, "canceled removal")
+		assert.ErrorIs(test, removeErr, context.Canceled, "canceled removal")
+		assert.NoError(test, readErr, "canceled removal")
+		assert.Equal(test, id, enrollment.ID, "canceled removal")
+		assert.NoError(test, statusErr, "canceled removal")
+		assert.True(test, !status.CheckedAt.IsZero(), "canceled removal")
+	})
+}
+
+func TestCaseServiceShutdown(test *testing.T) {
+	test.Run("should cancel and drain all owners when work is active", func(test *testing.T) {
+		// Given
+		started := make(chan struct{}, 2)
+		cancelled := make(chan struct{}, 2)
+		release := make(chan struct{})
+		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
+			started <- struct{}{}
+			<-ctx.Done()
+			cancelled <- struct{}{}
+			<-release
+			return "", time.Time{}, ctx.Err()
+		})
+		finished := make(chan error, 2)
+		for _, owner := range []int64{101, 202} {
+			go func(owner int64) {
+				_, _, err := environment.service.Enroll(context.Background(), owner, number, password)
+				finished <- err
+			}(owner)
+		}
+		for index := 0; index < 2; index++ {
+			<-started
+		}
+		done := make(chan struct{})
+
+		// When
+		go func() { environment.service.Shutdown(); close(done) }()
+		for index := 0; index < 2; index++ {
+			<-cancelled
+		}
+
+		// Then
+		select {
+		case <-done:
+			assert.True(test, false, "shutdown should wait for all callbacks to drain")
+		default:
+		}
+		close(release)
+		<-done
+		for index := 0; index < 2; index++ {
+			{
+				err := <-finished
+				assert.ErrorIs(test, err, context.Canceled)
+			}
+		}
+		environment.service.Shutdown()
+		{
+			_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
+			assert.ErrorIs(test, err, ErrClosed, "enrollment admitted after shutdown")
+		}
+		{
+			err := environment.service.Remove(context.Background(), 101)
+			assert.ErrorIs(test, err, ErrClosed, "removal admitted after shutdown")
+		}
+	})
+}
+
+func TestCaseServiceSaveObservation(test *testing.T) {
+	test.Run("should roll back cached status when history insert fails", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.enroll(test, 101)
+		db, err := sql.Open("sqlite", environment.path)
+		assert.NoError(test, err)
+		defer db.Close()
+		{
+			_, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
+ BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`)
+			assert.NoError(test, err)
+		}
+
+		// When
+		observeErr := environment.service.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
+		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		history, historyErr := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+
+		// Then
+		assert.ErrorIs(test, observeErr, repositories.ErrStorage, "observation rollback")
+		assert.NoError(test, readErr, "observation rollback")
+		assert.NoError(test, historyErr, "observation rollback")
+		assert.Equal(test, "A", enrollment.Stage, "observation rollback")
+		assert.True(test, enrollment.CheckedAt.Equal(epoch), "observation rollback")
+		assert.Equal(test, 0, len(history), "observation rollback")
+	})
+}
+
+func TestCaseServiceHasEnrollment(test *testing.T) {
+	test.Run("should signal fatal storage failure when database read fails for active caller", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		assert.NoError(test, environment.db.Close())
+		reports := 0
+		var fatalError error
+		environment.service.onFatal = func(err error) {
+			reports++
+			fatalError = err
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// When
+		_, err := environment.service.HasEnrollment(ctx, 101)
+
+		// Then
+		assert.True(test, err != nil, "database read should return an error")
+		assert.Equal(test, 1, reports, "only active storage failures should be reported")
+		assert.ErrorIs(test, fatalError, ErrStorage)
+	})
+
+	test.Run("should not signal fatal storage failure when caller is canceled", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		assert.NoError(test, environment.db.Close())
+		reports := 0
+		environment.service.onFatal = func(error) { reports++ }
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		cancel()
+
+		// When
+		_, err := environment.service.HasEnrollment(ctx, 101)
+
+		// Then
+		assert.True(test, err != nil, "database read should return an error")
+		assert.Equal(test, 0, reports, "only active storage failures should be reported")
+	})
+}
+
+// -- Internals ----------------------------------------------------------------
 
 var epoch = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 
 const number, password = "synthetic-number", "synthetic-password"
-
-type clock struct {
-	mu  sync.Mutex
-	now time.Time
-}
-
-func (this *clock) Now() time.Time  { this.mu.Lock(); defer this.mu.Unlock(); return this.now }
-func (this *clock) set(t time.Time) { this.mu.Lock(); defer this.mu.Unlock(); this.now = t }
 
 type portalFunc func(context.Context, string, string) (string, time.Time, error)
 
@@ -35,159 +825,61 @@ func (this portalFunc) Check(ctx context.Context, owner int64, number, password 
 }
 
 type fixture struct {
-	c     *CaseService
-	db    *sql.DB
-	store *repositories.Store
-	clock *clock
-	path  string
-	calls atomic.Int32
+	service *CaseService
+	db      *sql.DB
+	store   *repositories.Store
+	clock   *fixedClock.FixedClock
+	path    string
+	calls   atomic.Int32
 }
 
-func setup(t *testing.T, p portalFunc) *fixture {
-	t.Helper()
-	f := &fixture{clock: &clock{now: epoch}, path: filepath.Join(t.TempDir(), "state.db")}
+func setup(test *testing.T, portal portalFunc) *fixture {
+	test.Helper()
+	environment := &fixture{clock: fixedClock.New(epoch), path: filepath.Join(test.TempDir(), "state.db")}
 	var err error
-	f.db, err = database.Open(context.Background(), f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.store = repositories.NewStore(f.db)
-	t.Cleanup(func() { f.db.Close() })
+	environment.db, err = database.Open(context.Background(), environment.path)
+	assert.NoError(test, err)
+	environment.store = repositories.NewStore(environment.db)
+	test.Cleanup(func() { environment.db.Close() })
 	wrapped := portalFunc(func(ctx context.Context, number, password string) (string, time.Time, error) {
-		f.calls.Add(1)
-		if p != nil {
-			return p(ctx, number, password)
+		environment.calls.Add(1)
+		if portal != nil {
+			return portal(ctx, number, password)
 		}
 		return "A", time.Time{}, nil
 	})
-	f.c = NewCaseService(CaseServiceConfig{Store: f.store, Portal: wrapped, Clock: f.clock})
-	return f
+	environment.service = NewCaseService(CaseServiceConfig{Store: environment.store, Portal: wrapped, Clock: environment.clock})
+	return environment
 }
-func (this *fixture) reopen(t *testing.T) {
-	t.Helper()
-	if err := this.db.Close(); err != nil {
-		t.Fatal(err)
+
+func (this *fixture) reopen(test *testing.T) {
+	test.Helper()
+	{
+		err := this.db.Close()
+		assert.NoError(test, err)
 	}
 	db, err := database.Open(context.Background(), this.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(test, err)
 	this.db = db
 	this.store = repositories.NewStore(db)
 }
 
-func (this *fixture) enroll(t *testing.T, owner int64) string {
-	t.Helper()
-	if _, _, err := this.c.Enroll(context.Background(), owner, number, password); err != nil {
-		t.Fatal(err)
+func (this *fixture) enroll(test *testing.T, owner int64) string {
+	test.Helper()
+	{
+		_, _, err := this.service.Enroll(context.Background(), owner, number, password)
+		assert.NoError(test, err)
 	}
-	e, err := this.store.Enrollments.FindByOwner(context.Background(), owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return e.ID
-}
-func obs(t *testing.T, s models.Status, stage string, checked time.Time) {
-	t.Helper()
-	if s.CheckedAt.IsZero() || s.Stage != stage || !s.CheckedAt.Equal(checked) {
-		t.Fatalf("unexpected observation: %+v", s)
-	}
+	enrollment, err := this.store.Enrollments().FindByOwner(context.Background(), owner)
+	assert.NoError(test, err)
+	return enrollment.ID
 }
 
-func TestStatusShouldUseCompletionFreshnessWithoutConsumingGuardsWhenCacheIsRecent(t *testing.T) {
-	// Given
-	f := setup(t, func(context.Context, string, string) (string, time.Time, error) {
-		return "A", epoch.Add(-time.Hour), nil
-	})
-	f.enroll(t, 101)
-	f.clock.set(epoch.Add(59 * time.Second))
-	// When
-	recent, e1 := f.c.Status(context.Background(), 101)
-	f.clock.set(epoch.Add(time.Minute))
-	at, e2 := f.c.Status(context.Background(), 101)
-	e, _ := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	deadline, e3 := f.c.checkEligibility(context.Background(), 101, e.ID, true)
-	// Then
-	if e1 != nil || e2 != nil || e3 != nil || recent.Fresh || !at.Fresh || f.calls.Load() != 2 || !recent.NextEligibleAt.Equal(epoch.Add(time.Minute)) || !deadline.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("freshness: recent=%+v at=%+v calls=%d errors=%v/%v/%v", recent, at, f.calls.Load(), e1, e2, e3)
-	}
-	obs(t, recent, "A", epoch)
-	obs(t, at, "A", epoch.Add(time.Minute))
-}
-
-func TestStatusShouldRetainStaleCacheAndGuardWhenRefreshFailsAcrossRestart(t *testing.T) {
-	// Given
-	var fail atomic.Bool
-	f := setup(t, func(context.Context, string, string) (string, time.Time, error) {
-		if fail.Load() {
-			return "", time.Time{}, errors.New("secret remote details")
-		}
-		return "A", time.Time{}, nil
-	})
-	f.enroll(t, 101)
-	fail.Store(true)
-	f.clock.set(epoch.Add(time.Minute))
-	// When
-	failed, e1 := f.c.Status(context.Background(), 101)
-	f.reopen(t)
-	f.c = NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
-		f.calls.Add(1)
-		return "", time.Time{}, errors.New("secret")
-	}), Clock: f.clock})
-	f.clock.set(epoch.Add(119 * time.Second))
-	before, e2 := f.c.Status(context.Background(), 101)
-	f.clock.set(epoch.Add(2 * time.Minute))
-	at, e3 := f.c.Status(context.Background(), 101)
-	// Then
-	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || failed.Fresh || before.Fresh || at.Fresh || f.calls.Load() != 3 || strings.Contains(e1.Error(), "secret") || !before.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("failure guard: %+v %+v errors=%v/%v/%v calls=%d", failed, before, e1, e2, e3, f.calls.Load())
-	}
-	obs(t, failed, "A", epoch)
-	obs(t, before, "A", epoch)
-	obs(t, at, "A", epoch)
-}
-
-func TestScheduledShouldSkipGuardedCaseAndPreserveManualBudgetWhenRunAtSlot(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
-	f.clock.set(epoch.Add(time.Minute))
-	// When
-	scheduled, e1 := f.c.Scheduled(context.Background(), 101)
-	f.clock.set(epoch.Add(119 * time.Second))
-	guarded, e2 := f.c.Scheduled(context.Background(), 101)
-	cached, e3 := f.c.Status(context.Background(), 101)
-	f.clock.set(epoch.Add(2 * time.Minute))
-	manual, e4 := f.c.Status(context.Background(), 101)
-	history, e5 := f.store.History.FindByEnrollment(context.Background(), 101, id)
-	// Then
-	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || f.calls.Load() != 3 || !scheduled.Fresh || !guarded.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) || cached.Fresh || !manual.Fresh || len(history) != 0 {
-		t.Fatalf("scheduled guard: %+v %+v %+v calls=%d errors=%v/%v/%v/%v/%v", scheduled, guarded, cached, f.calls.Load(), e1, e2, e3, e4, e5)
-	}
-}
-
-func TestScheduledShouldPreventManualRetryWhenScheduledAttemptFails(t *testing.T) {
-	// Given
-	var fail atomic.Bool
-	f := setup(t, func(context.Context, string, string) (string, time.Time, error) {
-		if fail.Load() {
-			return "", time.Time{}, errors.New("private")
-		}
-		return "A", time.Time{}, nil
-	})
-	f.enroll(t, 101)
-	fail.Store(true)
-	f.clock.set(epoch.Add(time.Minute))
-	// When
-	_, e1 := f.c.Scheduled(context.Background(), 101)
-	f.clock.set(epoch.Add(119 * time.Second))
-	before, e2 := f.c.Status(context.Background(), 101)
-	f.clock.set(epoch.Add(2 * time.Minute))
-	_, e3 := f.c.Status(context.Background(), 101)
-	// Then
-	if !errors.Is(e1, ErrCheck) || e2 != nil || !errors.Is(e3, ErrCheck) || before.Fresh || f.calls.Load() != 3 {
-		t.Fatalf("failed schedule guard: %+v errors=%v/%v/%v calls=%d", before, e1, e2, e3, f.calls.Load())
-	}
+func verifyObservation(test *testing.T, status models.Status, stage string, checked time.Time) {
+	test.Helper()
+	assert.True(test, !status.CheckedAt.IsZero(), "observation should have the expected stage and completion timestamp")
+	assert.Equal(test, stage, status.Stage, "observation should have the expected stage and completion timestamp")
+	assert.True(test, status.CheckedAt.Equal(checked), "observation should have the expected stage and completion timestamp")
 }
 
 // Notifies when a caller reaches the cancellable shared-flight wait, avoiding
@@ -202,475 +894,25 @@ func (this *waitContext) Done() <-chan struct{} {
 	this.once.Do(func() { close(this.entered) })
 	return this.Context.Done()
 }
+
 func waitingContext(ctx context.Context) *waitContext {
 	return &waitContext{Context: ctx, entered: make(chan struct{})}
 }
 
 type answer struct {
-	s   models.Status
-	err error
+	status models.Status
+	err    error
 }
 
-func TestStatusShouldShareSingleFlightAndKeepOtherWaitersWhenOneCallerCancels(t *testing.T) {
-	// Given
-	entered, release := make(chan struct{}), make(chan struct{})
-	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		if block.Load() {
-			close(entered)
-			select {
-			case <-release:
-			case <-ctx.Done():
-				return "", time.Time{}, ctx.Err()
-			}
-		}
-		return "A", time.Time{}, nil
-	})
-	f.enroll(t, 101)
-	block.Store(true)
-	f.clock.set(epoch.Add(time.Minute))
-	firstBase, cancel := context.WithCancel(context.Background())
-	first := waitingContext(firstBase)
-	second := waitingContext(context.Background())
-	third := waitingContext(context.Background())
-	a, b, d := make(chan answer, 1), make(chan answer, 1), make(chan answer, 1)
-	// When
-	go func() { s, e := f.c.Status(first, 101); a <- answer{s, e} }()
-	<-entered
-	<-first.entered
-	go func() { s, e := f.c.Scheduled(second, 101); b <- answer{s, e} }()
-	<-second.entered
-	go func() { s, e := f.c.Status(third, 101); d <- answer{s, e} }()
-	<-third.entered
-	cancel()
-	canceled := <-a
-	f.clock.set(epoch.Add(130 * time.Second))
-	close(release)
-	joined1, joined2 := <-b, <-d
-	f.clock.set(epoch.Add(189 * time.Second))
-	recent, e := f.c.Status(context.Background(), 101)
-	// Then
-	if !errors.Is(canceled.err, context.Canceled) || joined1.err != nil || joined2.err != nil || e != nil || f.calls.Load() != 2 || recent.Fresh || !joined1.s.NextEligibleAt.Equal(epoch.Add(190*time.Second)) {
-		t.Fatalf("joins: %+v %+v %+v recent=%+v err=%v calls=%d", canceled, joined1, joined2, recent, e, f.calls.Load())
-	}
-	obs(t, joined1.s, "A", epoch.Add(130*time.Second))
-	obs(t, joined2.s, "A", epoch.Add(130*time.Second))
-}
-
-func TestTrackingShouldDenyAllWorkBeforeDataAccessWhenOwnerIsInvalid(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	f.enroll(t, 101)
-	// When
-	_, _, e1 := f.c.Enroll(context.Background(), 0, number, password)
-	_, e2 := f.c.Status(context.Background(), 0)
-	_, e3 := f.c.Scheduled(context.Background(), 0)
-	e4 := f.c.Remove(context.Background(), 0)
-	_, other := f.c.Status(context.Background(), 202)
-	// Then
-	for _, err := range []error{e1, e2, e3, e4} {
-		if !errors.Is(err, ErrDenied) {
-			t.Fatalf("denial: %v", err)
-		}
-	}
-	if !errors.Is(other, repositories.ErrNotFound) || f.calls.Load() != 1 {
-		t.Fatalf("owner isolation: %v calls=%d", other, f.calls.Load())
-	}
-}
-
-func TestEnrollShouldRefuseReplacementWithoutPortalCheckWhenOwnerAlreadyExists(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
-	// When
-	_, _, err := f.c.Enroll(context.Background(), 101, number, password)
-	e, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	// Then
-	if !errors.Is(err, repositories.ErrExists) || read != nil || e.ID != id || f.calls.Load() != 1 {
-		t.Fatalf("replacement: %v/%v calls=%d", err, read, f.calls.Load())
-	}
-	if e.Number != number || e.Password != password {
-		t.Fatal("enrollment credentials missing")
-	}
-}
-
-func TestEnrollShouldLeaveNoCommittedCaseWhenAnyEnrollmentStageFails(t *testing.T) {
-	for _, kind := range []string{"portal", "store", "cancellation", "validation"} {
-		t.Run(kind, func(t *testing.T) {
-			// Given
-			f := setup(t, nil)
-			ctx := context.Background()
-			password := password
-			p := portalFunc(func(context.Context, string, string) (string, time.Time, error) {
-				return "A", time.Time{}, nil
-			})
-			switch kind {
-			case "portal":
-				p = func(context.Context, string, string) (string, time.Time, error) {
-					return "", time.Time{}, errors.New("private remote detail")
-				}
-			case "store":
-				rejectInsert(t, f.path, "enrollments")
-			case "cancellation":
-				c, cancel := context.WithCancel(ctx)
-				cancel()
-				ctx = c
-			case "validation":
-				password = ""
-			}
-			c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: p, Clock: f.clock})
-			// When
-			_, _, err := c.Enroll(ctx, 101, number, password)
-			_, read := f.store.Enrollments.FindByOwner(context.Background(), 101)
-			// Then
-			if err == nil || strings.Contains(err.Error(), "private") || !errors.Is(read, repositories.ErrNotFound) {
-				t.Fatalf("failed enrollment committed: %v/%v", err, read)
-			}
-		})
-	}
-}
-
-func TestRemoveShouldCancelAndDrainPortalBeforeDeletingWhenLateResultsArrive(t *testing.T) {
-	// Given
-	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		if block.Load() {
-			close(entered)
-			<-ctx.Done()
-			close(canceled)
-			<-release
-			return "LATE", time.Time{}, nil
-		}
-		return "A", time.Time{}, nil
-	})
-	id := f.enroll(t, 101)
-	block.Store(true)
-	f.clock.set(epoch.Add(time.Minute))
-	checked := make(chan answer, 1)
-	go func() { s, e := f.c.Status(context.Background(), 101); checked <- answer{s, e} }()
-	<-entered
-	removed := make(chan error, 1)
-	// When
-	go func() { removed <- f.c.Remove(context.Background(), 101) }()
-	<-canceled
-	_, busyStatus := f.c.Status(context.Background(), 101)
-	_, _, busyEnroll := f.c.Enroll(context.Background(), 101, number, password)
-	before, beforeErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	select {
-	case err := <-removed:
-		t.Fatalf("removal returned without drain: %v", err)
-	default:
-	}
-	close(release)
-	late := <-checked
-	removeErr := <-removed
-	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	block.Store(false)
-	newID := f.enroll(t, 101)
-	lateObservation := f.c.saveObservation(context.Background(), 101, id, "LATE", f.clock.Now())
-	f.clock.set(epoch.Add(119 * time.Second))
-	cached, statusErr := f.c.Status(context.Background(), 101)
-	// Then
-	if !errors.Is(busyStatus, ErrRemoving) || !errors.Is(busyEnroll, ErrRemoving) || beforeErr != nil || before.ID != id || !errors.Is(late.err, ErrRemoving) || removeErr != nil || !errors.Is(missing, repositories.ErrNotFound) || newID == id || !errors.Is(lateObservation, repositories.ErrNotFound) || statusErr != nil || cached.Fresh || !cached.NextEligibleAt.Equal(epoch.Add(2*time.Minute)) {
-		t.Fatalf("removal results: late=%v remove=%v missing=%v lateObservation=%v status=%+v err=%v", late.err, removeErr, missing, lateObservation, cached, statusErr)
-	}
-	obs(t, cached, "A", epoch.Add(time.Minute))
-}
-
-func TestRemoveShouldPreventBaselineCommitWhenEnrollmentIsCanceledDuringCheck(t *testing.T) {
-	// Given
-	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		close(entered)
-		<-ctx.Done()
-		close(canceled)
-		<-release
-		return "late", time.Time{}, nil
-	})
-	enrolled := make(chan error, 1)
-	go func() { _, _, e := f.c.Enroll(context.Background(), 101, number, password); enrolled <- e }()
-	<-entered
-	removed := make(chan error, 1)
-	// When
-	go func() { removed <- f.c.Remove(context.Background(), 101) }()
-	<-canceled
-	_, _, busy := f.c.Enroll(context.Background(), 101, number, password)
-	close(release)
-	enrollErr, removeErr := <-enrolled, <-removed
-	_, missing := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	// Then
-	if !errors.Is(busy, ErrRemoving) || !errors.Is(enrollErr, context.Canceled) || !errors.Is(removeErr, repositories.ErrNotFound) || !errors.Is(missing, repositories.ErrNotFound) {
-		t.Fatalf("enrollment cancellation: busy=%v enroll=%v remove=%v missing=%v", busy, enrollErr, removeErr, missing)
-	}
-}
-
-func TestStatusShouldCancelUnderlyingFlightWhenLastWaiterLeaves(t *testing.T) {
-	// Given
-	var block atomic.Bool
-	entered, canceled := make(chan struct{}), make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		if block.Load() {
-			close(entered)
-			<-ctx.Done()
-			close(canceled)
-			return "", time.Time{}, ctx.Err()
-		}
-		return "A", time.Time{}, nil
-	})
-	f.enroll(t, 101)
-	f.clock.set(epoch.Add(time.Minute))
-	block.Store(true)
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	// When
-	go func() { _, e := f.c.Status(ctx, 101); result <- e }()
-	<-entered
-	cancel()
-	err := <-result
-	<-canceled
-	removed := f.c.Remove(context.Background(), 101)
-	// Then
-	if !errors.Is(err, context.Canceled) || removed != nil {
-		t.Fatalf("cancellation failed to drain: %v/%v", err, removed)
-	}
-}
-
-func TestStatusShouldPreserveOldCacheWhenObservationCommitFails(t *testing.T) {
-	t.Run("observation", func(t *testing.T) {
-		// Given
-		f := setup(t, nil)
-		id := f.enroll(t, 101)
-		var calls atomic.Int32
-		rejectInsert(t, f.path, "history")
-		c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
-			calls.Add(1)
-			return "B", time.Time{}, nil
-		}), Clock: f.clock})
-		f.clock.set(epoch.Add(time.Minute))
-		// When
-		status, err := c.Status(context.Background(), 101)
-		e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-		history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
-		// Then
-		if !errors.Is(err, ErrStorage) || readErr != nil || historyErr != nil || e.Stage != "A" || !e.CheckedAt.Equal(epoch) || len(history) != 0 || status.Fresh || calls.Load() != 1 {
-			t.Fatalf("failed refresh: status=%+v err=%v read=%v history=%v calls=%d", status, err, readErr, historyErr, calls.Load())
-		}
-		obs(t, status, "A", epoch)
-	})
-}
-
-func TestStatusShouldCreateDurableTransitionsFromBothSourcesWhenStagesChange(t *testing.T) {
-	// Given
-	var stage atomic.Value
-	stage.Store("A")
-	f := setup(t, func(context.Context, string, string) (string, time.Time, error) {
-		return stage.Load().(string), time.Time{}, nil
-	})
-	id := f.enroll(t, 101)
-	// When
-	f.clock.set(epoch.Add(time.Minute))
-	stage.Store("B")
-	manual, e1 := f.c.Status(context.Background(), 101)
-	f.clock.set(epoch.Add(2 * time.Minute))
-	stage.Store("A")
-	scheduled, e2 := f.c.Scheduled(context.Background(), 101)
-	history, e3 := f.store.History.FindByEnrollment(context.Background(), 101, id)
-	// Then
-	if e1 != nil || e2 != nil || e3 != nil || !manual.Fresh || !scheduled.Fresh || len(history) != 2 || history[0].Stage != "B" || history[1].Stage != "A" {
-		t.Fatalf("shared observation transaction: history=%+v errors=%v/%v/%v", history, e1, e2, e3)
-	}
-}
-
-func TestRemoveShouldRetainEnrollmentAndReopenWorkWhenCallerCancelsDuringDrain(t *testing.T) {
-	// Given
-	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	var block atomic.Bool
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		if block.Load() {
-			close(entered)
-			<-ctx.Done()
-			close(canceled)
-			<-release
-			return "", time.Time{}, ctx.Err()
-		}
-		return "A", time.Time{}, nil
-	})
-	id := f.enroll(t, 101)
-	f.clock.set(epoch.Add(time.Minute))
-	block.Store(true)
-	work := make(chan error, 1)
-	go func() { _, err := f.c.Status(context.Background(), 101); work <- err }()
-	<-entered
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	removed := make(chan error, 1)
-	// When
-	go func() { removed <- f.c.Remove(ctx, 101) }()
-	<-canceled
-	cancel()
-	close(release)
-	workErr, removeErr := <-work, <-removed
-	e, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	status, statusErr := f.c.Status(context.Background(), 101)
-	// Then
-	if !errors.Is(workErr, ErrRemoving) || !errors.Is(removeErr, context.Canceled) || readErr != nil || e.ID != id || statusErr != nil || status.CheckedAt.IsZero() {
-		t.Fatalf("canceled removal: work=%v remove=%v read=%v status=%v", workErr, removeErr, readErr, statusErr)
-	}
-}
-
-func TestScheduledShouldReuseRecentEnrollmentBaselineWithoutReservationWhenRunAfterRestart(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
-	f.reopen(t)
-	c := NewCaseService(CaseServiceConfig{Store: f.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
-		t.Error("recent baseline triggered portal work")
-		return "", time.Time{}, nil
-	}), Clock: f.clock})
-	f.clock.set(epoch.Add(59 * time.Second))
-	// When
-	status, statusErr := c.Scheduled(context.Background(), 101)
-	next, guardErr := c.checkEligibility(context.Background(), 101, id, true)
-	// Then
-	if statusErr != nil || guardErr != nil || status.Fresh || !next.IsZero() || !status.NextEligibleAt.Equal(epoch.Add(time.Minute)) {
-		t.Fatalf("baseline reuse: %+v status=%v next=%v guard=%v", status, statusErr, next, guardErr)
-	}
-	obs(t, status, "A", epoch)
-}
-
-func TestShutdownShouldCancelAndDrainAllOwnersWhenWorkIsActive(t *testing.T) {
-	// Given
-	started := make(chan struct{}, 2)
-	cancelled := make(chan struct{}, 2)
-	release := make(chan struct{})
-	f := setup(t, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
-		started <- struct{}{}
-		<-ctx.Done()
-		cancelled <- struct{}{}
-		<-release
-		return "", time.Time{}, ctx.Err()
-	})
-	finished := make(chan error, 2)
-	for _, owner := range []int64{101, 202} {
-		go func(owner int64) {
-			_, _, err := f.c.Enroll(context.Background(), owner, number, password)
-			finished <- err
-		}(owner)
-	}
-	for i := 0; i < 2; i++ {
-		<-started
-	}
-	done := make(chan struct{})
-	// When
-	go func() { f.c.Shutdown(); close(done) }()
-	for i := 0; i < 2; i++ {
-		<-cancelled
-	}
-	// Then
-	select {
-	case <-done:
-		t.Fatal("shutdown returned before callbacks drained")
-	default:
-	}
-	close(release)
-	<-done
-	for i := 0; i < 2; i++ {
-		if e := <-finished; !errors.Is(e, context.Canceled) {
-			t.Fatal(e)
-		}
-	}
-	f.c.Shutdown()
-	if _, _, e := f.c.Enroll(context.Background(), 101, number, password); !errors.Is(e, ErrClosed) {
-		t.Fatal("enrollment admitted after shutdown")
-	}
-	if e := f.c.Remove(context.Background(), 101); !errors.Is(e, ErrClosed) {
-		t.Fatal("removal admitted after shutdown")
-	}
-}
-
-func TestScheduledShouldRefreshAnyEnrolledOwnerWhenNoAccessPolicyIsConfigured(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	f.enroll(t, 303)
-	f.clock.set(epoch.Add(time.Minute))
-	// When
-	owners, inventoryErr := f.c.ScheduledOwners(context.Background())
-	status, err := f.c.Scheduled(context.Background(), 303)
-	_, otherErr := f.c.Status(context.Background(), 404)
-	// Then
-	if inventoryErr != nil || len(owners) != 1 || owners[0] != 303 || err != nil || !status.Fresh || f.calls.Load() != 2 {
-		t.Fatalf("owners=%v inventory=%v status=%+v err=%v calls=%d", owners, inventoryErr, status, err, f.calls.Load())
-	}
-	if !errors.Is(otherErr, repositories.ErrNotFound) {
-		t.Fatalf("another owner's case was accessible: %v", otherErr)
-	}
-}
-
-func TestObserveShouldRollBackCachedStatusWhenHistoryInsertFails(t *testing.T) {
-	// Given
-	f := setup(t, nil)
-	id := f.enroll(t, 101)
-	db, err := sql.Open("sqlite", f.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
- BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`); err != nil {
-		t.Fatal(err)
-	}
-	// When
-	observeErr := f.c.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
-	enrollment, readErr := f.store.Enrollments.FindByOwner(context.Background(), 101)
-	history, historyErr := f.store.History.FindByEnrollment(context.Background(), 101, id)
-	// Then
-	if !errors.Is(observeErr, repositories.ErrStorage) || readErr != nil || historyErr != nil || enrollment.Stage != "A" || !enrollment.CheckedAt.Equal(epoch) || len(history) != 0 {
-		t.Fatalf("observation rollback: observation=%+v history=%+v errors=%v/%v/%v", enrollment, history, observeErr, readErr, historyErr)
-	}
-}
-
-func rejectInsert(t *testing.T, path, table string) {
-	t.Helper()
+func rejectInsert(test *testing.T, path, table string) {
+	test.Helper()
 	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(test, err)
 	defer db.Close()
-	if table != "history" && table != "enrollments" {
-		t.Fatal("invalid fixture table")
-	}
-	if _, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestServiceShouldReportOnlyActiveStorageFailureWhenDatabaseReadFails(t *testing.T) {
-	for _, canceled := range []bool{false, true} {
-		t.Run(map[bool]string{false: "active", true: "canceled"}[canceled], func(t *testing.T) {
-			// Given
-			f := setup(t, nil)
-			if err := f.db.Close(); err != nil {
-				t.Fatal(err)
-			}
-			reports := 0
-			f.c.onStorageError = func() { reports++ }
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			if canceled {
-				cancel()
-			}
-			// When
-			_, err := f.c.HasEnrollment(ctx, 101)
-			// Then
-			want := 1
-			if canceled {
-				want = 0
-			}
-			if err == nil || reports != want {
-				t.Fatalf("storage failure: err=%v reports=%d want=%d", err, reports, want)
-			}
-		})
+	assert.True(test, !(table != "history" && table != "enrollments"), "invalid fixture table")
+	{
+		_, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;")
+		assert.NoError(test, err)
 	}
 }
 
