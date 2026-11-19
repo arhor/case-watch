@@ -1,4 +1,4 @@
-# Final technology comparison
+# Tech stack comparison benchmark
 
 Source revision: `107c5859fbdf7a8b8ef454aedeaf3f94ee7fec0f`. Each sampled metric reports the median and observed minimum–maximum across **10 repeated trials**. Image size is fixed production-image metadata, not a repeated timing sample. All four implementations ran sequentially on the same host; no historical measurements are mixed into these results.
 

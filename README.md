@@ -37,9 +37,3 @@ Compose passes variables from `.env` into the container.
 
 For unattended Raspberry Pi updates from the `master` branch, see
 [automatic updates](scripts/auto-update/README.md).
-
-## Technology comparison
-
-The [final experiment report](docs/experiment-results.md) compares Go, Rust, Kotlin/JVM,
-and Node.js using ten trials per measurement type. It includes resource usage,
-fresh and incremental build times, methodology, and a summary of the results.
