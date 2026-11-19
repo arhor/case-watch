@@ -36,6 +36,6 @@ For unattended Raspberry Pi updates from the `master` branch, see
 
 ## Technology comparison
 
-The [final experiment report](EXPERIMENT-REPORT.md) compares Go, Rust, Kotlin/JVM,
+The [final experiment report](docs/experiment-results.md) compares Go, Rust, Kotlin/JVM,
 and Node.js using ten trials per measurement type. It includes resource usage,
-fresh and incremental build times, raw data, and reproduction instructions.
+fresh and incremental build times, methodology, and a summary of the results.

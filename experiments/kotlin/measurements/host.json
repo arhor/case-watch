@@ -1,9 +1,0 @@
-{
-  "cgroup": "/system.slice/docker-a416c7b69289a74915517c3968e8a3d5f3cfaa6e0757dd0b5eb64a72d18f41d3.scope",
-  "cpu.max": "25000 100000",
-  "pids.max": "64",
-  "memory.max": "unavailable",
-  "host_cpu_count": 4,
-  "kernel": "6.18.50+rpt-rpi-2712",
-  "host_memory_KiB": 4146240
-}

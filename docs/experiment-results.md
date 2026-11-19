@@ -56,14 +56,10 @@ Runtime image sizes are Docker logical uncompressed image sizes, not registry tr
 
 The Go normal test suite and `go vet ./...` passed. Its race suite could not execute on this host: ThreadSanitizer reported an unsupported 47-bit VMA range (requires 48 bits); this is not a passing race check. Rust format/clippy/tests, Kotlin format/tests/packaging/runtime probes and Node syntax/format/tests passed while preparing compiler images. All four stacks passed synthetic manual and scheduled smoke checks before collection. The report generator verifies exactly ten distinct repetitions per version and measurement type.
 
-## Environment and reproducibility
+## Environment and retained results
 
-- Host: Raspberry Pi 5 Model B Rev 1.1, `aarch64`, `6.18.50+rpt-rpi-2712`; 4 logical CPUs; MemTotal:        4146240 kB.
-- Raw CPU/RSS recomputation and source/probe identity checks: [data audit](experiments/final/data-audit.json).
-- Baseline checks and smoke audits: [verification](experiments/final/verification.json).
-- Exact toolchain versions and compiler image IDs: [build environment](experiments/final/build-host.json).
-- Runtime image IDs, source hashes and parameters: [runtime environment](experiments/final/host.json).
-- All 80 build observations: [build results](experiments/final/build-results.json).
-- All 120 runtime observations and workload audits: [runtime results](experiments/final/runtime-results.json).
-- Raw process samples: `experiments/final/{go,rust,kotlin,node}-{idle,manual,scheduled}-{1..10}.jsonl`.
-- Reproduction steps and qualifications: [measurement README](experiments/final/README.md).
+- Host: Raspberry Pi 5 Model B Rev 1.1, `aarch64`, Linux `6.18.50+rpt-rpi-2712`; 4 logical CPUs; 4,146,240 kB total memory.
+- Toolchains: Go 1.27.3; Rust/Cargo 1.100.0; Kotlin JVM plugin 2.4.21, Gradle 9.7.0 and Temurin OpenJDK 25.0.5+8; Node.js 24.22.3 and npm 11.19.1.
+- Collection comprised 80 build observations and 120 runtime observations, with ten repetitions for every version and measurement type. Raw CPU/RSS summaries were independently recomputed, source/probe identities checked, and workload success audited before the report was retained.
+
+This document preserves the final benchmark results, summary and methodology. The experimental implementations, build and measurement tooling, probes, raw observations and environment manifests have been removed from the current tree. Historical materials remain in [commit `efd607e`](https://github.com/arhor/case-watch/tree/efd607e/experiments), including the reproduction instructions and exact image/source identities. Reproducing the experiment requires checking out that historical revision and obtaining its recorded toolchains and images.
