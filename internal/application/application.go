@@ -51,10 +51,10 @@ func run(ctx context.Context) (result error) {
 	defer portalClient.Close()
 
 	caseService := services.NewCaseService(services.CaseServiceConfig{
-		Store:          store,
-		Portal:         portalClient,
-		Clock:          clock,
-		OnFatal:        stop,
+		Store:   store,
+		Portal:  portalClient,
+		Clock:   clock,
+		OnFatal: stop,
 	})
 	defer caseService.Shutdown()
 
@@ -71,6 +71,7 @@ func run(ctx context.Context) (result error) {
 	defer telegramBot.Close()
 
 	scheduled := schedule.New(schedule.Config{
+		Notifier:    telegramBot,
 		CaseService: caseService,
 		Clock:       clock,
 	})

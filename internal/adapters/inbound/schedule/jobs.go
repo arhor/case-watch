@@ -22,7 +22,12 @@ type Cases interface {
 	Scheduled(context.Context, int64) (models.Status, error)
 }
 
+type StageChangeNotifier interface {
+	NotifyStageChanged(context.Context, int64, models.StageChange) error
+}
+
 type Config struct {
+	Notifier    StageChangeNotifier
 	CaseService Cases
 	Clock       models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
@@ -79,8 +84,17 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if _, err := this.c.CaseService.Scheduled(ctx, owner); err != nil && ctx.Err() == nil {
-				log.Print("scheduled case check failed")
+			status, err := this.c.CaseService.Scheduled(ctx, owner)
+			if err != nil {
+				if ctx.Err() == nil {
+					log.Print("scheduled case check failed")
+				}
+				continue
+			}
+			if status.Change != nil && ctx.Err() == nil {
+				if err := this.c.Notifier.NotifyStageChanged(ctx, owner, *status.Change); err != nil && ctx.Err() == nil {
+					log.Print("stage change notification failed")
+				}
 			}
 		}
 	}
@@ -89,6 +103,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 func New(c Config) *Jobs {
 	c.CaseService = guard.Require("CaseService", c.CaseService)
 	c.Clock = guard.Require("Clock", c.Clock)
+	c.Notifier = guard.Require("Notifier", c.Notifier)
 	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
 	if c.Wait == nil {
 		c.Wait = wait
@@ -111,5 +126,3 @@ func wait(ctx context.Context, deadline time.Time) error {
 		return nil
 	}
 }
-
-

@@ -617,6 +617,84 @@ func TestBotErase(test *testing.T) {
 	})
 }
 
+func TestBotNotifyStageChanged(test *testing.T) {
+	test.Run("should send literal stages and Warsaw time to owner when stage changes", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		var recipient, parseMode string
+		server := newServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			request.ParseMultipartForm(1 << 20)
+			recipient, parseMode = request.FormValue("chat_id"), request.FormValue("parse_mode")
+			environment.replies = append(environment.replies, request.FormValue("text"))
+			writer.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
+		}))
+		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock})
+		change := models.StageChange{Stage: "Etap <B>", CheckedAt: environment.clock.Now()}
+
+		// When
+		err := bot.NotifyStageChanged(context.Background(), 303, change)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "303", recipient)
+		assert.Equal(test, "", parseMode)
+		assert.Equal(test, "Статус вашего дела изменился.\n\nПредыдущий статус: Не указан\nНовый статус: Etap <B>\nПроверено: 01.11.2026, 13:00", environment.replies[len(environment.replies)-1])
+	})
+	test.Run("should return sanitized error without retry when delivery fails", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		attempts := 0
+		server := newServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			attempts++
+			writer.Write([]byte(`{"ok":false,"error_code":400,"description":"synthetic-secret"}`))
+		}))
+		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock})
+
+		// When
+		err := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
+
+		// Then
+		assert.True(test, err != nil)
+		assert.Equal(test, "telegram message delivery failed", err.Error())
+		assert.Equal(test, 1, attempts)
+	})
+
+	test.Run("should stop sending and report fatal error when token is rejected", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		attempts := 0
+		var fatalError error
+		server := newServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			attempts++
+			writer.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
+		}))
+		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) { fatalError = err }})
+
+		// When
+		first := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
+		second := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
+
+		// Then
+		assert.ErrorIs(test, first, ErrInvalidToken)
+		assert.ErrorIs(test, second, ErrInvalidToken)
+		assert.ErrorIs(test, fatalError, ErrInvalidToken)
+		assert.Equal(test, 1, attempts)
+	})
+	test.Run("should skip delivery when context is canceled", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// When
+		err := environment.bot.NotifyStageChanged(ctx, 101, models.StageChange{})
+
+		// Then
+		assert.ErrorIs(test, err, context.Canceled)
+		assert.Equal(test, 0, len(environment.replies))
+	})
+}
+
 // -- Internals ----------------------------------------------------------------
 
 type portal func(context.Context, string, string) (string, time.Time, error)

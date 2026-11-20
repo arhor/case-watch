@@ -436,12 +436,15 @@ func (this *CaseService) refresh(
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		err = this.storageError(ctx, this.saveObservation(ctx, owner, trackedCase.ID, stage, checkedAt))
+		var change *models.StageChange
+		change, err = this.saveObservation(ctx, owner, trackedCase.ID, stage, checkedAt)
+		err = this.storageError(ctx, err)
 
 		if err == nil {
 			next := check.status.NextEligibleAt
 			check.status = cached(stage, checkedAt)
 			check.status.Fresh = true
+			check.status.Change = change
 			check.status.NextEligibleAt = later(next, checkedAt.Add(time.Minute))
 		}
 	}
@@ -471,8 +474,9 @@ func (this *CaseService) saveObservation(
 	id string,
 	stage string,
 	checkedAt time.Time,
-) error {
-	return this.store.RunInTx(ctx, func(store models.Store) error {
+) (*models.StageChange, error) {
+	var change *models.StageChange
+	err := this.store.RunInTx(ctx, func(store models.Store) error {
 		trackedCase, err := store.TrackedCases().FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
@@ -483,8 +487,16 @@ func (this *CaseService) saveObservation(
 		if trackedCase.Stage == stage {
 			return nil
 		}
-		return store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, stage, checkedAt)
+		if err := store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, stage, checkedAt); err != nil {
+			return err
+		}
+		change = &models.StageChange{PreviousStage: trackedCase.Stage, Stage: stage, CheckedAt: checkedAt}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return change, nil
 }
 
 func (this *CaseService) deleteTrackedCase(

@@ -110,6 +110,18 @@ func (this *Bot) Close() {
 	})
 }
 
+// NotifyStageChanged makes one bounded delivery attempt for a committed change.
+func (this *Bot) NotifyStageChanged(ctx context.Context, owner int64, change models.StageChange) error {
+	previous, current := change.PreviousStage, change.Stage
+	if previous == "" {
+		previous = "Не указан"
+	}
+	if current == "" {
+		current = "Не указан"
+	}
+	return this.send(ctx, owner, fmt.Sprintf("Статус вашего дела изменился.\n\nПредыдущий статус: %s\nНовый статус: %s\nПроверено: %s", previous, current, formatWarsawTime(change.CheckedAt)))
+}
+
 func New(ctx context.Context, c Config) (*Bot, error) {
 	c.CaseService = guard.Require("CaseService", c.CaseService)
 	c.Clock = guard.Require("Clock", c.Clock)
@@ -458,25 +470,34 @@ func (this *Bot) owner(id int64) *state {
 
 // reply makes one bounded attempt for a user interaction. Replies are never queued.
 func (this *Bot) reply(ctx context.Context, id int64, text string) {
+	if err := this.send(ctx, id, text); err != nil {
+		log.Print("telegram reply failure")
+	}
+}
+
+func (this *Bot) send(ctx context.Context, id int64, text string) error {
 	this.replyMu.Lock()
 	defer this.replyMu.Unlock()
-	if this.repliesFailed || ctx.Err() != nil {
-		log.Print("telegram reply failure")
-		return
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if this.repliesFailed {
+		return ErrInvalidToken
 	}
 	if id <= 0 {
-		return
+		return services.ErrDenied
 	}
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	_, err := this.client.SendMessage(bounded, &telegramApi.SendMessageParams{ChatID: id, Text: text})
-	cancel()
 	if this.tokenRejected(err) {
 		this.repliesFailed = true
-		return
+		return ErrInvalidToken
 	}
 	if err != nil {
-		log.Print("telegram reply failure")
+		return errors.New("telegram message delivery failed")
 	}
+	return nil
 }
 
 func (this *Bot) erase(ctx context.Context, id int64, message int) {

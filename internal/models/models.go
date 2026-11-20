@@ -12,10 +12,19 @@ type Portal interface {
 	ForgetSession(ownerID int64)
 }
 
+// StageChange describes a committed observation that changed the stored stage.
+type StageChange struct {
+	PreviousStage string
+	Stage         string
+	CheckedAt     time.Time
+}
+
 // Status separates successful cache age from attempt eligibility. A failed refresh
 // may return both a previous observation and an error; it must not relabel it fresh.
 // A zero CheckedAt means no successful observation is available.
 type Status struct {
+	// Change is present only on the fresh result of the check that committed it.
+	Change         *StageChange
 	Stage          string
 	CheckedAt      time.Time
 	Fresh          bool

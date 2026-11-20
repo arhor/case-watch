@@ -150,6 +150,9 @@ func TestCaseServiceStatus(test *testing.T) {
 					return "", time.Time{}, ctx.Err()
 				}
 			}
+			if block.Load() {
+				return "B", time.Time{}, nil
+			}
 			return "A", time.Time{}, nil
 		})
 		environment.trackCase(test, 101)
@@ -185,8 +188,10 @@ func TestCaseServiceStatus(test *testing.T) {
 		assert.Equal(test, 2, environment.calls.Load(), "joins")
 		assert.True(test, !recent.Fresh, "joins")
 		assert.True(test, joined1.status.NextEligibleAt.Equal(epoch.Add(190*time.Second)), "joins")
-		verifyObservation(test, joined1.status, "A", epoch.Add(130*time.Second))
-		verifyObservation(test, joined2.status, "A", epoch.Add(130*time.Second))
+		verifyObservation(test, joined1.status, "B", epoch.Add(130*time.Second))
+		verifyObservation(test, joined2.status, "B", epoch.Add(130*time.Second))
+		assert.DeepEqual(test, &models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(130 * time.Second)}, joined1.status.Change)
+		assert.Equal[*models.StageChange](test, nil, recent.Change)
 	})
 
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
@@ -272,6 +277,7 @@ func TestCaseServiceStatus(test *testing.T) {
 		assert.True(test, trackedCase.CheckedAt.Equal(epoch), "failed refresh")
 		assert.Equal(test, 0, len(history), "failed refresh")
 		assert.True(test, !status.Fresh, "failed refresh")
+		assert.Equal[*models.StageChange](test, nil, status.Change)
 		assert.Equal(test, 1, calls.Load(), "failed refresh")
 		verifyObservation(test, status, "A", epoch)
 	})
@@ -300,6 +306,8 @@ func TestCaseServiceStatus(test *testing.T) {
 		assert.NoError(test, thirdError, "shared observation transaction")
 		assert.True(test, manual.Fresh, "shared observation transaction")
 		assert.True(test, scheduled.Fresh, "shared observation transaction")
+		assert.DeepEqual(test, &models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(time.Minute)}, manual.Change)
+		assert.DeepEqual(test, &models.StageChange{PreviousStage: "B", Stage: "A", CheckedAt: epoch.Add(2 * time.Minute)}, scheduled.Change)
 		assert.Equal(test, 2, len(history), "shared observation transaction")
 		assert.Equal(test, "B", history[0].Stage, "shared observation transaction")
 		assert.Equal(test, "A", history[1].Stage, "shared observation transaction")
@@ -588,7 +596,7 @@ func TestCaseServiceRemove(test *testing.T) {
 		_, missing := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		block.Store(false)
 		newID := environment.trackCase(test, 101)
-		lateObservation := environment.service.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
+		_, lateObservation := environment.service.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
 		environment.clock.Set(epoch.Add(119 * time.Second))
 		cached, statusErr := environment.service.Status(context.Background(), 101)
 
@@ -762,7 +770,7 @@ func TestCaseServiceSaveObservation(test *testing.T) {
 		}
 
 		// When
-		observeErr := environment.service.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
+		_, observeErr := environment.service.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 

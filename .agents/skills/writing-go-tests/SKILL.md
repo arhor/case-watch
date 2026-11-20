@@ -32,6 +32,19 @@ A suite may contain both direct subtests and a table loop as siblings.
 
 - Use descriptive identifiers: `test`, `scenario`, `recorder`, `expectedMessage`, `targetError`, and `arguments`. Avoid one-letter names and abbreviations such as `t`, `tc`, `tb`, or `args` in newly written or rewritten test code.
 - In each behavioral subtest, separate setup, execution, and verification with `// Given`, `// When`, and `// Then`, once each, with blank lines between sections. Suite containers and table declarations do not need artificial sections or empty verification comments.
+- Always put a blank line immediately before `// When` and `// Then`, separating each section comment from the preceding section's code. Keep each section comment directly above its first statement:
+
+  ```go
+  // Given
+  scheduler := newScheduler(test, config)
+
+  // When
+  err := scheduler.Run(ctx)
+
+  // Then
+  assert.ErrorIs(test, err, context.Canceled)
+  ```
+
 - Keep each section focused on its responsibility:
   - `Given` describes and establishes the initial state, including setup calls needed to seed that state.
   - `When` performs the complete behavior under test, including follow-up operations needed to observe its effects, and captures the results.

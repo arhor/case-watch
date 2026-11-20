@@ -140,7 +140,7 @@ func TestJobsRun(test *testing.T) {
 	test.Run("should stop when scheduled owner inventory fails", func(test *testing.T) {
 		// Given
 		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
-		scheduler := schedule.New(schedule.Config{
+		scheduler := newScheduler(test, schedule.Config{
 			Clock: clock,
 			CaseService: tracking{
 				ownersError: errors.New("private storage details"),
@@ -339,7 +339,7 @@ func TestJobsRun(test *testing.T) {
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		waits := 0
-		scheduler := schedule.New(schedule.Config{
+		scheduler := newScheduler(test, schedule.Config{
 			CaseService: caseService,
 			Clock:       clock,
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -361,6 +361,100 @@ func TestJobsRun(test *testing.T) {
 		assert.ErrorIs(test, runErr, context.Canceled)
 		assert.Equal(test, 2, calls)
 		assert.Equal(test, 2, waits)
+	})
+}
+
+func TestJobsNotifications(test *testing.T) {
+	test.Run("should notify changed owners and continue when delivery fails", func(test *testing.T) {
+		// Given
+		fixedClock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var recipients []int64
+		change := models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: fixedClock.Now()}
+		waits := 0
+		scheduler := newScheduler(test, schedule.Config{
+			Clock: fixedClock,
+			CaseService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
+				if owner == 2 {
+					return models.Status{}, nil
+				}
+				if owner == 3 {
+					return models.Status{Change: &change}, errors.New("check failed")
+				}
+				return models.Status{Fresh: true, Change: &change}, nil
+			}},
+			Notifier: notifierFunc(func(_ context.Context, owner int64, actual models.StageChange) error {
+				recipients = append(recipients, owner)
+				assert.DeepEqual(test, change, actual)
+				return errors.New("delivery failed")
+			}),
+			Wait: func(_ context.Context, deadline time.Time) error {
+				waits++
+				if waits == 2 {
+					cancel()
+					return ctx.Err()
+				}
+				fixedClock.Set(deadline)
+				return nil
+			},
+		})
+
+		// When
+		err := scheduler.Run(ctx)
+
+		// Then
+		assert.ErrorIs(test, err, context.Canceled)
+		assert.DeepEqual(test, []int64{1, 4}, recipients)
+	})
+}
+
+func TestJobsStageChangeIntegration(test *testing.T) {
+	test.Run("should send once when changed check is followed by unchanged check", func(test *testing.T) {
+		// Given
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		db, err := database.Open(ctx, filepath.Join(test.TempDir(), "state.db"))
+		assert.NoError(test, err)
+		test.Cleanup(func() { _ = db.Close() })
+		fixedClock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
+		stage := "A"
+		service := services.NewCaseService(services.CaseServiceConfig{
+			Store: repositories.NewStore(db), Clock: fixedClock,
+			Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) { return stage, time.Time{}, nil }),
+		})
+		test.Cleanup(service.Shutdown)
+		_, _, err = service.StoreCaseToTrack(ctx, 101, "number", "password")
+		assert.NoError(test, err)
+		stage = "B"
+		var changes []models.StageChange
+		var recipients []int64
+		waits := 0
+		scheduler := newScheduler(test, schedule.Config{
+			CaseService: service, Clock: fixedClock,
+			Notifier: notifierFunc(func(_ context.Context, owner int64, change models.StageChange) error {
+				recipients = append(recipients, owner)
+				changes = append(changes, change)
+				return nil
+			}),
+			Wait: func(_ context.Context, deadline time.Time) error {
+				waits++
+				if waits == 3 {
+					cancel()
+					return ctx.Err()
+				}
+				fixedClock.Set(deadline)
+				return nil
+			},
+		})
+
+		// When
+		err = scheduler.Run(ctx)
+
+		// Then
+		assert.ErrorIs(test, err, context.Canceled)
+		assert.DeepEqual(test, []int64{101}, recipients)
+		assert.DeepEqual(test, []models.StageChange{{PreviousStage: "A", Stage: "B", CheckedAt: parseTime("2026-07-06T06:00:00Z")}}, changes)
 	})
 }
 
@@ -390,6 +484,9 @@ func parseTime(value string) time.Time {
 
 func newScheduler(test *testing.T, config schedule.Config) *schedule.Jobs {
 	test.Helper()
+	if config.Notifier == nil {
+		config.Notifier = notifierFunc(func(context.Context, int64, models.StageChange) error { return nil })
+	}
 	return schedule.New(config)
 }
 
@@ -400,3 +497,9 @@ func (this scheduledPortal) Check(ctx context.Context, _ int64, number, password
 }
 
 func (scheduledPortal) ForgetSession(int64) {}
+
+type notifierFunc func(context.Context, int64, models.StageChange) error
+
+func (this notifierFunc) NotifyStageChanged(ctx context.Context, owner int64, change models.StageChange) error {
+	return this(ctx, owner, change)
+}
