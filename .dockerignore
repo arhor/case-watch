@@ -12,3 +12,7 @@
 **/*_test.go
 
 !internal/database/migrations/*.up.sql
+
+# Keep test helpers out of the build context.
+internal/testing/
+internal/testing/**
