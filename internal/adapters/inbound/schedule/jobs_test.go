@@ -159,7 +159,6 @@ func TestJobsRun(test *testing.T) {
 		assert.Equal(test, "scheduler operation failed", err.Error(), "internal storage details should not leak")
 	})
 
-
 	test.Run("should skip crossed slots and recheck queued authorization when first check is slow", func(test *testing.T) {
 		// Given
 		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
@@ -331,7 +330,7 @@ func TestJobsRun(test *testing.T) {
 		})
 		test.Cleanup(caseService.Shutdown)
 		{
-			_, _, err := caseService.Enroll(ctx, 101, "synthetic-number", "synthetic-password")
+			_, _, err := caseService.StoreCaseToTrack(ctx, 101, "synthetic-number", "synthetic-password")
 			assert.NoError(test, err)
 		}
 		monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
@@ -377,7 +376,9 @@ func (this tracking) Scheduled(ctx context.Context, owner int64) (models.Status,
 	return this.scheduled(ctx, owner)
 }
 
-func (this tracking) ScheduledOwners(context.Context) ([]int64, error) { return this.owners, this.ownersError }
+func (this tracking) ScheduledOwners(context.Context) ([]int64, error) {
+	return this.owners, this.ownersError
+}
 
 func parseTime(value string) time.Time {
 	parsed, err := time.Parse(time.RFC3339, value)

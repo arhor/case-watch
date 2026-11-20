@@ -24,11 +24,11 @@ func TestOpen(test *testing.T) {
 		checked := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 		stage := "B"
 		{
-			err = store.Enrollments().Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked)
+			err = store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", stage, checked)
 			assert.NoError(test, err)
 		}
 		{
-			err := store.History().Append(ctx, id, "A", stage, checked)
+			err := store.TrackedCasesHistory().Append(ctx, id, "A", stage, checked)
 			assert.NoError(test, err)
 		}
 		guard := models.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
@@ -51,8 +51,8 @@ func TestOpen(test *testing.T) {
 		assert.NoError(test, err)
 		defer db.Close()
 		store = repositories.NewStore(db)
-		enrollment, readErr := store.Enrollments().FindByOwner(ctx, 101)
-		history, historyErr := store.History().FindByEnrollment(ctx, 101, id)
+		trackedCase, readErr := store.TrackedCases().FindByOwner(ctx, 101)
+		history, historyErr := store.TrackedCasesHistory().FindByTrackedCase(ctx, 101, id)
 		cooldown, guardErr := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, guard.SubjectType, guard.SubjectID)
 		caseCooldown, caseGuardErr := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, caseGuard.SubjectType, caseGuard.SubjectID)
 		var version int
@@ -70,11 +70,11 @@ func TestOpen(test *testing.T) {
 		assert.Equal(test, 1, version, "reopening lost tracking")
 		assert.True(test, !dirty, "reopening lost tracking")
 		assert.NoError(test, schemaErr, "reopening lost tracking")
-		assert.Equal(test, id, enrollment.ID, "reopening lost tracking")
-		assert.Equal(test, "synthetic-number", enrollment.Number, "reopening lost tracking")
-		assert.Equal(test, "synthetic-password", enrollment.Password, "reopening lost tracking")
-		assert.Equal(test, stage, enrollment.Stage, "reopening lost tracking")
-		assert.True(test, enrollment.CheckedAt.Equal(checked), "reopening lost tracking")
+		assert.Equal(test, id, trackedCase.ID, "reopening lost tracking")
+		assert.Equal(test, "synthetic-number", trackedCase.Number, "reopening lost tracking")
+		assert.Equal(test, "synthetic-password", trackedCase.Password, "reopening lost tracking")
+		assert.Equal(test, stage, trackedCase.Stage, "reopening lost tracking")
+		assert.True(test, trackedCase.CheckedAt.Equal(checked), "reopening lost tracking")
 		assert.Equal(test, 1, len(history), "reopening lost tracking")
 		assert.Equal(test, "B", history[0].Stage, "reopening lost tracking")
 		assert.True(test, cooldown.StartedAt.Equal(checked), "reopening lost tracking")

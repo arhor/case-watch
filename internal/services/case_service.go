@@ -1,4 +1,4 @@
-// Package services implements enrollment, status checks and removal.
+// Package services implements case tracking, status checks and removal.
 // One CaseService is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
 package services
 
@@ -21,49 +21,44 @@ var (
 	ErrRemoving = errors.New("removal in progress")
 	ErrCheck    = errors.New("portal check failed")
 	ErrStorage  = errors.New("case storage operation failed")
-	ErrInvalid  = errors.New("invalid enrollment input")
+	ErrInvalid  = errors.New("invalid tracked case input")
 	ErrNotFound = models.ErrNotFound
 )
 
-const (
-	caseCheckCooldown   = "case_check"
-	manualCheckCooldown = "manual_check"
-)
-
 type CaseServiceConfig struct {
-	Store          models.Store
-	Portal         models.Portal
-	Clock          models.Clock
-	OnFatal        func(error)
+	Store   models.Store
+	Portal  models.Portal
+	Clock   models.Clock
+	OnFatal func(error)
 }
 
 type CaseService struct {
-	mu             sync.Mutex
-	closed         bool
-	owners         map[int64]*ownerState
-	store          models.Store
-	onFatal       func(error)
-	portal         models.Portal
-	clock          models.Clock
+	mu      sync.Mutex
+	closed  bool
+	owners  map[int64]*ownerState
+	store   models.Store
+	onFatal func(error)
+	portal  models.Portal
+	clock   models.Clock
 }
 
 func NewCaseService(config CaseServiceConfig) *CaseService {
 	return &CaseService{
-		owners:         make(map[int64]*ownerState),
-		store:          guard.Require("Store", config.Store),
-		portal:         guard.Require("Portal", config.Portal),
-		clock:          guard.Require("Clock", config.Clock),
-		onFatal:       config.OnFatal,
+		owners:  make(map[int64]*ownerState),
+		store:   guard.Require("Store", config.Store),
+		portal:  guard.Require("Portal", config.Portal),
+		clock:   guard.Require("Clock", config.Clock),
+		onFatal: config.OnFatal,
 	}
 }
 
-// HasEnrollment lets interactive entry points ask a business-level question
-// without reading an enrollment repository directly.
-func (this *CaseService) HasEnrollment(ctx context.Context, owner int64) (bool, error) {
+// HasTrackedCase lets interactive entry points ask a business-level question
+// without reading a tracked case repository directly.
+func (this *CaseService) HasTrackedCase(ctx context.Context, owner int64) (bool, error) {
 	if owner <= 0 {
 		return false, ErrDenied
 	}
-	_, err := this.store.Enrollments().FindByOwner(ctx, owner)
+	_, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if errors.Is(err, models.ErrNotFound) {
 		return false, nil
 	}
@@ -73,10 +68,10 @@ func (this *CaseService) HasEnrollment(ctx context.Context, owner int64) (bool, 
 	return true, nil
 }
 
-// ScheduledOwners returns the enrolled owners available for scheduler
+// ScheduledOwners returns the owners with tracked cases available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
 func (this *CaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
-	items, err := this.store.Enrollments().FindAll(ctx)
+	items, err := this.store.TrackedCases().FindAll(ctx)
 	if err != nil {
 		return nil, this.storageError(ctx, err)
 	}
@@ -89,7 +84,7 @@ func (this *CaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	return owners, nil
 }
 
-func (this *CaseService) Enroll(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
+func (this *CaseService) StoreCaseToTrack(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	if owner <= 0 {
 		return "", time.Time{}, ErrDenied
 	}
@@ -113,7 +108,7 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 		this.mu.Unlock()
 		return "", time.Time{}, ErrBusy
 	}
-	_, err := this.store.Enrollments().FindByOwner(ctx, owner)
+	_, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if err == nil {
 		this.mu.Unlock()
 		return "", time.Time{}, models.ErrExists
@@ -123,7 +118,7 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
 	work, cancel := context.WithCancel(ctx)
-	f := &check{cancel: cancel, done: make(chan struct{}), enrollment: true}
+	f := &check{cancel: cancel, done: make(chan struct{}), creatingCase: true}
 	s.check = f
 	this.mu.Unlock()
 	defer func() { cancel(); this.mu.Lock(); s.check = nil; close(f.done); this.mu.Unlock() }()
@@ -133,7 +128,7 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 			this.portal.ForgetSession(owner)
 		}
 	}()
-	id, err := models.NewEnrollmentID()
+	id, err := models.NewTrackedCaseID()
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
@@ -149,7 +144,7 @@ func (this *CaseService) Enroll(ctx context.Context, owner int64, number, passwo
 	if work.Err() != nil {
 		return "", time.Time{}, work.Err()
 	}
-	if err = this.saveEnrollment(work, owner, id, number, password, stage, checkedAt); err != nil {
+	if err = this.saveTrackedCase(work, owner, id, number, password, stage, checkedAt); err != nil {
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
 	committed = true
@@ -169,7 +164,7 @@ func (this *CaseService) Scheduled(ctx context.Context, owner int64) (models.Sta
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
-// then prevents deletion. Failed removal retains the enrollment and reopens work.
+// then prevents deletion. Failed removal retains the tracked case and reopens work.
 func (this *CaseService) Remove(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
@@ -209,14 +204,14 @@ func (this *CaseService) Remove(ctx context.Context, owner int64) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	e, err := this.store.Enrollments().FindByOwner(ctx, owner)
+	trackedCase, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if err != nil {
 		return this.storageError(ctx, err)
 	}
-	if e.OwnerID != owner {
+	if trackedCase.OwnerID != owner {
 		return ErrDenied
 	}
-	err = this.storageError(ctx, this.deleteEnrollment(ctx, owner, e.ID))
+	err = this.storageError(ctx, this.deleteTrackedCase(ctx, owner, trackedCase.ID))
 	if err == nil {
 		this.portal.ForgetSession(owner)
 	}
@@ -246,13 +241,19 @@ func (this *CaseService) Shutdown() {
 }
 
 // -- Internals ----------------------------------------------------------------
+
+const (
+	caseCheckCooldown   = "case_check"
+	manualCheckCooldown = "manual_check"
+)
+
 type check struct {
-	cancel     context.CancelFunc
-	done       chan struct{}
-	status     models.Status
-	err        error
-	waiters    int
-	enrollment bool
+	cancel       context.CancelFunc
+	done         chan struct{}
+	status       models.Status
+	err          error
+	waiters      int
+	creatingCase bool
 }
 
 type ownerState struct {
@@ -334,7 +335,7 @@ func (this *CaseService) check(ctx context.Context, owner int64, manual bool) (m
 		return models.Status{}, ErrRemoving
 	}
 	if check := state.check; check != nil {
-		if check.enrollment {
+		if check.creatingCase {
 			this.mu.Unlock()
 			return models.Status{}, ErrBusy
 		}
@@ -342,24 +343,24 @@ func (this *CaseService) check(ctx context.Context, owner int64, manual bool) (m
 		this.mu.Unlock()
 		return this.wait(ctx, check, !manual)
 	}
-	enrollment, err := this.store.Enrollments().FindByOwner(ctx, owner)
+	trackedCase, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if err != nil {
 		this.mu.Unlock()
 		return models.Status{}, this.storageError(ctx, err)
 	}
-	if enrollment.OwnerID != owner {
+	if trackedCase.OwnerID != owner {
 		this.mu.Unlock()
 		return models.Status{}, ErrDenied
 	}
 	now := this.clock.Now()
-	status := cached(enrollment.Stage, enrollment.CheckedAt)
-	if now.Before(enrollment.CheckedAt.Add(time.Minute)) {
-		status.NextEligibleAt, err = this.checkEligibility(ctx, owner, enrollment.ID, manual)
-		status.NextEligibleAt = later(status.NextEligibleAt, enrollment.CheckedAt.Add(time.Minute))
+	status := cached(trackedCase.Stage, trackedCase.CheckedAt)
+	if now.Before(trackedCase.CheckedAt.Add(time.Minute)) {
+		status.NextEligibleAt, err = this.checkEligibility(ctx, owner, trackedCase.ID, manual)
+		status.NextEligibleAt = later(status.NextEligibleAt, trackedCase.CheckedAt.Add(time.Minute))
 		this.mu.Unlock()
 		return status, this.storageError(ctx, err)
 	}
-	reservation, err := this.reserveCheck(ctx, owner, enrollment.ID, manual, now)
+	reservation, err := this.reserveCheck(ctx, owner, trackedCase.ID, manual, now)
 	if err != nil {
 		this.mu.Unlock()
 		return status, this.storageError(ctx, err)
@@ -373,7 +374,7 @@ func (this *CaseService) check(ctx context.Context, owner int64, manual bool) (m
 	check := &check{cancel: cancel, done: make(chan struct{}), waiters: 1, status: status}
 	state.check = check
 	this.mu.Unlock()
-	go this.refresh(work, owner, state, check, enrollment)
+	go this.refresh(work, owner, state, check, trackedCase)
 	return this.wait(ctx, check, !manual)
 }
 
@@ -422,9 +423,9 @@ func (this *CaseService) refresh(
 	owner int64,
 	state *ownerState,
 	check *check,
-	enrollment models.Enrollment,
+	trackedCase models.TrackedCase,
 ) {
-	stage, checkedAt, err := this.baseline(ctx, owner, enrollment.Number, enrollment.Password)
+	stage, checkedAt, err := this.baseline(ctx, owner, trackedCase.Number, trackedCase.Password)
 	this.mu.Lock()
 
 	defer this.mu.Unlock()
@@ -435,7 +436,7 @@ func (this *CaseService) refresh(
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		err = this.storageError(ctx, this.saveObservation(ctx, owner, enrollment.ID, stage, checkedAt))
+		err = this.storageError(ctx, this.saveObservation(ctx, owner, trackedCase.ID, stage, checkedAt))
 
 		if err == nil {
 			next := check.status.NextEligibleAt
@@ -451,7 +452,7 @@ func (this *CaseService) refresh(
 	close(check.done)
 }
 
-func (this *CaseService) saveEnrollment(
+func (this *CaseService) saveTrackedCase(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -460,7 +461,7 @@ func (this *CaseService) saveEnrollment(
 	checkedAt time.Time,
 ) error {
 	return this.store.RunInTx(ctx, func(store models.Store) error {
-		return store.Enrollments().Create(ctx, owner, id, number, password, stage, checkedAt)
+		return store.TrackedCases().Create(ctx, owner, id, number, password, stage, checkedAt)
 	})
 }
 
@@ -472,30 +473,30 @@ func (this *CaseService) saveObservation(
 	checkedAt time.Time,
 ) error {
 	return this.store.RunInTx(ctx, func(store models.Store) error {
-		e, err := store.Enrollments().FindByIdentity(ctx, owner, id)
+		trackedCase, err := store.TrackedCases().FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
 		}
-		if err = store.Enrollments().UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
+		if err = store.TrackedCases().UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
 			return err
 		}
-		if e.Stage == stage {
+		if trackedCase.Stage == stage {
 			return nil
 		}
-		return store.History().Append(ctx, id, e.Stage, stage, checkedAt)
+		return store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, stage, checkedAt)
 	})
 }
 
-func (this *CaseService) deleteEnrollment(
+func (this *CaseService) deleteTrackedCase(
 	ctx context.Context,
 	owner int64,
 	id string,
 ) error {
 	return this.store.RunInTx(ctx, func(store models.Store) error {
-		if err := store.Enrollments().SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
+		if err := store.TrackedCases().SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
-		if err := store.History().DeleteByEnrollmentID(ctx, id); err != nil {
+		if err := store.TrackedCasesHistory().DeleteByTrackedCaseID(ctx, id); err != nil {
 			return err
 		}
 		return store.Cooldowns().DeleteBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
@@ -572,7 +573,7 @@ func eligibility(
 	id string,
 	manual bool,
 ) (time.Time, error) {
-	if _, err := store.Enrollments().FindByIdentity(ctx, owner, id); err != nil {
+	if _, err := store.TrackedCases().FindByIdentity(ctx, owner, id); err != nil {
 		return time.Time{}, err
 	}
 	c, err := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)

@@ -42,7 +42,7 @@ func TestBotHandle(test *testing.T) {
 		assert.True(test, !strings.Contains(help, "шифрованием"), "help should not claim encryption")
 	})
 
-	test.Run("should reject obsolete enrollment command when requested", func(test *testing.T) {
+	test.Run("should reject obsolete command when requested", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 
@@ -53,7 +53,7 @@ func TestBotHandle(test *testing.T) {
 		assert.Equal(test, "Неизвестная команда. Список доступных команд: /help.", environment.replies[len(environment.replies)-1])
 	})
 
-	test.Run("should request case number when enrollment starts", func(test *testing.T) {
+	test.Run("should request case number when case tracking starts", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 
@@ -63,10 +63,10 @@ func TestBotHandle(test *testing.T) {
 
 		// Then
 		assert.True(test, strings.Contains(started, "отправьте номер дела"))
-		assert.True(test, !strings.Contains(started, "шифрованием"), "enrollment prompt should not claim encryption")
+		assert.True(test, !strings.Contains(started, "шифрованием"), "tracked case prompt should not claim encryption")
 	})
 
-	test.Run("should enroll baseline without exposing credentials when inputs are separate", func(test *testing.T) {
+	test.Run("should save case baseline without exposing credentials when inputs are separate", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 
@@ -77,15 +77,15 @@ func TestBotHandle(test *testing.T) {
 		environment.message(303, "/status")
 
 		// Then
-		enrollment, err := environment.store.Enrollments().FindByOwner(context.Background(), 303)
+		trackedCase, err := environment.store.TrackedCases().FindByOwner(context.Background(), 303)
 		assert.NoError(test, err)
-		history, historyError := environment.store.History().FindByEnrollment(context.Background(), 303, enrollment.ID)
+		history, historyError := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 303, trackedCase.ID)
 		assert.NoError(test, historyError)
-		assert.Equal(test, 0, len(history), "enrollment baseline should not create a transition")
+		assert.Equal(test, 0, len(history), "tracked case baseline should not create a transition")
 		assert.Equal(test, 1, environment.calls, "recent baseline should satisfy status without another portal check")
 		assert.Equal(test, 2, environment.deletes, "submitted credentials should be deleted")
-		assert.Equal(test, "synthetic-number", enrollment.Number)
-		assert.Equal(test, "synthetic-password", enrollment.Password)
+		assert.Equal(test, "synthetic-number", trackedCase.Number)
+		assert.Equal(test, "synthetic-password", trackedCase.Password)
 		combined := strings.Join(environment.replies, "\n")
 		assert.True(test, !strings.Contains(combined, "synthetic-password"), "output should not expose the password")
 		assert.True(test, !strings.Contains(combined, "synthetic-number"), "output should not expose the case number")
@@ -103,13 +103,13 @@ func TestBotHandle(test *testing.T) {
 		// When
 		environment.message(202, "/remove")
 		environment.message(202, "Да")
-		_, otherOwnerError := environment.store.Enrollments().FindByOwner(context.Background(), 303)
+		_, otherOwnerError := environment.store.TrackedCases().FindByOwner(context.Background(), 303)
 		environment.message(303, "/remove")
 		environment.message(303, "Да")
-		_, ownerError := environment.store.Enrollments().FindByOwner(context.Background(), 303)
+		_, ownerError := environment.store.TrackedCases().FindByOwner(context.Background(), 303)
 
 		// Then
-		assert.NoError(test, otherOwnerError, "another owner should not remove the enrollment")
+		assert.NoError(test, otherOwnerError, "another owner should not remove the tracked case")
 		assert.ErrorIs(test, ownerError, repositories.ErrNotFound)
 		assert.Equal(test, 1, environment.calls)
 		assert.Equal(test, 2, environment.deletes)
@@ -141,7 +141,7 @@ func TestBotHandle(test *testing.T) {
 			environment.message(101, scenario.answer)
 
 			// Then
-			_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+			_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 			assert.Equal(test, scenario.removed, errors.Is(err, repositories.ErrNotFound))
 			{
 				actual := environment.replies[len(environment.replies)-1]
@@ -155,7 +155,7 @@ func TestBotHandle(test *testing.T) {
 		})
 	}
 
-	test.Run("should keep enrollment when confirmation follows declined removal", func(test *testing.T) {
+	test.Run("should keep tracked case when confirmation follows declined removal", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		environment.message(101, "/start")
@@ -168,11 +168,11 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "Да")
 
 		// Then
-		_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		assert.NoError(test, err, "declined removal should clear the pending confirmation")
 	})
 
-	test.Run("should remove enrollment when valid confirmation follows invalid input", func(test *testing.T) {
+	test.Run("should remove tracked case when valid confirmation follows invalid input", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		environment.message(101, "/start")
@@ -185,11 +185,11 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "Да")
 
 		// Then
-		_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		assert.ErrorIs(test, err, repositories.ErrNotFound, "invalid input should retain the pending confirmation")
 	})
 
-	test.Run("should expire enrollment draft when deadline is reached", func(test *testing.T) {
+	test.Run("should expire tracked case draft when deadline is reached", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		environment.message(101, "/start")
@@ -203,13 +203,13 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "synthetic-password")
 
 		// Then
-		_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		assert.ErrorIs(test, err, repositories.ErrNotFound)
 		assert.Equal(test, 0, environment.calls, "expired draft should not trigger a portal check")
 		assert.Equal(test, 3, environment.deletes, "parameterized command and draft inputs should be deleted")
 	})
 
-	test.Run("should retain enrollment when removal confirmation expires", func(test *testing.T) {
+	test.Run("should retain tracked case when removal confirmation expires", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		environment.message(101, "/start")
@@ -222,13 +222,13 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "Да")
 
 		// Then
-		_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		assert.NoError(test, err)
 		assert.Equal(test, 1, environment.calls)
 		assert.Equal(test, 2, environment.deletes, "submitted credentials should be deleted")
 	})
 
-	test.Run("should retain enrollment when confirmation follows canceled removal", func(test *testing.T) {
+	test.Run("should retain tracked case when confirmation follows canceled removal", func(test *testing.T) {
 		// Given
 		environment := setup(test)
 		environment.message(101, "/start")
@@ -241,7 +241,7 @@ func TestBotHandle(test *testing.T) {
 		environment.message(101, "Да")
 
 		// Then
-		_, err := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, err := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		assert.NoError(test, err)
 		assert.Equal(test, 1, environment.calls)
 		assert.Equal(test, 2, environment.deletes)
@@ -544,9 +544,9 @@ func TestBotReply(test *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	for _, scenario := range []struct {
-		name         string
-		context      context.Context
-		owner        int64
+		name    string
+		context context.Context
+		owner   int64
 	}{
 		{name: "should skip send when context is canceled", context: ctx, owner: 101},
 		{name: "should skip send when owner is zero", context: context.Background(), owner: 0},

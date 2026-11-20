@@ -10,24 +10,24 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 )
 
-var _ models.EnrollmentRepository = (*EnrollmentRepository)(nil)
+var _ models.TrackedCaseRepository = (*TrackedCaseRepository)(nil)
 
-type EnrollmentRepository struct {
+type TrackedCaseRepository struct {
 	executor QueryExecutor
 }
 
-func NewEnrollmentRepository(executor QueryExecutor) *EnrollmentRepository {
-	return &EnrollmentRepository{executor: executor}
+func NewTrackedCaseRepository(executor QueryExecutor) *TrackedCaseRepository {
+	return &TrackedCaseRepository{executor: executor}
 }
 
-func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) (models.Enrollment, error) {
+func (this *TrackedCaseRepository) FindByOwner(ctx context.Context, owner int64) (models.TrackedCase, error) {
 	if owner <= 0 {
-		return models.Enrollment{}, ErrInvalid
+		return models.TrackedCase{}, ErrInvalid
 	}
-	return scanEnrollment(
+	return scanTrackedCase(
 		this.executor.QueryRowContext(ctx, `
-			SELECT id, owner_id, case_number, password, stage, checked_at
-			  FROM enrollments
+			SELECT id, owner_id, case_number, password, curr_state, checked_at
+			  FROM tracked_cases
 			 WHERE deleted_at IS NULL
 			   AND owner_id = ?
 			`, owner,
@@ -35,24 +35,24 @@ func (this *EnrollmentRepository) FindByOwner(ctx context.Context, owner int64) 
 	)
 }
 
-func (this *EnrollmentRepository) FindByIdentity(ctx context.Context, owner int64, id string) (models.Enrollment, error) {
+func (this *TrackedCaseRepository) FindByIdentity(ctx context.Context, owner int64, id string) (models.TrackedCase, error) {
 	if !validID(id) {
-		return models.Enrollment{}, ErrInvalid
+		return models.TrackedCase{}, ErrInvalid
 	}
-	e, err := this.FindByOwner(ctx, owner)
+	trackedCase, err := this.FindByOwner(ctx, owner)
 	if err != nil {
-		return models.Enrollment{}, err
+		return models.TrackedCase{}, err
 	}
-	if e.ID != id {
-		return models.Enrollment{}, ErrNotFound
+	if trackedCase.ID != id {
+		return models.TrackedCase{}, ErrNotFound
 	}
-	return e, nil
+	return trackedCase, nil
 }
 
-func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]models.Enrollment, error) {
+func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]models.TrackedCase, error) {
 	rows, err := this.executor.QueryContext(ctx, `
-		SELECT id, owner_id, case_number, password, stage, checked_at
-		FROM enrollments
+		SELECT id, owner_id, case_number, password, curr_state, checked_at
+		FROM tracked_cases
 		WHERE deleted_at IS NULL
 		ORDER BY owner_id
 	`)
@@ -60,13 +60,13 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]models.Enrollm
 		return nil, ErrStorage
 	}
 	defer rows.Close()
-	result := []models.Enrollment{}
+	result := []models.TrackedCase{}
 	for rows.Next() {
-		e, err := scanEnrollment(rows)
+		trackedCase, err := scanTrackedCase(rows)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, e)
+		result = append(result, trackedCase)
 	}
 	if rows.Err() != nil {
 		return nil, ErrStorage
@@ -74,7 +74,7 @@ func (this *EnrollmentRepository) FindAll(ctx context.Context) ([]models.Enrollm
 	return result, nil
 }
 
-func (this *EnrollmentRepository) Create(
+func (this *TrackedCaseRepository) Create(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -90,12 +90,12 @@ func (this *EnrollmentRepository) Create(
 	if this.executor.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			  FROM enrollments
+			  FROM tracked_cases
 			 WHERE owner_id = ?
 			   AND deleted_at IS NULL
 			UNION ALL
 			SELECT 1
-			  FROM enrollments
+			  FROM tracked_cases
 			 WHERE id = ?
 		)
 	`, owner, id).Scan(&exists) != nil {
@@ -105,8 +105,8 @@ func (this *EnrollmentRepository) Create(
 		return ErrExists
 	}
 	_, err := this.executor.ExecContext(ctx, `
-		INSERT INTO enrollments (
-			id, owner_id, case_number, password, stage, checked_at
+		INSERT INTO tracked_cases (
+			id, owner_id, case_number, password, curr_state, checked_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, id, owner, number, password, stage, stamp(checkedAt))
@@ -116,7 +116,7 @@ func (this *EnrollmentRepository) Create(
 	return nil
 }
 
-func (this *EnrollmentRepository) UpdateObservation(
+func (this *TrackedCaseRepository) UpdateObservation(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -128,8 +128,8 @@ func (this *EnrollmentRepository) UpdateObservation(
 	}
 	return rowAffected(
 		this.executor.ExecContext(ctx, `
-			UPDATE enrollments
-			   SET stage = ?
+			UPDATE tracked_cases
+			   SET curr_state = ?
 			     , checked_at = ?
 			 WHERE owner_id = ?
 			   AND id = ?
@@ -139,17 +139,17 @@ func (this *EnrollmentRepository) UpdateObservation(
 	)
 }
 
-func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, id string, now time.Time) error {
+func (this *TrackedCaseRepository) SoftDelete(ctx context.Context, owner int64, id string, now time.Time) error {
 	if owner <= 0 || !validID(id) || now.IsZero() {
 		return ErrInvalid
 	}
 	return rowAffected(
 		this.executor.ExecContext(ctx, `
-			UPDATE enrollments
+			UPDATE tracked_cases
 			   SET deleted_at = ?
 			     , case_number = NULL
 				 , password = NULL
-				 , stage = NULL
+				 , curr_state = NULL
 				 , checked_at = NULL
 			 WHERE owner_id = ?
 			   AND id = ?
@@ -161,25 +161,25 @@ func (this *EnrollmentRepository) SoftDelete(ctx context.Context, owner int64, i
 
 // -- Internals ----------------------------------------------------------------
 
-func scanEnrollment(
+func scanTrackedCase(
 	row interface {
 		Scan(...any) error
 	},
-) (models.Enrollment, error) {
-	var e models.Enrollment
+) (models.TrackedCase, error) {
+	var trackedCase models.TrackedCase
 	var checked string
-	err := row.Scan(&e.ID, &e.OwnerID, &e.Number, &e.Password, &e.Stage, &checked)
+	err := row.Scan(&trackedCase.ID, &trackedCase.OwnerID, &trackedCase.Number, &trackedCase.Password, &trackedCase.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
-		return e, ErrNotFound
+		return trackedCase, ErrNotFound
 	}
 	if err != nil {
-		return models.Enrollment{}, ErrStorage
+		return models.TrackedCase{}, ErrStorage
 	}
-	e.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
+	trackedCase.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
-		return models.Enrollment{}, ErrStorage
+		return models.TrackedCase{}, ErrStorage
 	}
-	return e, nil
+	return trackedCase, nil
 }
 
 func rowAffected(result sql.Result, err error) error {

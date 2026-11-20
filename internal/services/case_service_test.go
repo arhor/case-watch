@@ -74,15 +74,15 @@ func TestCaseServiceStatus(test *testing.T) {
 		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
 			return "A", epoch.Add(-time.Hour), nil
 		})
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 		environment.clock.Set(epoch.Add(59 * time.Second))
 
 		// When
 		recent, firstError := environment.service.Status(context.Background(), 101)
 		environment.clock.Set(epoch.Add(time.Minute))
 		at, secondError := environment.service.Status(context.Background(), 101)
-		enrollment, _ := environment.store.Enrollments().FindByOwner(context.Background(), 101)
-		deadline, thirdError := environment.service.checkEligibility(context.Background(), 101, enrollment.ID, true)
+		trackedCase, _ := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
+		deadline, thirdError := environment.service.checkEligibility(context.Background(), 101, trackedCase.ID, true)
 
 		// Then
 		assert.NoError(test, firstError, "only completed checks should refresh cached status")
@@ -106,7 +106,7 @@ func TestCaseServiceStatus(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 		fail.Store(true)
 		environment.clock.Set(epoch.Add(time.Minute))
 
@@ -152,7 +152,7 @@ func TestCaseServiceStatus(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 		block.Store(true)
 		environment.clock.Set(epoch.Add(time.Minute))
 		firstBase, cancel := context.WithCancel(context.Background())
@@ -192,7 +192,7 @@ func TestCaseServiceStatus(test *testing.T) {
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 
 		// When
 		_, err := environment.service.Status(context.Background(), 0)
@@ -202,16 +202,16 @@ func TestCaseServiceStatus(test *testing.T) {
 		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
 	})
 
-	test.Run("should return not found when owner has no enrollment", func(test *testing.T) {
+	test.Run("should return not found when owner has no tracked case", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 
 		// When
 		_, err := environment.service.Status(context.Background(), 202)
 
 		// Then
-		assert.ErrorIs(test, err, repositories.ErrNotFound, "owners should only access their own enrollment")
+		assert.ErrorIs(test, err, repositories.ErrNotFound, "owners should only access their own tracked case")
 		assert.Equal(test, 1, environment.calls.Load())
 	})
 
@@ -228,7 +228,7 @@ func TestCaseServiceStatus(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -250,9 +250,9 @@ func TestCaseServiceStatus(test *testing.T) {
 	test.Run("should preserve old cache when observation commit fails", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		var calls atomic.Int32
-		rejectInsert(test, environment.path, "history")
+		rejectInsert(test, environment.path, "tracked_cases_history")
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 			calls.Add(1)
 			return "B", time.Time{}, nil
@@ -261,15 +261,15 @@ func TestCaseServiceStatus(test *testing.T) {
 
 		// When
 		status, err := service.Status(context.Background(), 101)
-		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
-		history, historyErr := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
+		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
 		assert.ErrorIs(test, err, ErrStorage, "failed refresh")
 		assert.NoError(test, readErr, "failed refresh")
 		assert.NoError(test, historyErr, "failed refresh")
-		assert.Equal(test, "A", enrollment.Stage, "failed refresh")
-		assert.True(test, enrollment.CheckedAt.Equal(epoch), "failed refresh")
+		assert.Equal(test, "A", trackedCase.Stage, "failed refresh")
+		assert.True(test, trackedCase.CheckedAt.Equal(epoch), "failed refresh")
 		assert.Equal(test, 0, len(history), "failed refresh")
 		assert.True(test, !status.Fresh, "failed refresh")
 		assert.Equal(test, 1, calls.Load(), "failed refresh")
@@ -283,7 +283,7 @@ func TestCaseServiceStatus(test *testing.T) {
 		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
 			return stage.Load().(string), time.Time{}, nil
 		})
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 
 		// When
 		environment.clock.Set(epoch.Add(time.Minute))
@@ -292,7 +292,7 @@ func TestCaseServiceStatus(test *testing.T) {
 		environment.clock.Set(epoch.Add(2 * time.Minute))
 		stage.Store("A")
 		scheduled, secondError := environment.service.Scheduled(context.Background(), 101)
-		history, thirdError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+		history, thirdError := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
 		assert.NoError(test, firstError, "shared observation transaction")
@@ -310,7 +310,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 	test.Run("should skip guarded case and preserve manual budget when run at slot", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
@@ -320,7 +320,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 		cached, thirdError := environment.service.Status(context.Background(), 101)
 		environment.clock.Set(epoch.Add(2 * time.Minute))
 		manual, fourthError := environment.service.Status(context.Background(), 101)
-		history, historyError := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+		history, historyError := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
 		assert.NoError(test, firstError, "scheduled checks should preserve the shared guard and manual budget")
@@ -345,7 +345,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 		fail.Store(true)
 		environment.clock.Set(epoch.Add(time.Minute))
 
@@ -367,7 +367,7 @@ func TestCaseServiceScheduled(test *testing.T) {
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 
 		// When
 		_, err := environment.service.Scheduled(context.Background(), 0)
@@ -377,10 +377,10 @@ func TestCaseServiceScheduled(test *testing.T) {
 		assert.Equal(test, 1, environment.calls.Load(), "invalid owner should not trigger portal work")
 	})
 
-	test.Run("should reuse recent enrollment baseline without reservation when run after restart", func(test *testing.T) {
+	test.Run("should reuse recent tracked case baseline without reservation when run after restart", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		environment.reopen(test)
 		var portalCalls atomic.Int32
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
@@ -395,18 +395,18 @@ func TestCaseServiceScheduled(test *testing.T) {
 
 		// Then
 		assert.Equal(test, int32(0), portalCalls.Load(), "recent baseline should not trigger portal work")
-		assert.NoError(test, statusErr, "recent enrollment baseline should be reused without reserving a check")
-		assert.NoError(test, guardErr, "recent enrollment baseline should be reused without reserving a check")
-		assert.True(test, !status.Fresh, "recent enrollment baseline should be reused without reserving a check")
-		assert.True(test, next.IsZero(), "recent enrollment baseline should be reused without reserving a check")
-		assert.True(test, status.NextEligibleAt.Equal(epoch.Add(time.Minute)), "recent enrollment baseline should be reused without reserving a check")
+		assert.NoError(test, statusErr, "recent tracked case baseline should be reused without reserving a check")
+		assert.NoError(test, guardErr, "recent tracked case baseline should be reused without reserving a check")
+		assert.True(test, !status.Fresh, "recent tracked case baseline should be reused without reserving a check")
+		assert.True(test, next.IsZero(), "recent tracked case baseline should be reused without reserving a check")
+		assert.True(test, status.NextEligibleAt.Equal(epoch.Add(time.Minute)), "recent tracked case baseline should be reused without reserving a check")
 		verifyObservation(test, status, "A", epoch)
 	})
 
-	test.Run("should refresh any enrolled owner when no access policy is configured", func(test *testing.T) {
+	test.Run("should refresh any owner with a tracked case when no access policy is configured", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 303)
+		environment.trackCase(test, 303)
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
@@ -425,14 +425,14 @@ func TestCaseServiceScheduled(test *testing.T) {
 	})
 }
 
-func TestCaseServiceEnroll(test *testing.T) {
+func TestCaseServiceStoreCaseToTrack(test *testing.T) {
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 
 		// When
-		_, _, err := environment.service.Enroll(context.Background(), 0, number, password)
+		_, _, err := environment.service.StoreCaseToTrack(context.Background(), 0, number, password)
 
 		// Then
 		assert.ErrorIs(test, err, ErrDenied)
@@ -442,19 +442,19 @@ func TestCaseServiceEnroll(test *testing.T) {
 	test.Run("should refuse replacement without portal check when owner already exists", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 
 		// When
-		_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
-		enrollment, read := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, err := environment.service.StoreCaseToTrack(context.Background(), 101, number, password)
+		trackedCase, read := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.ErrorIs(test, err, repositories.ErrExists, "duplicate enrollment should preserve the original case without portal work")
-		assert.NoError(test, read, "duplicate enrollment should preserve the original case without portal work")
-		assert.Equal(test, id, enrollment.ID, "duplicate enrollment should preserve the original case without portal work")
-		assert.Equal(test, 1, environment.calls.Load(), "duplicate enrollment should preserve the original case without portal work")
-		assert.Equal(test, number, enrollment.Number, "enrollment credentials missing")
-		assert.Equal(test, password, enrollment.Password, "enrollment credentials missing")
+		assert.ErrorIs(test, err, repositories.ErrExists, "duplicate tracked case should preserve the original case without portal work")
+		assert.NoError(test, read, "duplicate tracked case should preserve the original case without portal work")
+		assert.Equal(test, id, trackedCase.ID, "duplicate tracked case should preserve the original case without portal work")
+		assert.Equal(test, 1, environment.calls.Load(), "duplicate tracked case should preserve the original case without portal work")
+		assert.Equal(test, number, trackedCase.Number, "tracked case credentials missing")
+		assert.Equal(test, password, trackedCase.Password, "tracked case credentials missing")
 	})
 
 	test.Run("should leave no committed case when portal check fails", func(test *testing.T) {
@@ -467,31 +467,31 @@ func TestCaseServiceEnroll(test *testing.T) {
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
 
 		// When
-		_, _, err := service.Enroll(ctx, 101, number, password)
-		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, err := service.StoreCaseToTrack(ctx, 101, number, password)
+		_, readError := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.True(test, err != nil, "failed enrollment should return an error")
-		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
-		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+		assert.True(test, err != nil, "failed case tracking setup should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "tracked case error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed case tracking setup should not persist data")
 	})
 
 	test.Run("should leave no committed case when store insert fails", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		ctx := context.Background()
-		rejectInsert(test, environment.path, "enrollments")
+		rejectInsert(test, environment.path, "tracked_cases")
 		portal := portalFunc(func(context.Context, string, string) (string, time.Time, error) { return "A", time.Time{}, nil })
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
 
 		// When
-		_, _, err := service.Enroll(ctx, 101, number, password)
-		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, err := service.StoreCaseToTrack(ctx, 101, number, password)
+		_, readError := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.True(test, err != nil, "failed enrollment should return an error")
-		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
-		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+		assert.True(test, err != nil, "failed case tracking setup should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "tracked case error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed case tracking setup should not persist data")
 	})
 
 	test.Run("should leave no committed case when caller is canceled", func(test *testing.T) {
@@ -505,13 +505,13 @@ func TestCaseServiceEnroll(test *testing.T) {
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
 
 		// When
-		_, _, err := service.Enroll(ctx, 101, number, password)
-		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, err := service.StoreCaseToTrack(ctx, 101, number, password)
+		_, readError := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.True(test, err != nil, "failed enrollment should return an error")
-		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
-		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+		assert.True(test, err != nil, "failed case tracking setup should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "tracked case error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed case tracking setup should not persist data")
 	})
 
 	test.Run("should leave no committed case when password is empty", func(test *testing.T) {
@@ -522,13 +522,13 @@ func TestCaseServiceEnroll(test *testing.T) {
 		service := NewCaseService(CaseServiceConfig{Store: environment.store, Portal: portal, Clock: environment.clock})
 
 		// When
-		_, _, err := service.Enroll(ctx, 101, number, "")
-		_, readError := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, err := service.StoreCaseToTrack(ctx, 101, number, "")
+		_, readError := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.True(test, err != nil, "failed enrollment should return an error")
-		assert.True(test, !strings.Contains(err.Error(), "private"), "enrollment error should not expose remote details")
-		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed enrollment should not persist data")
+		assert.True(test, err != nil, "failed case tracking setup should return an error")
+		assert.True(test, !strings.Contains(err.Error(), "private"), "tracked case error should not expose remote details")
+		assert.ErrorIs(test, readError, repositories.ErrNotFound, "failed case tracking setup should not persist data")
 	})
 }
 
@@ -536,7 +536,7 @@ func TestCaseServiceRemove(test *testing.T) {
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		environment.enroll(test, 101)
+		environment.trackCase(test, 101)
 
 		// When
 		err := environment.service.Remove(context.Background(), 0)
@@ -560,7 +560,7 @@ func TestCaseServiceRemove(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		block.Store(true)
 		environment.clock.Set(epoch.Add(time.Minute))
 		checked := make(chan answer, 1)
@@ -575,8 +575,8 @@ func TestCaseServiceRemove(test *testing.T) {
 		go func() { removed <- environment.service.Remove(context.Background(), 101) }()
 		<-canceled
 		_, busyStatus := environment.service.Status(context.Background(), 101)
-		_, _, busyEnroll := environment.service.Enroll(context.Background(), 101, number, password)
-		before, beforeErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, _, busyStoreCaseToTrack := environment.service.StoreCaseToTrack(context.Background(), 101, number, password)
+		before, beforeErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		select {
 		case err := <-removed:
 			assert.True(test, false, "removal should wait for in-flight work to drain, got %v", err)
@@ -585,16 +585,16 @@ func TestCaseServiceRemove(test *testing.T) {
 		close(release)
 		late := <-checked
 		removeErr := <-removed
-		_, missing := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		_, missing := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		block.Store(false)
-		newID := environment.enroll(test, 101)
+		newID := environment.trackCase(test, 101)
 		lateObservation := environment.service.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
 		environment.clock.Set(epoch.Add(119 * time.Second))
 		cached, statusErr := environment.service.Status(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, busyStatus, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
-		assert.ErrorIs(test, busyEnroll, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
+		assert.ErrorIs(test, busyStoreCaseToTrack, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
 		assert.NoError(test, beforeErr, "removal should drain work, delete data, and retain the manual guard")
 		assert.Equal(test, id, before.ID, "removal should drain work, delete data, and retain the manual guard")
 		assert.ErrorIs(test, late.err, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
@@ -608,7 +608,7 @@ func TestCaseServiceRemove(test *testing.T) {
 		verifyObservation(test, cached, "A", epoch.Add(time.Minute))
 	})
 
-	test.Run("should prevent baseline commit when enrollment is canceled during check", func(test *testing.T) {
+	test.Run("should prevent baseline commit when case tracking setup is canceled during check", func(test *testing.T) {
 		// Given
 		entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 		environment := setup(test, func(ctx context.Context, _ string, _ string) (string, time.Time, error) {
@@ -618,10 +618,10 @@ func TestCaseServiceRemove(test *testing.T) {
 			<-release
 			return "late", time.Time{}, nil
 		})
-		enrolled := make(chan error, 1)
+		trackingStarted := make(chan error, 1)
 		go func() {
-			_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
-			enrolled <- err
+			_, _, err := environment.service.StoreCaseToTrack(context.Background(), 101, number, password)
+			trackingStarted <- err
 		}()
 		<-entered
 		removed := make(chan error, 1)
@@ -629,19 +629,19 @@ func TestCaseServiceRemove(test *testing.T) {
 		// When
 		go func() { removed <- environment.service.Remove(context.Background(), 101) }()
 		<-canceled
-		_, _, busy := environment.service.Enroll(context.Background(), 101, number, password)
+		_, _, busy := environment.service.StoreCaseToTrack(context.Background(), 101, number, password)
 		close(release)
-		enrollErr, removeErr := <-enrolled, <-removed
-		_, missing := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		trackCaseError, removeErr := <-trackingStarted, <-removed
+		_, missing := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 
 		// Then
-		assert.ErrorIs(test, busy, ErrRemoving, "enrollment cancellation")
-		assert.ErrorIs(test, enrollErr, context.Canceled, "enrollment cancellation")
-		assert.ErrorIs(test, removeErr, repositories.ErrNotFound, "enrollment cancellation")
-		assert.ErrorIs(test, missing, repositories.ErrNotFound, "enrollment cancellation")
+		assert.ErrorIs(test, busy, ErrRemoving, "case tracking setup cancellation")
+		assert.ErrorIs(test, trackCaseError, context.Canceled, "case tracking setup cancellation")
+		assert.ErrorIs(test, removeErr, repositories.ErrNotFound, "case tracking setup cancellation")
+		assert.ErrorIs(test, missing, repositories.ErrNotFound, "case tracking setup cancellation")
 	})
 
-	test.Run("should retain enrollment and reopen work when caller cancels during drain", func(test *testing.T) {
+	test.Run("should retain tracked case and reopen work when caller cancels during drain", func(test *testing.T) {
 		// Given
 		entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 		var block atomic.Bool
@@ -655,7 +655,7 @@ func TestCaseServiceRemove(test *testing.T) {
 			}
 			return "A", time.Time{}, nil
 		})
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		work := make(chan error, 1)
@@ -671,14 +671,14 @@ func TestCaseServiceRemove(test *testing.T) {
 		cancel()
 		close(release)
 		workErr, removeErr := <-work, <-removed
-		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
+		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		status, statusErr := environment.service.Status(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, workErr, ErrRemoving, "canceled removal")
 		assert.ErrorIs(test, removeErr, context.Canceled, "canceled removal")
 		assert.NoError(test, readErr, "canceled removal")
-		assert.Equal(test, id, enrollment.ID, "canceled removal")
+		assert.Equal(test, id, trackedCase.ID, "canceled removal")
 		assert.NoError(test, statusErr, "canceled removal")
 		assert.True(test, !status.CheckedAt.IsZero(), "canceled removal")
 	})
@@ -700,7 +700,7 @@ func TestCaseServiceShutdown(test *testing.T) {
 		finished := make(chan error, 2)
 		for _, owner := range []int64{101, 202} {
 			go func(owner int64) {
-				_, _, err := environment.service.Enroll(context.Background(), owner, number, password)
+				_, _, err := environment.service.StoreCaseToTrack(context.Background(), owner, number, password)
 				finished <- err
 			}(owner)
 		}
@@ -731,8 +731,8 @@ func TestCaseServiceShutdown(test *testing.T) {
 		}
 		environment.service.Shutdown()
 		{
-			_, _, err := environment.service.Enroll(context.Background(), 101, number, password)
-			assert.ErrorIs(test, err, ErrClosed, "enrollment admitted after shutdown")
+			_, _, err := environment.service.StoreCaseToTrack(context.Background(), 101, number, password)
+			assert.ErrorIs(test, err, ErrClosed, "case tracking setup admitted after shutdown")
 		}
 		{
 			err := environment.service.Remove(context.Background(), 101)
@@ -745,32 +745,32 @@ func TestCaseServiceSaveObservation(test *testing.T) {
 	test.Run("should roll back cached status when history insert fails", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
-		id := environment.enroll(test, 101)
+		id := environment.trackCase(test, 101)
 		db, err := sql.Open("sqlite", environment.path)
 		assert.NoError(test, err)
 		defer db.Close()
 		{
-			_, err := db.Exec(`CREATE TRIGGER reject_history BEFORE INSERT ON history
- BEGIN SELECT RAISE(ABORT, 'synthetic history failure'); END;`)
+			_, err := db.Exec(`CREATE TRIGGER reject_tracked_cases_history BEFORE INSERT ON tracked_cases_history
+ BEGIN SELECT RAISE(ABORT, 'synthetic tracked_cases_history failure'); END;`)
 			assert.NoError(test, err)
 		}
 
 		// When
 		observeErr := environment.service.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
-		enrollment, readErr := environment.store.Enrollments().FindByOwner(context.Background(), 101)
-		history, historyErr := environment.store.History().FindByEnrollment(context.Background(), 101, id)
+		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
+		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
 		assert.ErrorIs(test, observeErr, repositories.ErrStorage, "observation rollback")
 		assert.NoError(test, readErr, "observation rollback")
 		assert.NoError(test, historyErr, "observation rollback")
-		assert.Equal(test, "A", enrollment.Stage, "observation rollback")
-		assert.True(test, enrollment.CheckedAt.Equal(epoch), "observation rollback")
+		assert.Equal(test, "A", trackedCase.Stage, "observation rollback")
+		assert.True(test, trackedCase.CheckedAt.Equal(epoch), "observation rollback")
 		assert.Equal(test, 0, len(history), "observation rollback")
 	})
 }
 
-func TestCaseServiceHasEnrollment(test *testing.T) {
+func TestCaseServiceHasTrackedCase(test *testing.T) {
 	test.Run("should signal fatal storage failure when database read fails for active caller", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
@@ -785,7 +785,7 @@ func TestCaseServiceHasEnrollment(test *testing.T) {
 		defer cancel()
 
 		// When
-		_, err := environment.service.HasEnrollment(ctx, 101)
+		_, err := environment.service.HasTrackedCase(ctx, 101)
 
 		// Then
 		assert.True(test, err != nil, "database read should return an error")
@@ -804,7 +804,7 @@ func TestCaseServiceHasEnrollment(test *testing.T) {
 		cancel()
 
 		// When
-		_, err := environment.service.HasEnrollment(ctx, 101)
+		_, err := environment.service.HasTrackedCase(ctx, 101)
 
 		// Then
 		assert.True(test, err != nil, "database read should return an error")
@@ -864,15 +864,15 @@ func (this *fixture) reopen(test *testing.T) {
 	this.store = repositories.NewStore(db)
 }
 
-func (this *fixture) enroll(test *testing.T, owner int64) string {
+func (this *fixture) trackCase(test *testing.T, owner int64) string {
 	test.Helper()
 	{
-		_, _, err := this.service.Enroll(context.Background(), owner, number, password)
+		_, _, err := this.service.StoreCaseToTrack(context.Background(), owner, number, password)
 		assert.NoError(test, err)
 	}
-	enrollment, err := this.store.Enrollments().FindByOwner(context.Background(), owner)
+	trackedCase, err := this.store.TrackedCases().FindByOwner(context.Background(), owner)
 	assert.NoError(test, err)
-	return enrollment.ID
+	return trackedCase.ID
 }
 
 func verifyObservation(test *testing.T, status models.Status, stage string, checked time.Time) {
@@ -909,7 +909,7 @@ func rejectInsert(test *testing.T, path, table string) {
 	db, err := sql.Open("sqlite", path)
 	assert.NoError(test, err)
 	defer db.Close()
-	assert.True(test, !(table != "history" && table != "enrollments"), "invalid fixture table")
+	assert.True(test, !(table != "tracked_cases_history" && table != "tracked_cases"), "invalid fixture table")
 	{
 		_, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;")
 		assert.NoError(test, err)

@@ -166,7 +166,7 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	return bot, nil
 }
 
-// Cancellation drains library handlers, cancels enrollment work and clears drafts.
+// Cancellation drains library handlers, cancels case tracking setup and clears drafts.
 
 // -- Internals ----------------------------------------------------------------
 var errPolling = errors.New("telegram polling already started")
@@ -220,9 +220,9 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := this.clock.Now()
-	expiredEnrollment := !s.deadline.IsZero() && !now.Before(s.deadline)
+	expiredCaseDraft := !s.deadline.IsZero() && !now.Before(s.deadline)
 	expiredRemoval := !s.removal.IsZero() && !now.Before(s.removal)
-	if expiredEnrollment {
+	if expiredCaseDraft {
 		s.number = ""
 		s.deadline = time.Time{}
 	}
@@ -256,7 +256,7 @@ func (this *Bot) handle(ctx context.Context, u *telegramModels.Update) {
 		this.reply(ctx, id, "Время ожидания истекло. Чтобы попробовать удалить дело ещё раз, отправьте /remove.")
 		return
 	}
-	if expiredEnrollment {
+	if expiredCaseDraft {
 		this.reply(ctx, id, "Время ожидания истекло. Чтобы начать заново, отправьте /start.")
 		return
 	}
@@ -426,7 +426,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 	this.reply(ctx, id, "Проверяю данные и подключаю отслеживание вашего дела.")
 	go func(number, password string) {
 		defer this.wg.Done()
-		_, _, err := this.caseService.Enroll(work, id, number, password)
+		_, _, err := this.caseService.StoreCaseToTrack(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -497,7 +497,7 @@ func (this *Bot) tokenRejected(err error) bool {
 }
 
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
-	return this.caseService.HasEnrollment(ctx, id)
+	return this.caseService.HasTrackedCase(ctx, id)
 }
 
 // privateOwner binds conversations to Telegram transport metadata.

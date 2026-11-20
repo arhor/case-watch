@@ -14,19 +14,19 @@ var ErrTransaction = errors.New("invalid transaction lifecycle operation")
 var _ models.Store = (*Store)(nil)
 
 type Store struct {
-	db          *sql.DB
-	inTx        bool
-	enrollments *EnrollmentRepository
-	history     *HistoryRepository
-	cooldowns   *CooldownRepository
+	db                  *sql.DB
+	inTx                bool
+	trackedCases        *TrackedCaseRepository
+	trackedCasesHistory *TrackedCasesHistoryRepository
+	cooldowns           *CooldownRepository
 }
 
 func NewStore(db *sql.DB) *Store {
 	return &Store{
-		db:          guard.Require("DB", db),
-		enrollments: NewEnrollmentRepository(db),
-		history:     NewHistoryRepository(db),
-		cooldowns:   NewCooldownRepository(db),
+		db:                  guard.Require("DB", db),
+		trackedCases:        NewTrackedCaseRepository(db),
+		trackedCasesHistory: NewTrackedCasesHistoryRepository(db),
+		cooldowns:           NewCooldownRepository(db),
 	}
 }
 
@@ -41,11 +41,11 @@ func (this *Store) RunInTx(ctx context.Context, fn func(models.Store) error) err
 	defer tx.Rollback()
 
 	store := &Store{
-		db:          this.db,
-		inTx:        true,
-		enrollments: NewEnrollmentRepository(tx),
-		history:     NewHistoryRepository(tx),
-		cooldowns:   NewCooldownRepository(tx),
+		db:                  this.db,
+		inTx:                true,
+		trackedCases:        NewTrackedCaseRepository(tx),
+		trackedCasesHistory: NewTrackedCasesHistoryRepository(tx),
+		cooldowns:           NewCooldownRepository(tx),
 	}
 	if err = fn(store); err != nil {
 		return err
@@ -59,8 +59,10 @@ func (this *Store) RunInTx(ctx context.Context, fn func(models.Store) error) err
 	return nil
 }
 
-func (this *Store) Enrollments() models.EnrollmentRepository { return this.enrollments }
+func (this *Store) TrackedCases() models.TrackedCaseRepository { return this.trackedCases }
 
-func (this *Store) History() models.HistoryRepository { return this.history }
+func (this *Store) TrackedCasesHistory() models.TrackedCasesHistoryRepository {
+	return this.trackedCasesHistory
+}
 
 func (this *Store) Cooldowns() models.CooldownRepository { return this.cooldowns }

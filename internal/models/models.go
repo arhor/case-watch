@@ -23,7 +23,7 @@ type Status struct {
 	NextEligibleAt time.Time
 }
 
-type Enrollment struct {
+type TrackedCase struct {
 	ID               string
 	OwnerID          int64
 	Number, Password string
@@ -33,7 +33,7 @@ type Enrollment struct {
 
 type Transition struct {
 	Sequence      int64
-	EnrollmentID  string
+	TrackedCaseID string
 	PreviousStage string
 	Stage         string
 	CheckedAt     time.Time

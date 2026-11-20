@@ -7,26 +7,26 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 )
 
-var _ models.HistoryRepository = (*HistoryRepository)(nil)
+var _ models.TrackedCasesHistoryRepository = (*TrackedCasesHistoryRepository)(nil)
 
-type HistoryRepository struct {
+type TrackedCasesHistoryRepository struct {
 	executor QueryExecutor
 }
 
-func NewHistoryRepository(executor QueryExecutor) *HistoryRepository {
-	return &HistoryRepository{executor: executor}
+func NewTrackedCasesHistoryRepository(executor QueryExecutor) *TrackedCasesHistoryRepository {
+	return &TrackedCasesHistoryRepository{executor: executor}
 }
 
-// FindByEnrollment returns transitions belonging to the supplied owner and identity.
-func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64, id string) ([]models.Transition, error) {
+// FindByTrackedCase returns transitions belonging to the supplied owner and identity.
+func (this *TrackedCasesHistoryRepository) FindByTrackedCase(ctx context.Context, owner int64, id string) ([]models.Transition, error) {
 	rows, err := this.executor.QueryContext(ctx, `
-		SELECT h.sequence, h.enrollment_id, h.previous_stage, h.stage, h.checked_at
-		  FROM history AS h
-		  JOIN enrollments AS e
-		    ON e.id = h.enrollment_id
-		 WHERE e.owner_id = ?
-		   AND e.id = ?
-		   AND e.deleted_at IS NULL
+		SELECT h.sequence, h.tracked_case_id, h.prev_stage, h.curr_state, h.checked_at
+		  FROM tracked_cases_history AS h
+		  JOIN tracked_cases AS c
+		    ON c.id = h.tracked_case_id
+		 WHERE c.owner_id = ?
+		   AND c.id = ?
+		   AND c.deleted_at IS NULL
 		 ORDER BY h.sequence
 	`, owner, string(id))
 	if err != nil {
@@ -40,7 +40,7 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 		if rows.Scan(&t.Sequence, &identity, &t.PreviousStage, &t.Stage, &checked) != nil {
 			return nil, ErrStorage
 		}
-		t.EnrollmentID = identity
+		t.TrackedCaseID = identity
 		t.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 		if err != nil {
 			return nil, ErrStorage
@@ -53,7 +53,7 @@ func (this *HistoryRepository) FindByEnrollment(ctx context.Context, owner int64
 	return result, nil
 }
 
-func (this *HistoryRepository) Append(
+func (this *TrackedCasesHistoryRepository) Append(
 	ctx context.Context,
 	id string,
 	previous string,
@@ -64,7 +64,7 @@ func (this *HistoryRepository) Append(
 		return ErrInvalid
 	}
 	_, err := this.executor.ExecContext(ctx, `
-		INSERT INTO history (enrollment_id, previous_stage, stage, checked_at)
+		INSERT INTO tracked_cases_history (tracked_case_id, prev_stage, curr_state, checked_at)
 		VALUES (?, ?, ?, ?)
 	`, id, previous, stage, stamp(checkedAt))
 	if err != nil {
@@ -73,13 +73,13 @@ func (this *HistoryRepository) Append(
 	return nil
 }
 
-func (this *HistoryRepository) DeleteByEnrollmentID(ctx context.Context, id string) error {
+func (this *TrackedCasesHistoryRepository) DeleteByTrackedCaseID(ctx context.Context, id string) error {
 	if !validID(id) {
 		return ErrInvalid
 	}
 	if _, err := this.executor.ExecContext(ctx, `
-		DELETE FROM history
-		WHERE enrollment_id = ?
+		DELETE FROM tracked_cases_history
+		WHERE tracked_case_id = ?
 	`, id); err != nil {
 		return ErrStorage
 	}

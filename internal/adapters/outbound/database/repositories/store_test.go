@@ -42,14 +42,14 @@ func TestStoreRunInTx(test *testing.T) {
 
 		// When
 		err = store.RunInTx(ctx, func(store models.Store) error {
-			return store.Enrollments().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt)
+			return store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt)
 		})
 
 		// Then
 		assert.NoError(test, err)
-		enrollment, readError := store.Enrollments().FindByOwner(ctx, 101)
+		trackedCase, readError := store.TrackedCases().FindByOwner(ctx, 101)
 		assert.NoError(test, readError, "committed record should be visible")
-		assert.Equal(test, id, enrollment.ID)
+		assert.Equal(test, id, trackedCase.ID)
 	})
 
 	test.Run("should rollback when callback fails", func(test *testing.T) {
@@ -65,7 +65,7 @@ func TestStoreRunInTx(test *testing.T) {
 
 		// When
 		err = store.RunInTx(ctx, func(store models.Store) error {
-			if err := store.Enrollments().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt); err != nil {
+			if err := store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt); err != nil {
 				return err
 			}
 			return targetError
@@ -73,7 +73,7 @@ func TestStoreRunInTx(test *testing.T) {
 
 		// Then
 		assert.ErrorIs(test, err, targetError)
-		_, readError := store.Enrollments().FindByOwner(ctx, 101)
+		_, readError := store.TrackedCases().FindByOwner(ctx, 101)
 		assert.ErrorIs(test, readError, repositories.ErrNotFound, "rolled-back record should be absent")
 	})
 
