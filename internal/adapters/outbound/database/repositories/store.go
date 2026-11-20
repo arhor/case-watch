@@ -59,10 +59,14 @@ func (this *Store) RunInTx(ctx context.Context, fn func(models.Store) error) err
 	return nil
 }
 
-func (this *Store) TrackedCases() models.TrackedCaseRepository { return this.trackedCases }
+func (this *Store) TrackedCases() models.TrackedCaseRepository {
+	return this.trackedCases
+}
 
 func (this *Store) TrackedCasesHistory() models.TrackedCasesHistoryRepository {
 	return this.trackedCasesHistory
 }
 
-func (this *Store) Cooldowns() models.CooldownRepository { return this.cooldowns }
+func (this *Store) Cooldowns() models.CooldownRepository {
+	return this.cooldowns
+}
