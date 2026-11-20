@@ -52,9 +52,9 @@ func (this *TrackedCaseRepository) FindByIdentity(ctx context.Context, owner int
 func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]models.TrackedCase, error) {
 	rows, err := this.executor.QueryContext(ctx, `
 		SELECT id, owner_id, case_number, password, curr_state, checked_at
-		FROM tracked_cases
-		WHERE deleted_at IS NULL
-		ORDER BY owner_id
+		  FROM tracked_cases
+		 WHERE deleted_at IS NULL
+		 ORDER BY owner_id
 	`)
 	if err != nil {
 		return nil, ErrStorage
@@ -89,14 +89,14 @@ func (this *TrackedCaseRepository) Create(
 	var exists bool
 	if this.executor.QueryRowContext(ctx, `
 		SELECT EXISTS (
-			SELECT 1
-			  FROM tracked_cases
-			 WHERE owner_id = ?
-			   AND deleted_at IS NULL
-			UNION ALL
-			SELECT 1
-			  FROM tracked_cases
-			 WHERE id = ?
+		    SELECT 1
+		      FROM tracked_cases
+		     WHERE owner_id = ?
+		       AND deleted_at IS NULL
+		     UNION ALL
+		    SELECT 1
+		      FROM tracked_cases
+		     WHERE id = ?
 		)
 	`, owner, id).Scan(&exists) != nil {
 		return ErrStorage
@@ -105,9 +105,7 @@ func (this *TrackedCaseRepository) Create(
 		return ErrExists
 	}
 	_, err := this.executor.ExecContext(ctx, `
-		INSERT INTO tracked_cases (
-			id, owner_id, case_number, password, curr_state, checked_at
-		)
+		INSERT INTO tracked_cases (id, owner_id, case_number, password, curr_state, checked_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, id, owner, number, password, stage, stamp(checkedAt))
 	if err != nil {
@@ -148,9 +146,9 @@ func (this *TrackedCaseRepository) SoftDelete(ctx context.Context, owner int64, 
 			UPDATE tracked_cases
 			   SET deleted_at = ?
 			     , case_number = NULL
-				 , password = NULL
-				 , curr_state = NULL
-				 , checked_at = NULL
+			     , password = NULL
+			     , curr_state = NULL
+			     , checked_at = NULL
 			 WHERE owner_id = ?
 			   AND id = ?
 			   AND deleted_at IS NULL

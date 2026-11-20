@@ -1,11 +1,11 @@
 CREATE TABLE tracked_cases (
-    id                 TEXT    PRIMARY KEY,
-    owner_id           INTEGER NOT NULL,
-    case_number        TEXT,
-    password           TEXT,
-    curr_state         TEXT,
-    checked_at         TEXT,
-    deleted_at         TEXT
+    id          TEXT    PRIMARY KEY,
+    owner_id    INTEGER NOT NULL,
+    case_number TEXT,
+    password    TEXT,
+    curr_state  TEXT,
+    checked_at  TEXT,
+    deleted_at  TEXT
 );
 
 CREATE UNIQUE INDEX active_tracked_case_owner

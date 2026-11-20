@@ -79,7 +79,7 @@ func (this *TrackedCasesHistoryRepository) DeleteByTrackedCaseID(ctx context.Con
 	}
 	if _, err := this.executor.ExecContext(ctx, `
 		DELETE FROM tracked_cases_history
-		WHERE tracked_case_id = ?
+		 WHERE tracked_case_id = ?
 	`, id); err != nil {
 		return ErrStorage
 	}

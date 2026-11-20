@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing SQL Queries"
+  short_description: "Format SQL using case-watch repository conventions"
+  default_prompt: "Use $writing-sql-queries to write or format SQL in case-watch."

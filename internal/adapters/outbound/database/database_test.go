@@ -57,9 +57,16 @@ func TestOpen(test *testing.T) {
 		caseCooldown, caseGuardErr := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, caseGuard.SubjectType, caseGuard.SubjectID)
 		var version int
 		var dirty bool
-		versionErr := db.QueryRowContext(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty)
+		versionErr := db.QueryRowContext(ctx, `
+			SELECT version, dirty
+			  FROM schema_migrations
+		`).Scan(&version, &dirty)
 		var obsolete int
-		schemaErr := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name IN ('pending','recipients','pending_recipient')").Scan(&obsolete)
+		schemaErr := db.QueryRowContext(ctx, `
+			SELECT count(*)
+			  FROM sqlite_master
+			 WHERE name IN ('pending', 'recipients', 'pending_recipient')
+		`).Scan(&obsolete)
 
 		// Then
 		assert.NoError(test, readErr, "reopening lost tracking")

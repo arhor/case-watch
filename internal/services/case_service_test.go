@@ -750,8 +750,14 @@ func TestCaseServiceSaveObservation(test *testing.T) {
 		assert.NoError(test, err)
 		defer db.Close()
 		{
-			_, err := db.Exec(`CREATE TRIGGER reject_tracked_cases_history BEFORE INSERT ON tracked_cases_history
- BEGIN SELECT RAISE(ABORT, 'synthetic tracked_cases_history failure'); END;`)
+			_, err := db.Exec(`
+				CREATE TRIGGER reject_tracked_cases_history
+				BEFORE INSERT
+				    ON tracked_cases_history
+				BEGIN
+				    SELECT RAISE(ABORT, 'synthetic tracked_cases_history failure');
+				END;
+			`)
 			assert.NoError(test, err)
 		}
 
@@ -911,7 +917,14 @@ func rejectInsert(test *testing.T, path, table string) {
 	defer db.Close()
 	assert.True(test, !(table != "tracked_cases_history" && table != "tracked_cases"), "invalid fixture table")
 	{
-		_, err := db.Exec("CREATE TRIGGER reject_insert BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END;")
+		_, err := db.Exec(`
+			CREATE TRIGGER reject_insert
+			BEFORE INSERT
+			    ON ` + table + `
+			BEGIN
+			    SELECT RAISE(ABORT, 'synthetic storage failure');
+			END;
+		`)
 		assert.NoError(test, err)
 	}
 }
