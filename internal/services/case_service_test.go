@@ -15,7 +15,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/testing/assert"
-	"github.com/arhor/case-watch/internal/testing/fixedClock"
+	"github.com/arhor/case-watch/internal/testing/clock"
 )
 
 func TestNewCaseService(test *testing.T) {
@@ -828,14 +828,14 @@ type fixture struct {
 	service *CaseService
 	db      *sql.DB
 	store   *repositories.Store
-	clock   *fixedClock.FixedClock
+	clock   *clock.FixedClock
 	path    string
 	calls   atomic.Int32
 }
 
 func setup(test *testing.T, portal portalFunc) *fixture {
 	test.Helper()
-	environment := &fixture{clock: fixedClock.New(epoch), path: filepath.Join(test.TempDir(), "state.db")}
+	environment := &fixture{clock: clock.NewFixedClock(epoch), path: filepath.Join(test.TempDir(), "state.db")}
 	var err error
 	environment.db, err = database.Open(context.Background(), environment.path)
 	assert.NoError(test, err)
