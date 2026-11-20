@@ -21,8 +21,8 @@ CREATE TABLE history (
 );
 
 CREATE TABLE cooldowns (
-    subject_type TEXT NOT NULL,
-    subject_id   TEXT NOT NULL,
+    subject_type TEXT    NOT NULL,
+    subject_id   TEXT    NOT NULL,
     started_at   INTEGER NOT NULL,
     PRIMARY KEY (subject_type, subject_id)
 );
