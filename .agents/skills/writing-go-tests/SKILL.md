@@ -32,6 +32,11 @@ A suite may contain both direct subtests and a table loop as siblings.
 
 - Use descriptive identifiers: `test`, `scenario`, `recorder`, `expectedMessage`, `targetError`, and `arguments`. Avoid one-letter names and abbreviations such as `t`, `tc`, `tb`, or `args` in newly written or rewritten test code.
 - In each behavioral subtest, separate setup, execution, and verification with `// Given`, `// When`, and `// Then`, once each, with blank lines between sections. Suite containers and table declarations do not need artificial sections or empty verification comments.
+- Keep each section focused on its responsibility:
+  - `Given` describes and establishes the initial state, including setup calls needed to seed that state.
+  - `When` performs the complete behavior under test, including follow-up operations needed to observe its effects, and captures the results.
+  - `Then` only verifies expectations against those results. Do not initiate further actions against the system under test there.
+- Setup guards (such as checking that a test request was constructed successfully) can remain in `Given`. Arrange resource cleanup where needed; do not treat it as part of the behavior under test.
 - Keep the invocation visible in the subtest. Extract helpers for repeated verification or meaningful test infrastructure, rather than hiding the behavior under a generic callback runner.
 - Mark verification helpers with `test.Helper()`. Keep helpers and test doubles below the suites; retain a useful local internal-section divider.
 - Follow repository receiver-naming conventions for methods on test doubles.
