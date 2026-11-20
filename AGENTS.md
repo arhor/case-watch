@@ -19,7 +19,7 @@ Set `CASE_WATCH_TELEGRAM_BOT_TOKEN` and `CASE_WATCH_DB_PATH` before running `./c
 
 Go community conventions are optional in this project. Prioritize readability, maintainability, clear intent, and established software engineering practices over conformity to Go idioms. Do not introduce, recommend, or defend a style solely because it is "idiomatic Go." Explain choices through their concrete benefits and tradeoffs, and follow explicit project and maintainer preferences when they differ from community conventions.
 
-Use descriptive names for local variables and parameters rather than single-letter names or cryptic abbreviations. Name method receivers `this`. Use `camelCase` for unexported identifiers and multiword package names, such as `fixedClock`; use `PascalCase` for exported identifiers as required by Go's visibility rules. Keep package directories consistent with their package names. Prefer concise constructors such as `fixedClock.New` when the package already supplies the context.
+Use descriptive names for local variables and parameters rather than single-letter names or cryptic abbreviations. Name method receivers `this`. Use `camelCase` for unexported identifiers and multiword package names, when appropriate; use `PascalCase` for exported identifiers as required by Go's visibility rules. Keep package directories consistent with their package names. Choose clear constructors such as `clock.NewFixedClock` when the package name alone does not identify the implementation.
 
 Keep functions focused and readable. Extract cohesive helpers when they clarify intent or separate responsibilities; avoid long, dense functions and unnecessary boilerplate. Keep error context useful and concise, and never include tokens or other secrets.
 

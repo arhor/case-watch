@@ -20,7 +20,7 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
-	"github.com/arhor/case-watch/internal/testing/fixedClock"
+	"github.com/arhor/case-watch/internal/testing/clock"
 )
 
 func TestBotHandle(test *testing.T) {
@@ -628,7 +628,7 @@ func (this portal) Check(ctx context.Context, owner int64, number, password stri
 type fixture struct {
 	bot     *Bot
 	store   *repositories.Store
-	clock   *fixedClock.FixedClock
+	clock   *clock.FixedClock
 	mu      sync.Mutex
 	replies []string
 	deletes int
@@ -639,7 +639,7 @@ type fixture struct {
 
 func setup(test *testing.T) *fixture {
 	test.Helper()
-	environment := &fixture{clock: fixedClock.New(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))}
+	environment := &fixture{clock: clock.NewFixedClock(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))}
 	server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		environment.mu.Lock()
 		defer environment.mu.Unlock()

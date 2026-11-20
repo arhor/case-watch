@@ -13,13 +13,13 @@ import (
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
-	"github.com/arhor/case-watch/internal/testing/fixedClock"
+	"github.com/arhor/case-watch/internal/testing/clock"
 )
 
 func TestJobsNew(test *testing.T) {
 	test.Run("should panic when case service is missing", func(test *testing.T) {
 		// Given
-		config := schedule.Config{Clock: fixedClock.New(time.Time{})}
+		config := schedule.Config{Clock: clock.NewFixedClock(time.Time{})}
 		var recovered any
 
 		// When
@@ -123,7 +123,7 @@ func TestJobsNext(test *testing.T) {
 	} {
 		test.Run(scenario.name, func(test *testing.T) {
 			// Given
-			scheduler := newScheduler(test, schedule.Config{CaseService: tracking{}, Clock: fixedClock.New(time.Time{})})
+			scheduler := newScheduler(test, schedule.Config{CaseService: tracking{}, Clock: clock.NewFixedClock(time.Time{})})
 			after := parseTime(scenario.after)
 			expected := parseTime(scenario.expected)
 
@@ -139,7 +139,7 @@ func TestJobsNext(test *testing.T) {
 func TestJobsRun(test *testing.T) {
 	test.Run("should stop when scheduled owner inventory fails", func(test *testing.T) {
 		// Given
-		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		scheduler := schedule.New(schedule.Config{
 			Clock: clock,
 			CaseService: tracking{
@@ -162,7 +162,7 @@ func TestJobsRun(test *testing.T) {
 
 	test.Run("should skip crossed slots and recheck queued authorization when first check is slow", func(test *testing.T) {
 		// Given
-		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -206,7 +206,7 @@ func TestJobsRun(test *testing.T) {
 			// Given
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			clock := fixedClock.New(parseTime(start))
+			clock := clock.NewFixedClock(parseTime(start))
 			calls := 0
 			var waitedUntil time.Time
 			scheduler := newScheduler(test, schedule.Config{
@@ -239,7 +239,7 @@ func TestJobsRun(test *testing.T) {
 		// Given
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		entered := make(chan struct{})
 		canceled := make(chan struct{})
 		release := make(chan struct{})
@@ -275,7 +275,7 @@ func TestJobsRun(test *testing.T) {
 
 	test.Run("should skip missed minute and accept timer jitter when wait returns late", func(test *testing.T) {
 		// Given
-		clock := fixedClock.New(parseTime("2026-07-06T05:00:00Z"))
+		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -319,7 +319,7 @@ func TestJobsRun(test *testing.T) {
 		db, err := database.Open(ctx, filepath.Join(test.TempDir(), "state.db"))
 		assert.NoError(test, err)
 		test.Cleanup(func() { _ = db.Close() })
-		clock := fixedClock.New(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))
+		clock := clock.NewFixedClock(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))
 		calls := 0
 		caseService := services.NewCaseService(services.CaseServiceConfig{
 			Store: repositories.NewStore(db),

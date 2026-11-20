@@ -1,4 +1,4 @@
-package fixedClock
+package clock
 
 import (
 	"sync"
@@ -16,7 +16,7 @@ type FixedClock struct {
 	now time.Time
 }
 
-func New(now time.Time) *FixedClock {
+func NewFixedClock(now time.Time) *FixedClock {
 	return &FixedClock{now: now}
 }
 

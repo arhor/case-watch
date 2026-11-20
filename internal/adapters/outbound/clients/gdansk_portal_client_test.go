@@ -17,14 +17,14 @@ import (
 	"time"
 
 	"github.com/arhor/case-watch/internal/testing/assert"
-	"github.com/arhor/case-watch/internal/testing/fixedClock"
+	"github.com/arhor/case-watch/internal/testing/clock"
 )
 
 func TestGdanskPortalClientCheck(test *testing.T) {
 	test.Run("should complete with fresh cookies and completion time when reused", func(test *testing.T) {
 		// Given
 		calls := 0
-		clock := fixedClock.New(time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC))
+		clock := clock.NewFixedClock(time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC))
 		waits := 0
 		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			step := calls % 5
