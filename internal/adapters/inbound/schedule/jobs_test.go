@@ -476,19 +476,19 @@ func (this tracking) ListTrackedCaseOwners(context.Context) ([]int64, error) {
 
 // The scheduler only invokes the two scheduled-check operations.
 // Fail loudly if an unrelated service operation is accidentally used.
-func (tracking) HasTrackedCase(context.Context, int64) (bool, error) {
+func (this tracking) HasTrackedCase(context.Context, int64) (bool, error) {
 	panic("unexpected HasTrackedCase call")
 }
 
-func (tracking) StoreCaseToTrack(context.Context, int64, string, string) (string, time.Time, error) {
+func (this tracking) StoreCaseToTrack(context.Context, int64, string, string) (string, time.Time, error) {
 	panic("unexpected StoreCaseToTrack call")
 }
 
-func (tracking) CheckCaseStatus(context.Context, int64) (models.Status, error) {
+func (this tracking) CheckCaseStatus(context.Context, int64) (models.Status, error) {
 	panic("unexpected CheckCaseStatus call")
 }
 
-func (tracking) RemoveTrackedCase(context.Context, int64) error {
+func (this tracking) RemoveTrackedCase(context.Context, int64) error {
 	panic("unexpected RemoveTrackedCase call")
 }
 
