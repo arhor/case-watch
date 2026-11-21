@@ -70,9 +70,9 @@ func (this *TrackedCaseService) HasTrackedCase(ctx context.Context, owner int64)
 	return true, nil
 }
 
-// ScheduledOwners returns the owners with tracked cases available for scheduler
+// ListTrackedCaseOwners returns the owners with tracked cases available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
-func (this *TrackedCaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
+func (this *TrackedCaseService) ListTrackedCaseOwners(ctx context.Context) ([]int64, error) {
 	items, err := this.store.TrackedCases().FindAll(ctx)
 	if err != nil {
 		return nil, this.storageError(ctx, err)
@@ -153,21 +153,21 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 	return stage, checkedAt, nil
 }
 
-func (this *TrackedCaseService) Status(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) CheckCaseStatus(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (this *TrackedCaseService) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) RunScheduledCaseCheck(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, false)
 }
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the tracked case and reopens work.
-func (this *TrackedCaseService) Remove(ctx context.Context, owner int64) error {
+func (this *TrackedCaseService) RemoveTrackedCase(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
 	}

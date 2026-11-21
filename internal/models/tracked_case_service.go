@@ -1,10 +1,17 @@
 package models
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
-// TrackedCaseService provides scheduled checks for tracked cases.
+// TrackedCaseService provides business operations for tracked cases.
+// Calls may use a cached result when a new portal check is not eligible.
 type TrackedCaseService interface {
-	ScheduledOwners(context.Context) ([]int64, error)
-	// Scheduled shares manual coordination and returns after canceled work drains.
-	Scheduled(context.Context, int64) (Status, error)
+	HasTrackedCase(context.Context, int64) (bool, error)
+	StoreCaseToTrack(context.Context, int64, string, string) (string, time.Time, error)
+	CheckCaseStatus(context.Context, int64) (Status, error)
+	RunScheduledCaseCheck(context.Context, int64) (Status, error)
+	ListTrackedCaseOwners(context.Context) ([]int64, error)
+	RemoveTrackedCase(context.Context, int64) error
 }

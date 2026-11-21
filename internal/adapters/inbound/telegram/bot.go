@@ -15,7 +15,6 @@ import (
 
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/platform/guard"
-	"github.com/arhor/case-watch/internal/services"
 	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
 )
@@ -26,7 +25,7 @@ type Config struct {
 	Token              string
 	Endpoint           string
 	HTTPClient         *http.Client
-	TrackedCaseService *services.TrackedCaseService
+	TrackedCaseService models.TrackedCaseService
 	Clock              models.Clock
 	OnFatal            func(error)
 }
@@ -35,7 +34,7 @@ type Bot struct {
 	handlers           map[string]commandHandler
 	client             *telegramApi.Bot
 	polling            atomic.Bool
-	trackedCaseService *services.TrackedCaseService
+	trackedCaseService models.TrackedCaseService
 	replyMu            sync.Mutex
 	repliesFailed      bool
 	clock              models.Clock
@@ -332,7 +331,7 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 
 func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
 	s.mu.Unlock()
-	status, err := this.trackedCaseService.Status(ctx, id)
+	status, err := this.trackedCaseService.CheckCaseStatus(ctx, id)
 	s.mu.Lock()
 	if errors.Is(err, services.ErrNotFound) {
 		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
@@ -393,7 +392,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		err := this.trackedCaseService.Remove(ctx, id)
+		err := this.trackedCaseService.RemoveTrackedCase(ctx, id)
 		s.mu.Lock()
 		if err != nil {
 			this.reply(ctx, id, "Не удалось завершить удаление дела.\n\nПопробуйте ещё раз с помощью /remove.")
