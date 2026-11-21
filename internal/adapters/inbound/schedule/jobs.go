@@ -91,7 +91,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 		if now := this.clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := this.trackedCaseService.ScheduledOwners(ctx)
+		owners, err := this.trackedCaseService.ListTrackedCaseOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -102,7 +102,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			status, err := this.trackedCaseService.Scheduled(ctx, owner)
+			status, err := this.trackedCaseService.RunScheduledCaseCheck(ctx, owner)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Print("scheduled case check failed")

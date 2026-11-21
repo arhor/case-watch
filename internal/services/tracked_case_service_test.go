@@ -68,7 +68,7 @@ func TestNewTrackedCaseService(test *testing.T) {
 	})
 }
 
-func TestTrackedCaseServiceStatus(test *testing.T) {
+func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {
 		// Given
 		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
@@ -78,9 +78,9 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		environment.clock.Set(epoch.Add(59 * time.Second))
 
 		// When
-		recent, firstError := environment.trackedCaseService.Status(context.Background(), 101)
+		recent, firstError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(time.Minute))
-		at, secondError := environment.trackedCaseService.Status(context.Background(), 101)
+		at, secondError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		trackedCase, _ := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		deadline, thirdError := environment.trackedCaseService.checkEligibility(context.Background(), 101, trackedCase.ID, true)
 
@@ -111,16 +111,16 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
-		failed, firstError := environment.trackedCaseService.Status(context.Background(), 101)
+		failed, firstError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.reopen(test)
 		environment.trackedCaseService = NewTrackedCaseService(TrackedCaseServiceConfig{Store: environment.store, Portal: portalFunc(func(context.Context, string, string) (string, time.Time, error) {
 			environment.calls.Add(1)
 			return "", time.Time{}, errors.New("secret")
 		}), Clock: environment.clock})
 		environment.clock.Set(epoch.Add(119 * time.Second))
-		before, secondError := environment.trackedCaseService.Status(context.Background(), 101)
+		before, secondError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(2 * time.Minute))
-		at, thirdError := environment.trackedCaseService.Status(context.Background(), 101)
+		at, thirdError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, firstError, ErrCheck, "failed checks should retain stale status and the retry guard")
@@ -165,12 +165,12 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		firstResult, secondResult, thirdResult := make(chan answer, 1), make(chan answer, 1), make(chan answer, 1)
 
 		// When
-		go func() { status, err := environment.trackedCaseService.Status(first, 101); firstResult <- answer{status, err} }()
+		go func() { status, err := environment.trackedCaseService.CheckCaseStatus(first, 101); firstResult <- answer{status, err} }()
 		<-entered
 		<-first.entered
-		go func() { status, err := environment.trackedCaseService.Scheduled(second, 101); secondResult <- answer{status, err} }()
+		go func() { status, err := environment.trackedCaseService.RunScheduledCaseCheck(second, 101); secondResult <- answer{status, err} }()
 		<-second.entered
-		go func() { status, err := environment.trackedCaseService.Status(third, 101); thirdResult <- answer{status, err} }()
+		go func() { status, err := environment.trackedCaseService.CheckCaseStatus(third, 101); thirdResult <- answer{status, err} }()
 		<-third.entered
 		cancel()
 		canceled := <-firstResult
@@ -178,7 +178,7 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		close(release)
 		joined1, joined2 := <-secondResult, <-thirdResult
 		environment.clock.Set(epoch.Add(189 * time.Second))
-		recent, err := environment.trackedCaseService.Status(context.Background(), 101)
+		recent, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, canceled.err, context.Canceled, "joins")
@@ -200,7 +200,7 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		environment.trackCase(test, 101)
 
 		// When
-		_, err := environment.trackedCaseService.Status(context.Background(), 0)
+		_, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 0)
 
 		// Then
 		assert.ErrorIs(test, err, ErrDenied)
@@ -213,7 +213,7 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		environment.trackCase(test, 101)
 
 		// When
-		_, err := environment.trackedCaseService.Status(context.Background(), 202)
+		_, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 202)
 
 		// Then
 		assert.ErrorIs(test, err, repositories.ErrNotFound, "owners should only access their own tracked case")
@@ -240,12 +240,12 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		result := make(chan error, 1)
 
 		// When
-		go func() { _, err := environment.trackedCaseService.Status(ctx, 101); result <- err }()
+		go func() { _, err := environment.trackedCaseService.CheckCaseStatus(ctx, 101); result <- err }()
 		<-entered
 		cancel()
 		err := <-result
 		<-canceled
-		removed := environment.trackedCaseService.Remove(context.Background(), 101)
+		removed := environment.trackedCaseService.RemoveTrackedCase(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, err, context.Canceled, "cancellation failed to drain")
@@ -265,7 +265,7 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
-		status, err := service.Status(context.Background(), 101)
+		status, err := service.CheckCaseStatus(context.Background(), 101)
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
@@ -294,10 +294,10 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 		// When
 		environment.clock.Set(epoch.Add(time.Minute))
 		stage.Store("B")
-		manual, firstError := environment.trackedCaseService.Status(context.Background(), 101)
+		manual, firstError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(2 * time.Minute))
 		stage.Store("A")
-		scheduled, secondError := environment.trackedCaseService.Scheduled(context.Background(), 101)
+		scheduled, secondError := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 101)
 		history, thirdError := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
@@ -314,7 +314,7 @@ func TestTrackedCaseServiceStatus(test *testing.T) {
 	})
 }
 
-func TestTrackedCaseServiceScheduled(test *testing.T) {
+func TestTrackedCaseServiceRunScheduledCaseCheck(test *testing.T) {
 	test.Run("should skip guarded case and preserve manual budget when run at slot", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
@@ -322,12 +322,12 @@ func TestTrackedCaseServiceScheduled(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
-		scheduled, firstError := environment.trackedCaseService.Scheduled(context.Background(), 101)
+		scheduled, firstError := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 101)
 		environment.clock.Set(epoch.Add(119 * time.Second))
-		guarded, secondError := environment.trackedCaseService.Scheduled(context.Background(), 101)
-		cached, thirdError := environment.trackedCaseService.Status(context.Background(), 101)
+		guarded, secondError := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 101)
+		cached, thirdError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(2 * time.Minute))
-		manual, fourthError := environment.trackedCaseService.Status(context.Background(), 101)
+		manual, fourthError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		history, historyError := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
@@ -358,11 +358,11 @@ func TestTrackedCaseServiceScheduled(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
-		_, firstError := environment.trackedCaseService.Scheduled(context.Background(), 101)
+		_, firstError := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 101)
 		environment.clock.Set(epoch.Add(119 * time.Second))
-		before, secondError := environment.trackedCaseService.Status(context.Background(), 101)
+		before, secondError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(2 * time.Minute))
-		_, thirdError := environment.trackedCaseService.Status(context.Background(), 101)
+		_, thirdError := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, firstError, ErrCheck, "failed schedule guard")
@@ -378,7 +378,7 @@ func TestTrackedCaseServiceScheduled(test *testing.T) {
 		environment.trackCase(test, 101)
 
 		// When
-		_, err := environment.trackedCaseService.Scheduled(context.Background(), 0)
+		_, err := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 0)
 
 		// Then
 		assert.ErrorIs(test, err, ErrDenied)
@@ -398,7 +398,7 @@ func TestTrackedCaseServiceScheduled(test *testing.T) {
 		environment.clock.Set(epoch.Add(59 * time.Second))
 
 		// When
-		status, statusErr := service.Scheduled(context.Background(), 101)
+		status, statusErr := service.RunScheduledCaseCheck(context.Background(), 101)
 		next, guardErr := service.checkEligibility(context.Background(), 101, id, true)
 
 		// Then
@@ -418,9 +418,9 @@ func TestTrackedCaseServiceScheduled(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 
 		// When
-		owners, inventoryErr := environment.trackedCaseService.ScheduledOwners(context.Background())
-		status, err := environment.trackedCaseService.Scheduled(context.Background(), 303)
-		_, otherErr := environment.trackedCaseService.Status(context.Background(), 404)
+		owners, inventoryErr := environment.trackedCaseService.ListTrackedCaseOwners(context.Background())
+		status, err := environment.trackedCaseService.RunScheduledCaseCheck(context.Background(), 303)
+		_, otherErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 404)
 
 		// Then
 		assert.NoError(test, inventoryErr)
@@ -540,14 +540,14 @@ func TestTrackedCaseServiceStoreCaseToTrack(test *testing.T) {
 	})
 }
 
-func TestTrackedCaseServiceRemove(test *testing.T) {
+func TestTrackedCaseServiceRemoveTrackedCase(test *testing.T) {
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		environment.trackCase(test, 101)
 
 		// When
-		err := environment.trackedCaseService.Remove(context.Background(), 0)
+		err := environment.trackedCaseService.RemoveTrackedCase(context.Background(), 0)
 
 		// Then
 		assert.ErrorIs(test, err, ErrDenied)
@@ -573,16 +573,16 @@ func TestTrackedCaseServiceRemove(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 		checked := make(chan answer, 1)
 		go func() {
-			status, err := environment.trackedCaseService.Status(context.Background(), 101)
+			status, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 			checked <- answer{status, err}
 		}()
 		<-entered
 		removed := make(chan error, 1)
 
 		// When
-		go func() { removed <- environment.trackedCaseService.Remove(context.Background(), 101) }()
+		go func() { removed <- environment.trackedCaseService.RemoveTrackedCase(context.Background(), 101) }()
 		<-canceled
-		_, busyStatus := environment.trackedCaseService.Status(context.Background(), 101)
+		_, busyStatus := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		_, _, busyStoreCaseToTrack := environment.trackedCaseService.StoreCaseToTrack(context.Background(), 101, number, password)
 		before, beforeErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		select {
@@ -598,7 +598,7 @@ func TestTrackedCaseServiceRemove(test *testing.T) {
 		newID := environment.trackCase(test, 101)
 		_, lateObservation := environment.trackedCaseService.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
 		environment.clock.Set(epoch.Add(119 * time.Second))
-		cached, statusErr := environment.trackedCaseService.Status(context.Background(), 101)
+		cached, statusErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, busyStatus, ErrRemoving, "removal should drain work, delete data, and retain the manual guard")
@@ -635,7 +635,7 @@ func TestTrackedCaseServiceRemove(test *testing.T) {
 		removed := make(chan error, 1)
 
 		// When
-		go func() { removed <- environment.trackedCaseService.Remove(context.Background(), 101) }()
+		go func() { removed <- environment.trackedCaseService.RemoveTrackedCase(context.Background(), 101) }()
 		<-canceled
 		_, _, busy := environment.trackedCaseService.StoreCaseToTrack(context.Background(), 101, number, password)
 		close(release)
@@ -667,20 +667,20 @@ func TestTrackedCaseServiceRemove(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		work := make(chan error, 1)
-		go func() { _, err := environment.trackedCaseService.Status(context.Background(), 101); work <- err }()
+		go func() { _, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101); work <- err }()
 		<-entered
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		removed := make(chan error, 1)
 
 		// When
-		go func() { removed <- environment.trackedCaseService.Remove(ctx, 101) }()
+		go func() { removed <- environment.trackedCaseService.RemoveTrackedCase(ctx, 101) }()
 		<-canceled
 		cancel()
 		close(release)
 		workErr, removeErr := <-work, <-removed
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
-		status, statusErr := environment.trackedCaseService.Status(context.Background(), 101)
+		status, statusErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
 		// Then
 		assert.ErrorIs(test, workErr, ErrRemoving, "canceled removal")
@@ -743,7 +743,7 @@ func TestTrackedCaseServiceShutdown(test *testing.T) {
 			assert.ErrorIs(test, err, ErrClosed, "case tracking setup admitted after shutdown")
 		}
 		{
-			err := environment.trackedCaseService.Remove(context.Background(), 101)
+			err := environment.trackedCaseService.RemoveTrackedCase(context.Background(), 101)
 			assert.ErrorIs(test, err, ErrClosed, "removal admitted after shutdown")
 		}
 	})
