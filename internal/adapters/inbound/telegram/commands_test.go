@@ -20,7 +20,7 @@ func TestNew(test *testing.T) {
 	test.Run("should reject construction when token is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
-		config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+		config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 		config.Token = ""
 
 		// When
@@ -34,8 +34,8 @@ func TestNew(test *testing.T) {
 	test.Run("should panic when case service is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
-		config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
-		config.TrackedCasesService = nil
+		config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
+		config.TrackedCaseService = nil
 
 		var recovered any
 
@@ -46,13 +46,13 @@ func TestNew(test *testing.T) {
 		}()
 
 		// Then
-		assert.Equal[any](test, "required property is missing: TrackedCasesService", recovered)
+		assert.Equal[any](test, "required property is missing: TrackedCaseService", recovered)
 	})
 
 	test.Run("should panic when clock is missing", func(test *testing.T) {
 		// Given
 		environment := setup(test)
-		config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+		config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 		config.Clock = nil
 
 		var recovered any
@@ -96,7 +96,7 @@ func TestNew(test *testing.T) {
 				}
 			}))
 			test.Cleanup(server.Close)
-			config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+			config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 
@@ -117,7 +117,7 @@ func TestNew(test *testing.T) {
 	test.Run("should return no bot when validation is canceled", func(test *testing.T) {
 		// Given
 		environment := setup(test)
-		config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+		config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 		config.HTTPClient = &http.Client{
 			Transport: roundTrip(func(request *http.Request) (*http.Response, error) {
 				<-request.Context().Done()
@@ -184,7 +184,7 @@ func TestNew(test *testing.T) {
 					test.Errorf("unexpected Telegram API method: %s", request.URL.Path)
 				}
 			}))
-			config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+			config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 
@@ -232,7 +232,7 @@ func TestNew(test *testing.T) {
 					test.Errorf("unexpected Telegram API method: %s", request.URL.Path)
 				}
 			}))
-			config := Config{Token: "123:synthetic-token", TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
+			config := Config{Token: "123:synthetic-token", TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock}
 			config.Endpoint = server.URL
 			config.HTTPClient = server.Client()
 			config.OnFatal = func(err error) { fatalErrors = append(fatalErrors, err) }

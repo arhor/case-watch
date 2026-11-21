@@ -23,26 +23,26 @@ import (
 var ErrInvalidToken = errors.New("telegram token rejected")
 
 type Config struct {
-	Token               string
-	Endpoint            string
-	HTTPClient          *http.Client
-	TrackedCasesService *services.TrackedCasesService
-	Clock               models.Clock
-	OnFatal             func(error)
+	Token              string
+	Endpoint           string
+	HTTPClient         *http.Client
+	TrackedCaseService *services.TrackedCaseService
+	Clock              models.Clock
+	OnFatal            func(error)
 }
 
 type Bot struct {
-	handlers            map[string]commandHandler
-	client              *telegramApi.Bot
-	polling             atomic.Bool
-	trackedCasesService *services.TrackedCasesService
-	replyMu             sync.Mutex
-	repliesFailed       bool
-	clock               models.Clock
-	onFatal             func(error)
-	owners              map[int64]*state
-	mu                  sync.Mutex
-	wg                  sync.WaitGroup
+	handlers           map[string]commandHandler
+	client             *telegramApi.Bot
+	polling            atomic.Bool
+	trackedCaseService *services.TrackedCaseService
+	replyMu            sync.Mutex
+	repliesFailed      bool
+	clock              models.Clock
+	onFatal            func(error)
+	owners             map[int64]*state
+	mu                 sync.Mutex
+	wg                 sync.WaitGroup
 }
 
 // New constructs the bot and validates its token using ctx before returning.
@@ -123,13 +123,13 @@ func (this *Bot) NotifyStageChanged(ctx context.Context, owner int64, change mod
 }
 
 func New(ctx context.Context, c Config) (*Bot, error) {
-	c.TrackedCasesService = guard.Require("TrackedCasesService", c.TrackedCasesService)
+	c.TrackedCaseService = guard.Require("TrackedCaseService", c.TrackedCaseService)
 	c.Clock = guard.Require("Clock", c.Clock)
 	bot := &Bot{
-		trackedCasesService: c.TrackedCasesService,
-		clock:               c.Clock,
-		owners:              make(map[int64]*state),
-		onFatal:             c.OnFatal,
+		trackedCaseService: c.TrackedCaseService,
+		clock:              c.Clock,
+		owners:             make(map[int64]*state),
+		onFatal:            c.OnFatal,
 	}
 
 	opts := []telegramApi.Option{
@@ -332,7 +332,7 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 
 func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
 	s.mu.Unlock()
-	status, err := this.trackedCasesService.Status(ctx, id)
+	status, err := this.trackedCaseService.Status(ctx, id)
 	s.mu.Lock()
 	if errors.Is(err, services.ErrNotFound) {
 		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
@@ -393,7 +393,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		err := this.trackedCasesService.Remove(ctx, id)
+		err := this.trackedCaseService.Remove(ctx, id)
 		s.mu.Lock()
 		if err != nil {
 			this.reply(ctx, id, "Не удалось завершить удаление дела.\n\nПопробуйте ещё раз с помощью /remove.")
@@ -438,7 +438,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 	this.reply(ctx, id, "Проверяю данные и подключаю отслеживание вашего дела.")
 	go func(number, password string) {
 		defer this.wg.Done()
-		_, _, err := this.trackedCasesService.StoreCaseToTrack(work, id, number, password)
+		_, _, err := this.trackedCaseService.StoreCaseToTrack(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -518,7 +518,7 @@ func (this *Bot) tokenRejected(err error) bool {
 }
 
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
-	return this.trackedCasesService.HasTrackedCase(ctx, id)
+	return this.trackedCaseService.HasTrackedCase(ctx, id)
 }
 
 // privateOwner binds conversations to Telegram transport metadata.

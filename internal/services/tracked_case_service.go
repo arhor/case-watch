@@ -1,5 +1,5 @@
 // Package services implements case tracking, status checks and removal.
-// One TrackedCasesService is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
+// One TrackedCaseService is shared by the Telegram and scheduled-jobs controllers; transactions contain no network I/O.
 package services
 
 import (
@@ -25,16 +25,16 @@ var (
 	ErrNotFound = models.ErrNotFound
 )
 
-type TrackedCasesServiceConfig struct {
+type TrackedCaseServiceConfig struct {
 	Store   models.Store
 	Portal  models.Portal
 	Clock   models.Clock
 	OnFatal func(error)
 }
 
-var _ models.TrackedCasesService = (*TrackedCasesService)(nil)
+var _ models.TrackedCaseService = (*TrackedCaseService)(nil)
 
-type TrackedCasesService struct {
+type TrackedCaseService struct {
 	mu      sync.Mutex
 	closed  bool
 	owners  map[int64]*ownerState
@@ -44,8 +44,8 @@ type TrackedCasesService struct {
 	clock   models.Clock
 }
 
-func NewTrackedCasesService(config TrackedCasesServiceConfig) *TrackedCasesService {
-	return &TrackedCasesService{
+func NewTrackedCaseService(config TrackedCaseServiceConfig) *TrackedCaseService {
+	return &TrackedCaseService{
 		owners:  make(map[int64]*ownerState),
 		store:   guard.Require("Store", config.Store),
 		portal:  guard.Require("Portal", config.Portal),
@@ -56,7 +56,7 @@ func NewTrackedCasesService(config TrackedCasesServiceConfig) *TrackedCasesServi
 
 // HasTrackedCase lets interactive entry points ask a business-level question
 // without reading a tracked case repository directly.
-func (this *TrackedCasesService) HasTrackedCase(ctx context.Context, owner int64) (bool, error) {
+func (this *TrackedCaseService) HasTrackedCase(ctx context.Context, owner int64) (bool, error) {
 	if owner <= 0 {
 		return false, ErrDenied
 	}
@@ -72,7 +72,7 @@ func (this *TrackedCasesService) HasTrackedCase(ctx context.Context, owner int64
 
 // ScheduledOwners returns the owners with tracked cases available for scheduler
 // traversal. The scheduler entry point never reads repositories itself.
-func (this *TrackedCasesService) ScheduledOwners(ctx context.Context) ([]int64, error) {
+func (this *TrackedCaseService) ScheduledOwners(ctx context.Context) ([]int64, error) {
 	items, err := this.store.TrackedCases().FindAll(ctx)
 	if err != nil {
 		return nil, this.storageError(ctx, err)
@@ -86,7 +86,7 @@ func (this *TrackedCasesService) ScheduledOwners(ctx context.Context) ([]int64, 
 	return owners, nil
 }
 
-func (this *TrackedCasesService) StoreCaseToTrack(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
+func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	if owner <= 0 {
 		return "", time.Time{}, ErrDenied
 	}
@@ -153,21 +153,21 @@ func (this *TrackedCasesService) StoreCaseToTrack(ctx context.Context, owner int
 	return stage, checkedAt, nil
 }
 
-func (this *TrackedCasesService) Status(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) Status(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (this *TrackedCasesService) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) Scheduled(ctx context.Context, owner int64) (models.Status, error) {
 	return this.check(ctx, owner, false)
 }
 
 // Remove requires confirmation at the conversation boundary. Once admitted it
 // drains canceled work before returning, even when the caller cancels; cancellation
 // then prevents deletion. Failed removal retains the tracked case and reopens work.
-func (this *TrackedCasesService) Remove(ctx context.Context, owner int64) error {
+func (this *TrackedCaseService) Remove(ctx context.Context, owner int64) error {
 	if owner <= 0 {
 		return ErrDenied
 	}
@@ -223,7 +223,7 @@ func (this *TrackedCasesService) Remove(ctx context.Context, owner int64) error 
 // Shutdown permanently closes admission, cancels every owner check and drains
 // work before store may close. Concurrent calls are safe and all wait for the
 // same admitted work. Collaborators must honor cancellation.
-func (this *TrackedCasesService) Shutdown() {
+func (this *TrackedCaseService) Shutdown() {
 	this.mu.Lock()
 	this.closed = true
 	var done []<-chan struct{}
@@ -264,7 +264,7 @@ type ownerState struct {
 	removalDone chan struct{}
 }
 
-func (this *TrackedCasesService) state(owner int64) *ownerState {
+func (this *TrackedCaseService) state(owner int64) *ownerState {
 	state := this.owners[owner]
 	if state == nil {
 		state = &ownerState{}
@@ -273,7 +273,7 @@ func (this *TrackedCasesService) state(owner int64) *ownerState {
 	return state
 }
 
-func (this *TrackedCasesService) storageError(ctx context.Context, err error) error {
+func (this *TrackedCaseService) storageError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -302,7 +302,7 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *TrackedCasesService) baseline(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
+func (this *TrackedCaseService) baseline(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	stage, _, err := this.portal.Check(bounded, owner, number, password)
@@ -319,7 +319,7 @@ func cached(stage string, checkedAt time.Time) models.Status {
 	return models.Status{Stage: stage, CheckedAt: checkedAt}
 }
 
-func (this *TrackedCasesService) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
+func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
 	if owner <= 0 {
 		return models.Status{}, ErrDenied
 	}
@@ -381,7 +381,7 @@ func (this *TrackedCasesService) check(ctx context.Context, owner int64, manual 
 }
 
 // Scheduled calls wait for their canceled check to finish before returning.
-func (this *TrackedCasesService) wait(
+func (this *TrackedCaseService) wait(
 	ctx context.Context,
 	check *check,
 	drain bool,
@@ -420,7 +420,7 @@ func later(a, b time.Time) time.Time {
 	return b
 }
 
-func (this *TrackedCasesService) refresh(
+func (this *TrackedCaseService) refresh(
 	ctx context.Context,
 	owner int64,
 	state *ownerState,
@@ -457,7 +457,7 @@ func (this *TrackedCasesService) refresh(
 	close(check.done)
 }
 
-func (this *TrackedCasesService) saveTrackedCase(
+func (this *TrackedCaseService) saveTrackedCase(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -470,7 +470,7 @@ func (this *TrackedCasesService) saveTrackedCase(
 	})
 }
 
-func (this *TrackedCasesService) saveObservation(
+func (this *TrackedCaseService) saveObservation(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -501,7 +501,7 @@ func (this *TrackedCasesService) saveObservation(
 	return change, nil
 }
 
-func (this *TrackedCasesService) deleteTrackedCase(
+func (this *TrackedCaseService) deleteTrackedCase(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -517,7 +517,7 @@ func (this *TrackedCasesService) deleteTrackedCase(
 	})
 }
 
-func (this *TrackedCasesService) checkEligibility(
+func (this *TrackedCaseService) checkEligibility(
 	ctx context.Context,
 	owner int64,
 	id string,
@@ -532,7 +532,7 @@ func (this *TrackedCasesService) checkEligibility(
 	return next, err
 }
 
-func (this *TrackedCasesService) reserveCheck(
+func (this *TrackedCaseService) reserveCheck(
 	ctx context.Context,
 	owner int64,
 	id string,

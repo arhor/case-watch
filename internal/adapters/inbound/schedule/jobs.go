@@ -22,38 +22,38 @@ type StageChangeNotifier interface {
 }
 
 type Config struct {
-	Notifier            StageChangeNotifier
-	TrackedCasesService models.TrackedCasesService
-	Clock               models.Clock
+	Notifier           StageChangeNotifier
+	TrackedCaseService models.TrackedCaseService
+	Clock              models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
 }
 
 type Jobs struct {
-	notifier            StageChangeNotifier
-	trackedCasesService models.TrackedCasesService
-	clock               models.Clock
-	wait                func(context.Context, time.Time) error
-	schedule            cron.Schedule
-	running             sync.Mutex
+	notifier           StageChangeNotifier
+	trackedCaseService models.TrackedCaseService
+	clock              models.Clock
+	wait               func(context.Context, time.Time) error
+	schedule           cron.Schedule
+	running            sync.Mutex
 }
 
 func New(config Config) *Jobs {
-	trackedCasesService := guard.Require("TrackedCasesService", config.TrackedCasesService)
-	clock := guard.Require("Clock", config.Clock)
-	notifier := guard.Require("Notifier", config.Notifier)
-	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
-	waitUntil := config.Wait
-	if waitUntil == nil {
+	trackedCaseService := guard.Require("TrackedCaseService", config.TrackedCaseService)
+	clock              := guard.Require("Clock", config.Clock)
+	notifier           := guard.Require("Notifier", config.Notifier)
+	schedule           := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
+	waitUntil          := config.Wait
+	if                 waitUntil == nil {
 		waitUntil = wait
 	}
 	return &Jobs{
-		notifier:            notifier,
-		trackedCasesService: trackedCasesService,
-		clock:               clock,
-		wait:                waitUntil,
-		schedule:            schedule,
+		notifier:           notifier,
+		trackedCaseService: trackedCaseService,
+		clock:              clock,
+		wait:               waitUntil,
+		schedule:           schedule,
 	}
 }
 
@@ -91,7 +91,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 		if now := this.clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := this.trackedCasesService.ScheduledOwners(ctx)
+		owners, err := this.trackedCaseService.ScheduledOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -102,7 +102,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			status, err := this.trackedCasesService.Scheduled(ctx, owner)
+			status, err := this.trackedCaseService.Scheduled(ctx, owner)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Print("scheduled case check failed")
