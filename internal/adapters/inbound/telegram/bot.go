@@ -15,6 +15,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/platform/guard"
+	"github.com/arhor/case-watch/internal/services"
 	telegramApi "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
 )
