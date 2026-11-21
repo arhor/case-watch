@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
-var _ models.TrackedCasesHistoryRepository = (*TrackedCasesHistoryRepository)(nil)
+var _ domain.TrackedCasesHistoryRepository = (*TrackedCasesHistoryRepository)(nil)
 
 type TrackedCasesHistoryRepository struct {
 	executor QueryExecutor
@@ -18,7 +18,7 @@ func NewTrackedCasesHistoryRepository(executor QueryExecutor) *TrackedCasesHisto
 }
 
 // FindByTrackedCase returns transitions belonging to the supplied owner and identity.
-func (this *TrackedCasesHistoryRepository) FindByTrackedCase(ctx context.Context, owner int64, id string) ([]models.Transition, error) {
+func (this *TrackedCasesHistoryRepository) FindByTrackedCase(ctx context.Context, owner int64, id string) ([]domain.Transition, error) {
 	rows, err := this.executor.QueryContext(ctx, `
 		SELECT h.sequence, h.tracked_case_id, h.prev_stage, h.curr_state, h.checked_at
 		  FROM tracked_cases_history AS h
@@ -33,9 +33,9 @@ func (this *TrackedCasesHistoryRepository) FindByTrackedCase(ctx context.Context
 		return nil, ErrStorage
 	}
 	defer rows.Close()
-	result := []models.Transition{}
+	result := []domain.Transition{}
 	for rows.Next() {
-		var t models.Transition
+		var t domain.Transition
 		var identity, checked string
 		if rows.Scan(&t.Sequence, &identity, &t.PreviousStage, &t.Stage, &checked) != nil {
 			return nil, ErrStorage

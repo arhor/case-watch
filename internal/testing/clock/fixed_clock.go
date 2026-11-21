@@ -4,10 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
-var _ models.Clock = (*FixedClock)(nil)
+var _ domain.Clock = (*FixedClock)(nil)
 
 // FixedClock returns a fixed time until explicitly changed with Set.
 // Its methods are safe for concurrent use.

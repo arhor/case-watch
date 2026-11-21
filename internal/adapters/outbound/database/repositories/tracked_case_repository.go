@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
-var _ models.TrackedCaseRepository = (*TrackedCaseRepository)(nil)
+var _ domain.TrackedCaseRepository = (*TrackedCaseRepository)(nil)
 
 type TrackedCaseRepository struct {
 	executor QueryExecutor
@@ -20,9 +20,9 @@ func NewTrackedCaseRepository(executor QueryExecutor) *TrackedCaseRepository {
 	return &TrackedCaseRepository{executor: executor}
 }
 
-func (this *TrackedCaseRepository) FindByOwner(ctx context.Context, owner int64) (models.TrackedCase, error) {
+func (this *TrackedCaseRepository) FindByOwner(ctx context.Context, owner int64) (domain.TrackedCase, error) {
 	if owner <= 0 {
-		return models.TrackedCase{}, ErrInvalid
+		return domain.TrackedCase{}, ErrInvalid
 	}
 	return scanTrackedCase(
 		this.executor.QueryRowContext(ctx, `
@@ -35,21 +35,21 @@ func (this *TrackedCaseRepository) FindByOwner(ctx context.Context, owner int64)
 	)
 }
 
-func (this *TrackedCaseRepository) FindByIdentity(ctx context.Context, owner int64, id string) (models.TrackedCase, error) {
+func (this *TrackedCaseRepository) FindByIdentity(ctx context.Context, owner int64, id string) (domain.TrackedCase, error) {
 	if !validID(id) {
-		return models.TrackedCase{}, ErrInvalid
+		return domain.TrackedCase{}, ErrInvalid
 	}
 	trackedCase, err := this.FindByOwner(ctx, owner)
 	if err != nil {
-		return models.TrackedCase{}, err
+		return domain.TrackedCase{}, err
 	}
 	if trackedCase.ID != id {
-		return models.TrackedCase{}, ErrNotFound
+		return domain.TrackedCase{}, ErrNotFound
 	}
 	return trackedCase, nil
 }
 
-func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]models.TrackedCase, error) {
+func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]domain.TrackedCase, error) {
 	rows, err := this.executor.QueryContext(ctx, `
 		SELECT id, owner_id, case_number, password, curr_state, checked_at
 		  FROM tracked_cases
@@ -60,7 +60,7 @@ func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]models.Tracke
 		return nil, ErrStorage
 	}
 	defer rows.Close()
-	result := []models.TrackedCase{}
+	result := []domain.TrackedCase{}
 	for rows.Next() {
 		trackedCase, err := scanTrackedCase(rows)
 		if err != nil {
@@ -163,19 +163,19 @@ func scanTrackedCase(
 	row interface {
 		Scan(...any) error
 	},
-) (models.TrackedCase, error) {
-	var trackedCase models.TrackedCase
+) (domain.TrackedCase, error) {
+	var trackedCase domain.TrackedCase
 	var checked string
 	err := row.Scan(&trackedCase.ID, &trackedCase.OwnerID, &trackedCase.Number, &trackedCase.Password, &trackedCase.Stage, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return trackedCase, ErrNotFound
 	}
 	if err != nil {
-		return models.TrackedCase{}, ErrStorage
+		return domain.TrackedCase{}, ErrStorage
 	}
 	trackedCase.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
-		return models.TrackedCase{}, ErrStorage
+		return domain.TrackedCase{}, ErrStorage
 	}
 	return trackedCase, nil
 }

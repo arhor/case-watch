@@ -8,7 +8,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
@@ -31,12 +31,12 @@ func TestOpen(test *testing.T) {
 			err := store.TrackedCasesHistory().Append(ctx, id, "A", stage, checked)
 			assert.NoError(test, err)
 		}
-		guard := models.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
+		guard := domain.Cooldown{SubjectType: "manual_check", SubjectID: "101", StartedAt: checked}
 		{
 			err = store.Cooldowns().Upsert(ctx, guard)
 			assert.NoError(test, err)
 		}
-		caseGuard := models.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
+		caseGuard := domain.Cooldown{SubjectType: "case_check", SubjectID: id, StartedAt: checked}
 		{
 			err := store.Cooldowns().Upsert(ctx, caseGuard)
 			assert.NoError(test, err)

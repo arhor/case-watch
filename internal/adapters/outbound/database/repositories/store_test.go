@@ -9,7 +9,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/testing/assert"
 )
 
@@ -41,7 +41,7 @@ func TestStoreRunInTx(test *testing.T) {
 		checkedAt := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
 		// When
-		err = store.RunInTx(ctx, func(store models.Store) error {
+		err = store.RunInTx(ctx, func(store domain.Store) error {
 			return store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt)
 		})
 
@@ -64,7 +64,7 @@ func TestStoreRunInTx(test *testing.T) {
 		targetError := errors.New("abort transaction")
 
 		// When
-		err = store.RunInTx(ctx, func(store models.Store) error {
+		err = store.RunInTx(ctx, func(store domain.Store) error {
 			if err := store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", "A", checkedAt); err != nil {
 				return err
 			}
@@ -86,8 +86,8 @@ func TestStoreRunInTx(test *testing.T) {
 		store := repositories.NewStore(db)
 
 		// When
-		err = store.RunInTx(ctx, func(store models.Store) error {
-			return store.RunInTx(ctx, func(models.Store) error { return nil })
+		err = store.RunInTx(ctx, func(store domain.Store) error {
+			return store.RunInTx(ctx, func(domain.Store) error { return nil })
 		})
 
 		// Then

@@ -11,20 +11,20 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
 
 type StageChangeNotifier interface {
-	NotifyStageChanged(context.Context, int64, models.StageChange) error
+	NotifyStageChanged(context.Context, int64, domain.StageChange) error
 }
 
 type Config struct {
 	Notifier           StageChangeNotifier
-	TrackedCaseService models.TrackedCaseService
-	Clock              models.Clock
+	TrackedCaseService domain.TrackedCaseService
+	Clock              domain.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
@@ -32,8 +32,8 @@ type Config struct {
 
 type Jobs struct {
 	notifier           StageChangeNotifier
-	trackedCaseService models.TrackedCaseService
-	clock              models.Clock
+	trackedCaseService domain.TrackedCaseService
+	clock              domain.Clock
 	wait               func(context.Context, time.Time) error
 	schedule           cron.Schedule
 	running            sync.Mutex

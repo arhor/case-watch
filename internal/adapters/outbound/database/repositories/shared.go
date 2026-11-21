@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
 var (
-	ErrStorage  = models.ErrStorage
-	ErrNotFound = models.ErrNotFound
-	ErrExists   = models.ErrExists
-	ErrInvalid  = models.ErrInvalid
+	ErrStorage  = domain.ErrStorage
+	ErrNotFound = domain.ErrNotFound
+	ErrExists   = domain.ErrExists
+	ErrInvalid  = domain.ErrInvalid
 )
 
 // -- Internals ----------------------------------------------------------------
