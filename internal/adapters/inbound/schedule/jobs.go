@@ -23,7 +23,7 @@ type StageChangeNotifier interface {
 
 type Config struct {
 	Notifier    StageChangeNotifier
-	CaseService models.TrackedCasesService
+	TrackedCasesService models.TrackedCasesService
 	Clock       models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
@@ -32,7 +32,7 @@ type Config struct {
 
 type Jobs struct {
 	notifier    StageChangeNotifier
-	caseService models.TrackedCasesService
+	trackedCasesService models.TrackedCasesService
 	clock       models.Clock
 	wait        func(context.Context, time.Time) error
 	schedule    cron.Schedule
@@ -40,7 +40,7 @@ type Jobs struct {
 }
 
 func New(config Config) *Jobs {
-	caseService := guard.Require("CaseService", config.CaseService)
+	trackedCasesService := guard.Require("TrackedCasesService", config.TrackedCasesService)
 	clock := guard.Require("Clock", config.Clock)
 	notifier := guard.Require("Notifier", config.Notifier)
 	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
@@ -50,7 +50,7 @@ func New(config Config) *Jobs {
 	}
 	return &Jobs{
 		notifier:    notifier,
-		caseService: caseService,
+		trackedCasesService: trackedCasesService,
 		clock:       clock,
 		wait:        waitUntil,
 		schedule:    schedule,
@@ -91,7 +91,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 		if now := this.clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := this.caseService.ScheduledOwners(ctx)
+		owners, err := this.trackedCasesService.ScheduledOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -102,7 +102,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			status, err := this.caseService.Scheduled(ctx, owner)
+			status, err := this.trackedCasesService.Scheduled(ctx, owner)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Print("scheduled case check failed")

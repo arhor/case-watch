@@ -29,12 +29,12 @@ func TestJobsNew(test *testing.T) {
 		}()
 
 		// Then
-		assert.Equal[any](test, "required property is missing: CaseService", recovered)
+		assert.Equal[any](test, "required property is missing: TrackedCasesService", recovered)
 	})
 
 	test.Run("should panic when clock is missing", func(test *testing.T) {
 		// Given
-		config := schedule.Config{CaseService: tracking{}}
+		config := schedule.Config{TrackedCasesService: tracking{}}
 		var recovered any
 
 		// When
@@ -123,7 +123,7 @@ func TestJobsNext(test *testing.T) {
 	} {
 		test.Run(scenario.name, func(test *testing.T) {
 			// Given
-			scheduler := newScheduler(test, schedule.Config{CaseService: tracking{}, Clock: clock.NewFixedClock(time.Time{})})
+			scheduler := newScheduler(test, schedule.Config{TrackedCasesService: tracking{}, Clock: clock.NewFixedClock(time.Time{})})
 			after := parseTime(scenario.after)
 			expected := parseTime(scenario.expected)
 
@@ -142,7 +142,7 @@ func TestJobsRun(test *testing.T) {
 		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		scheduler := newScheduler(test, schedule.Config{
 			Clock: clock,
-			CaseService: tracking{
+			TrackedCasesService: tracking{
 				ownersError: errors.New("private storage details"),
 			},
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -169,7 +169,7 @@ func TestJobsRun(test *testing.T) {
 		var deadlines []time.Time
 		scheduler := newScheduler(test, schedule.Config{
 			Clock: clock,
-			CaseService: tracking{
+			TrackedCasesService: tracking{
 				owners: []int64{1, 2, 3},
 				scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 					calls = append(calls, owner)
@@ -210,7 +210,7 @@ func TestJobsRun(test *testing.T) {
 			var waitedUntil time.Time
 			scheduler := newScheduler(test, schedule.Config{
 				Clock: clock,
-				CaseService: tracking{
+				TrackedCasesService: tracking{
 					owners: []int64{1},
 					scheduled: func(context.Context, int64) (models.Status, error) {
 						calls++
@@ -243,7 +243,7 @@ func TestJobsRun(test *testing.T) {
 		canceled := make(chan struct{})
 		release := make(chan struct{})
 		done := make(chan error, 1)
-		scheduler := newScheduler(test, schedule.Config{Clock: clock, CaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
+		scheduler := newScheduler(test, schedule.Config{Clock: clock, TrackedCasesService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
 			close(entered)
 			<-ctx.Done()
 			close(canceled)
@@ -281,7 +281,7 @@ func TestJobsRun(test *testing.T) {
 		waits, calls := 0, 0
 		scheduler := newScheduler(test, schedule.Config{
 			Clock: clock,
-			CaseService: tracking{
+			TrackedCasesService: tracking{
 				owners: []int64{1},
 				scheduled: func(context.Context, int64) (models.Status, error) {
 					calls++
@@ -320,7 +320,7 @@ func TestJobsRun(test *testing.T) {
 		test.Cleanup(func() { _ = db.Close() })
 		clock := clock.NewFixedClock(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))
 		calls := 0
-		caseService := services.NewCaseService(services.CaseServiceConfig{
+		trackedCasesService := services.NewTrackedCasesService(services.TrackedCasesServiceConfig{
 			Store: repositories.NewStore(db),
 			Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) {
 				calls++
@@ -328,19 +328,19 @@ func TestJobsRun(test *testing.T) {
 			}),
 			Clock: clock,
 		})
-		test.Cleanup(caseService.Shutdown)
+		test.Cleanup(trackedCasesService.Shutdown)
 		{
-			_, _, err := caseService.StoreCaseToTrack(ctx, 101, "synthetic-number", "synthetic-password")
+			_, _, err := trackedCasesService.StoreCaseToTrack(ctx, 101, "synthetic-number", "synthetic-password")
 			assert.NoError(test, err)
 		}
 		monday := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
 		clock.Set(monday.Add(-time.Second))
-		_, manualErr := caseService.Status(ctx, 101)
+		_, manualErr := trackedCasesService.Status(ctx, 101)
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
-			CaseService: caseService,
+			TrackedCasesService: trackedCasesService,
 			Clock:       clock,
 			Wait: func(_ context.Context, deadline time.Time) error {
 				waits++
@@ -375,7 +375,7 @@ func TestJobsNotifications(test *testing.T) {
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
 			Clock: fixedClock,
-			CaseService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
+			TrackedCasesService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 				if owner == 2 {
 					return models.Status{}, nil
 				}
@@ -419,7 +419,7 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 		test.Cleanup(func() { _ = db.Close() })
 		fixedClock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		stage := "A"
-		service := services.NewCaseService(services.CaseServiceConfig{
+		service := services.NewTrackedCasesService(services.TrackedCasesServiceConfig{
 			Store: repositories.NewStore(db), Clock: fixedClock,
 			Portal: scheduledPortal(func(context.Context, string, string) (string, time.Time, error) { return stage, time.Time{}, nil }),
 		})
@@ -431,7 +431,7 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 		var recipients []int64
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
-			CaseService: service, Clock: fixedClock,
+			TrackedCasesService: service, Clock: fixedClock,
 			Notifier: notifierFunc(func(_ context.Context, owner int64, change models.StageChange) error {
 				recipients = append(recipients, owner)
 				changes = append(changes, change)

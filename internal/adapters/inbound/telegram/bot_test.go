@@ -251,7 +251,7 @@ func TestBotHandle(test *testing.T) {
 		// Given
 		environment := setup(test)
 		started, done := make(chan struct{}), make(chan struct{})
-		environment.bot.caseService = services.NewCaseService(services.CaseServiceConfig{
+		environment.bot.trackedCasesService = services.NewTrackedCasesService(services.TrackedCasesServiceConfig{
 			Store: environment.store,
 			Portal: portal(func(ctx context.Context, _, _ string) (string, time.Time, error) {
 				close(started)
@@ -405,7 +405,7 @@ func TestBotRun(test *testing.T) {
 		server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
-		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock}
+		config := Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
 		var fatalError error
 		config.OnFatal = func(err error) {
 			fatalError = err
@@ -455,7 +455,7 @@ func TestBotRun(test *testing.T) {
 				test.Error("unexpected startup network")
 			}
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) { fatalErrors <- err }})
+		bot := environment.newBot(test, server, Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock, OnFatal: func(err error) { fatalErrors <- err }})
 		done := make(chan struct{})
 
 		// When
@@ -500,7 +500,7 @@ func TestBotReply(test *testing.T) {
 			responseWriter.WriteHeader(429)
 			responseWriter.Write([]byte(`{"ok":false,"error_code":429,"description":"synthetic","parameters":{"retry_after":60}}`))
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock})
+		bot := environment.newBot(test, server, Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock})
 
 		// When
 		bot.reply(context.Background(), 101, "synthetic")
@@ -518,7 +518,7 @@ func TestBotReply(test *testing.T) {
 			calls++
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
-		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) {
+		config := Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock, OnFatal: func(err error) {
 			if errors.Is(err, ErrInvalidToken) {
 				rejected++
 			}
@@ -600,7 +600,7 @@ func TestBotErase(test *testing.T) {
 		server := newServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			responseWriter.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
-		config := Config{CaseService: environment.bot.caseService, Clock: environment.clock}
+		config := Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock}
 		var fatalError error
 		config.OnFatal = func(err error) {
 			fatalError = err
@@ -628,7 +628,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 			environment.replies = append(environment.replies, request.FormValue("text"))
 			writer.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock})
+		bot := environment.newBot(test, server, Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock})
 		change := models.StageChange{Stage: "Etap <B>", CheckedAt: environment.clock.Now()}
 
 		// When
@@ -648,7 +648,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 			attempts++
 			writer.Write([]byte(`{"ok":false,"error_code":400,"description":"synthetic-secret"}`))
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock})
+		bot := environment.newBot(test, server, Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock})
 
 		// When
 		err := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
@@ -668,7 +668,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 			attempts++
 			writer.Write([]byte(`{"ok":false,"error_code":401,"description":"synthetic-secret"}`))
 		}))
-		bot := environment.newBot(test, server, Config{CaseService: environment.bot.caseService, Clock: environment.clock, OnFatal: func(err error) { fatalError = err }})
+		bot := environment.newBot(test, server, Config{TrackedCasesService: environment.bot.trackedCasesService, Clock: environment.clock, OnFatal: func(err error) { fatalError = err }})
 
 		// When
 		first := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
@@ -741,7 +741,7 @@ func setup(test *testing.T) *fixture {
 	assert.NoError(test, err)
 	environment.store = repositories.NewStore(db)
 	test.Cleanup(func() { db.Close() })
-	caseService := services.NewCaseService(services.CaseServiceConfig{
+	trackedCasesService := services.NewTrackedCasesService(services.TrackedCasesServiceConfig{
 		Store: environment.store,
 		Portal: portal(func(context.Context, string, string) (string, time.Time, error) {
 			environment.calls++
@@ -754,7 +754,7 @@ func setup(test *testing.T) *fixture {
 		Clock: environment.clock,
 	})
 	environment.bot = environment.newBot(test, server, Config{
-		CaseService: caseService,
+		TrackedCasesService: trackedCasesService,
 		Clock:       environment.clock,
 	})
 	return environment

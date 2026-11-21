@@ -26,7 +26,7 @@ type Config struct {
 	Token       string
 	Endpoint    string
 	HTTPClient  *http.Client
-	CaseService *services.CaseService
+	TrackedCasesService *services.TrackedCasesService
 	Clock       models.Clock
 	OnFatal     func(error)
 }
@@ -35,7 +35,7 @@ type Bot struct {
 	handlers      map[string]commandHandler
 	client        *telegramApi.Bot
 	polling       atomic.Bool
-	caseService   *services.CaseService
+	trackedCasesService   *services.TrackedCasesService
 	replyMu       sync.Mutex
 	repliesFailed bool
 	clock         models.Clock
@@ -123,10 +123,10 @@ func (this *Bot) NotifyStageChanged(ctx context.Context, owner int64, change mod
 }
 
 func New(ctx context.Context, c Config) (*Bot, error) {
-	c.CaseService = guard.Require("CaseService", c.CaseService)
+	c.TrackedCasesService = guard.Require("TrackedCasesService", c.TrackedCasesService)
 	c.Clock = guard.Require("Clock", c.Clock)
 	bot := &Bot{
-		caseService: c.CaseService,
+		trackedCasesService: c.TrackedCasesService,
 		clock:       c.Clock,
 		owners:      make(map[int64]*state),
 		onFatal:     c.OnFatal,
@@ -332,7 +332,7 @@ func (this *Bot) onStart(ctx context.Context, id int64, s *state, now time.Time)
 
 func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time) {
 	s.mu.Unlock()
-	status, err := this.caseService.Status(ctx, id)
+	status, err := this.trackedCasesService.Status(ctx, id)
 	s.mu.Lock()
 	if errors.Is(err, services.ErrNotFound) {
 		this.reply(ctx, id, "У вас пока нет дела для отслеживания.\n"+
@@ -393,7 +393,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 		}
 		s.removal = time.Time{}
 		s.mu.Unlock()
-		err := this.caseService.Remove(ctx, id)
+		err := this.trackedCasesService.Remove(ctx, id)
 		s.mu.Lock()
 		if err != nil {
 			this.reply(ctx, id, "Не удалось завершить удаление дела.\n\nПопробуйте ещё раз с помощью /remove.")
@@ -438,7 +438,7 @@ func (this *Bot) onText(ctx context.Context, m *telegramModels.Message, s *state
 	this.reply(ctx, id, "Проверяю данные и подключаю отслеживание вашего дела.")
 	go func(number, password string) {
 		defer this.wg.Done()
-		_, _, err := this.caseService.StoreCaseToTrack(work, id, number, password)
+		_, _, err := this.trackedCasesService.StoreCaseToTrack(work, id, number, password)
 		cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -518,7 +518,7 @@ func (this *Bot) tokenRejected(err error) bool {
 }
 
 func (this *Bot) exists(ctx context.Context, id int64) (bool, error) {
-	return this.caseService.HasTrackedCase(ctx, id)
+	return this.trackedCasesService.HasTrackedCase(ctx, id)
 }
 
 // privateOwner binds conversations to Telegram transport metadata.
