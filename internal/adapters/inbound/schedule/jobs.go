@@ -9,18 +9,13 @@ import (
 
 	_ "time/tzdata" // Keep Warsaw rules available in minimal containers.
 
+	"github.com/robfig/cron/v3"
+
 	"github.com/arhor/case-watch/internal/models"
 	"github.com/arhor/case-watch/internal/platform/guard"
-	"github.com/robfig/cron/v3"
 )
 
 var ErrScheduler = errors.New("scheduler operation failed")
-
-type Cases interface {
-	ScheduledOwners(context.Context) ([]int64, error)
-	// Scheduled shares manual coordination and returns after canceled work drains.
-	Scheduled(context.Context, int64) (models.Status, error)
-}
 
 type StageChangeNotifier interface {
 	NotifyStageChanged(context.Context, int64, models.StageChange) error
@@ -28,7 +23,7 @@ type StageChangeNotifier interface {
 
 type Config struct {
 	Notifier    StageChangeNotifier
-	CaseService Cases
+	CaseService models.TrackedCasesService
 	Clock       models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
@@ -36,11 +31,34 @@ type Config struct {
 }
 
 type Jobs struct {
-	c        Config
-	schedule cron.Schedule
-	running  sync.Mutex
+	notifier    StageChangeNotifier
+	caseService models.TrackedCasesService
+	clock       models.Clock
+	wait        func(context.Context, time.Time) error
+	schedule    cron.Schedule
+	running     sync.Mutex
 }
 
+func New(config Config) *Jobs {
+	caseService := guard.Require("CaseService", config.CaseService)
+	clock := guard.Require("Clock", config.Clock)
+	notifier := guard.Require("Notifier", config.Notifier)
+	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
+	waitUntil := config.Wait
+	if waitUntil == nil {
+		waitUntil = wait
+	}
+	return &Jobs{
+		notifier:    notifier,
+		caseService: caseService,
+		clock:       clock,
+		wait:        waitUntil,
+		schedule:    schedule,
+	}
+}
+
+// Next returns the first strictly future Warsaw slot. Startup at a slot never
+// replays that slot; holidays use the same weekday rules as every other date.
 func (this *Jobs) Next(after time.Time) time.Time {
 	return this.schedule.Next(after)
 }
@@ -58,8 +76,8 @@ func (this *Jobs) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		slot := this.Next(this.c.Clock.Now())
-		if err := this.c.Wait(ctx, slot); err != nil {
+		slot := this.Next(this.clock.Now())
+		if err := this.wait(ctx, slot); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -70,10 +88,10 @@ func (this *Jobs) Run(ctx context.Context) error {
 		}
 		// Allow ordinary timer jitter within the cron minute; suspension past
 		// that minute misses the slot and must not trigger catch-up.
-		if now := this.c.Clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
+		if now := this.clock.Now(); now.Before(slot) || !now.Before(slot.Add(time.Minute)) {
 			continue
 		}
-		owners, err := this.c.CaseService.ScheduledOwners(ctx)
+		owners, err := this.caseService.ScheduledOwners(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -84,7 +102,7 @@ func (this *Jobs) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			status, err := this.c.CaseService.Scheduled(ctx, owner)
+			status, err := this.caseService.Scheduled(ctx, owner)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Print("scheduled case check failed")
@@ -92,27 +110,13 @@ func (this *Jobs) Run(ctx context.Context) error {
 				continue
 			}
 			if status.Change != nil && ctx.Err() == nil {
-				if err := this.c.Notifier.NotifyStageChanged(ctx, owner, *status.Change); err != nil && ctx.Err() == nil {
+				if err := this.notifier.NotifyStageChanged(ctx, owner, *status.Change); err != nil && ctx.Err() == nil {
 					log.Print("stage change notification failed")
 				}
 			}
 		}
 	}
 }
-
-func New(c Config) *Jobs {
-	c.CaseService = guard.Require("CaseService", c.CaseService)
-	c.Clock = guard.Require("Clock", c.Clock)
-	c.Notifier = guard.Require("Notifier", c.Notifier)
-	schedule := guard.Must(cron.ParseStandard("CRON_TZ=Europe/Warsaw 0 8,10,12,14,16,18 * * 1-5"))
-	if c.Wait == nil {
-		c.Wait = wait
-	}
-	return &Jobs{c: c, schedule: schedule}
-}
-
-// Next returns the first strictly future Warsaw slot. Startup at a slot never
-// replays that slot; holidays use the same weekday rules as every other date.
 
 // -- Internals ----------------------------------------------------------------
 
