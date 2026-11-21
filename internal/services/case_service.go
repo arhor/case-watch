@@ -32,6 +32,8 @@ type CaseServiceConfig struct {
 	OnFatal func(error)
 }
 
+var _ models.TrackedCasesService = (*CaseService)(nil)
+
 type CaseService struct {
 	mu      sync.Mutex
 	closed  bool
