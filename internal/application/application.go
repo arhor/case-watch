@@ -47,22 +47,22 @@ func run(ctx context.Context) (result error) {
 	defer stop(nil)
 
 	portalClient := clients.NewGdanskPortalClient(clients.GdanskPortalClientOptions{Clock: clock})
-	// Deferred before caseService.Shutdown so it runs after in-flight checks drain.
+	// Deferred before trackedCaseService.Shutdown so it runs after in-flight checks drain.
 	defer portalClient.Close()
 
-	caseService := services.NewCaseService(services.CaseServiceConfig{
+	trackedCaseService := services.NewTrackedCaseService(services.TrackedCaseServiceConfig{
 		Store:   store,
 		Portal:  portalClient,
 		Clock:   clock,
 		OnFatal: stop,
 	})
-	defer caseService.Shutdown()
+	defer trackedCaseService.Shutdown()
 
 	telegramBot, err := telegram.New(work, telegram.Config{
-		Token:       cfg.TelegramBotToken,
-		CaseService: caseService,
-		Clock:       clock,
-		OnFatal:     stop,
+		Token:              cfg.TelegramBotToken,
+		TrackedCaseService: trackedCaseService,
+		Clock:              clock,
+		OnFatal:            stop,
 	})
 	if err != nil && ctx.Err() != nil {
 		return nil
@@ -71,9 +71,9 @@ func run(ctx context.Context) (result error) {
 	defer telegramBot.Close()
 
 	scheduled := schedule.New(schedule.Config{
-		Notifier:    telegramBot,
-		CaseService: caseService,
-		Clock:       clock,
+		Notifier:           telegramBot,
+		TrackedCaseService: trackedCaseService,
+		Clock:              clock,
 	})
 
 	if ctx.Err() != nil {
@@ -96,7 +96,7 @@ func run(ctx context.Context) (result error) {
 		start(telegramBot.Run)
 		start(scheduled.Run)
 		<-work.Done()
-		caseService.Shutdown()
+		trackedCaseService.Shutdown()
 		running.Wait()
 	}
 

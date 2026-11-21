@@ -57,7 +57,7 @@ Use an explicit section divider before private declarations when the file contai
 
 Descriptive section headers other than `Internals` are allowed but optional, such as the `// -- HTTP Client ...` headers in `internal/platform/httpclient/http_client.go`. Preserve existing descriptive headers; they are not violations of the declaration-order rules. When used, keep their style consistent and their divider lines 80 characters wide. Do not add empty sections. The `Internals` divider remains required when the file contains both public and private declarations.
 
-`internal/platform/httpclient/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/case_service.go` and `internal/adapters/inbound/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can separate public methods from their receiver types, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
+`internal/platform/httpclient/http_client.go` illustrates descriptive public sections and `this` receivers. `internal/services/tracked_case_service.go` and `internal/adapters/inbound/telegram/bot.go` illustrate the explicit internal implementation boundary. These are partial examples: existing files can separate public methods from their receiver types, place private types early, or use other divider widths. Follow the ordering and width requirements above when writing or restructuring a non-test file.
 
 The declaration-order and divider requirements do not apply to `*_test.go`; preserve useful test organization there.
 
