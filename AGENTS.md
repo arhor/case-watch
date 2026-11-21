@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services`. Telegram commands and timed checks enter through `internal/adapters/inbound/telegram` and `internal/adapters/inbound/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/adapters/outbound/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/adapters/outbound/database`; shared domain contracts are in `internal/models`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/adapters/outbound/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
+`main.go` is the executable entry point. Application wiring, lifecycle, and startup configuration live in `internal/application`; business logic is under `internal/services`. Telegram commands and timed checks enter through `internal/adapters/inbound/telegram` and `internal/adapters/inbound/schedule`, initiating workflows in the case service. Administration-specific external clients live in `internal/adapters/outbound/clients`, allowing different portals to use different protocols. Database setup, migrations, repositories, and transaction management are under `internal/adapters/outbound/database`; shared domain types and contracts are in `internal/domain`. Tests sit beside production files as `*_test.go`; Gdańsk portal fixtures are in `internal/adapters/outbound/clients/testdata`. Deployment files are `Dockerfile` and `compose.yaml`.
 
 ## Build, Test, and Development Commands
 

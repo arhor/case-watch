@@ -17,7 +17,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
 	"github.com/arhor/case-watch/internal/testing/clock"
@@ -331,7 +331,7 @@ func TestBotHandle(test *testing.T) {
 func TestFormatStatus(test *testing.T) {
 	for _, scenario := range []struct {
 		name            string
-		status          models.Status
+		status          domain.Status
 		err             error
 		expectedMessage string
 	}{
@@ -346,21 +346,21 @@ func TestFormatStatus(test *testing.T) {
 		},
 		{
 			name: "should display unspecified stage when successful observation has empty stage",
-			status: models.Status{
+			status: domain.Status{
 				CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
 			},
 			expectedMessage: "Статус дела: Не указан\nПоследняя успешная проверка: 01.11.2026, 13:00",
 		},
 		{
 			name: "should describe update success when check is fresh",
-			status: models.Status{
+			status: domain.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true,
 			},
 			expectedMessage: "Статус дела: Etap <A>\nПоследняя проверка: 01.11.2026, 13:00\n\nДанные успешно обновлены.",
 		},
 		{
 			name: "should show cached observation when refresh fails",
-			status: models.Status{
+			status: domain.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true,
 			},
 			err:             services.ErrCheck,
@@ -368,7 +368,7 @@ func TestFormatStatus(test *testing.T) {
 		},
 		{
 			name: "should show cached observation when cooldown is active",
-			status: models.Status{
+			status: domain.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
 				NextEligibleAt: time.Date(2026, 11, 1, 12, 5, 0, 0, time.UTC),
 			},
@@ -376,7 +376,7 @@ func TestFormatStatus(test *testing.T) {
 		},
 		{
 			name: "should use Warsaw summer time and report progress when check is active",
-			status: models.Status{
+			status: domain.Status{
 				Stage: "Etap <A>", CheckedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 				InProgress: true, NextEligibleAt: time.Date(2026, 6, 1, 12, 5, 0, 0, time.UTC),
 			},
@@ -629,7 +629,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 			writer.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
 		}))
 		bot := environment.newBot(test, server, Config{TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock})
-		change := models.StageChange{Stage: "Etap <B>", CheckedAt: environment.clock.Now()}
+		change := domain.StageChange{Stage: "Etap <B>", CheckedAt: environment.clock.Now()}
 
 		// When
 		err := bot.NotifyStageChanged(context.Background(), 303, change)
@@ -651,7 +651,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 		bot := environment.newBot(test, server, Config{TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock})
 
 		// When
-		err := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
+		err := bot.NotifyStageChanged(context.Background(), 101, domain.StageChange{})
 
 		// Then
 		assert.True(test, err != nil)
@@ -671,8 +671,8 @@ func TestBotNotifyStageChanged(test *testing.T) {
 		bot := environment.newBot(test, server, Config{TrackedCaseService: environment.bot.trackedCaseService, Clock: environment.clock, OnFatal: func(err error) { fatalError = err }})
 
 		// When
-		first := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
-		second := bot.NotifyStageChanged(context.Background(), 101, models.StageChange{})
+		first := bot.NotifyStageChanged(context.Background(), 101, domain.StageChange{})
+		second := bot.NotifyStageChanged(context.Background(), 101, domain.StageChange{})
 
 		// Then
 		assert.ErrorIs(test, first, ErrInvalidToken)
@@ -687,7 +687,7 @@ func TestBotNotifyStageChanged(test *testing.T) {
 		cancel()
 
 		// When
-		err := environment.bot.NotifyStageChanged(ctx, 101, models.StageChange{})
+		err := environment.bot.NotifyStageChanged(ctx, 101, domain.StageChange{})
 
 		// Then
 		assert.ErrorIs(test, err, context.Canceled)

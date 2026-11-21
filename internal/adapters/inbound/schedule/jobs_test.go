@@ -10,7 +10,7 @@ import (
 	"github.com/arhor/case-watch/internal/adapters/inbound/schedule"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/services"
 	"github.com/arhor/case-watch/internal/testing/assert"
 	"github.com/arhor/case-watch/internal/testing/clock"
@@ -171,12 +171,12 @@ func TestJobsRun(test *testing.T) {
 			Clock:              clock,
 			TrackedCaseService: tracking{
 				owners: []int64{1, 2, 3},
-				scheduled: func(_ context.Context, owner int64) (models.Status, error) {
+				scheduled: func(_ context.Context, owner int64) (domain.Status, error) {
 					calls = append(calls, owner)
 					if owner == 1 {
 						clock.Set(parseTime("2026-07-06T10:30:00Z"))
 					}
-					return models.Status{}, errors.New("synthetic failure")
+					return domain.Status{}, errors.New("synthetic failure")
 				},
 			},
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -212,9 +212,9 @@ func TestJobsRun(test *testing.T) {
 				Clock:              clock,
 				TrackedCaseService: tracking{
 					owners: []int64{1},
-					scheduled: func(context.Context, int64) (models.Status, error) {
+					scheduled: func(context.Context, int64) (domain.Status, error) {
 						calls++
-						return models.Status{}, nil
+						return domain.Status{}, nil
 					},
 				},
 				Wait: func(_ context.Context, deadline time.Time) error {
@@ -243,12 +243,12 @@ func TestJobsRun(test *testing.T) {
 		canceled := make(chan struct{})
 		release := make(chan struct{})
 		done := make(chan error, 1)
-		scheduler := newScheduler(test, schedule.Config{Clock: clock, TrackedCaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (models.Status, error) {
+		scheduler := newScheduler(test, schedule.Config{Clock: clock, TrackedCaseService: tracking{owners: []int64{1, 2}, scheduled: func(ctx context.Context, _ int64) (domain.Status, error) {
 			close(entered)
 			<-ctx.Done()
 			close(canceled)
 			<-release
-			return models.Status{}, ctx.Err()
+			return domain.Status{}, ctx.Err()
 		}}, Wait: func(_ context.Context, deadline time.Time) error { clock.Set(deadline); return nil }})
 
 		// When
@@ -283,9 +283,9 @@ func TestJobsRun(test *testing.T) {
 			Clock:              clock,
 			TrackedCaseService: tracking{
 				owners: []int64{1},
-				scheduled: func(context.Context, int64) (models.Status, error) {
+				scheduled: func(context.Context, int64) (domain.Status, error) {
 					calls++
-					return models.Status{}, nil
+					return domain.Status{}, nil
 				},
 			},
 			Wait: func(_ context.Context, deadline time.Time) error {
@@ -371,20 +371,20 @@ func TestJobsNotifications(test *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		var recipients []int64
-		change := models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: fixedClock.Now()}
+		change := domain.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: fixedClock.Now()}
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
 			Clock:              fixedClock,
-			TrackedCaseService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
+			TrackedCaseService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (domain.Status, error) {
 				if owner == 2 {
-					return models.Status{}, nil
+					return domain.Status{}, nil
 				}
 				if owner == 3 {
-					return models.Status{Change: &change}, errors.New("check failed")
+					return domain.Status{Change: &change}, errors.New("check failed")
 				}
-				return models.Status{Fresh: true, Change: &change}, nil
+				return domain.Status{Fresh: true, Change: &change}, nil
 			}},
-			Notifier: notifierFunc(func(_ context.Context, owner int64, actual models.StageChange) error {
+			Notifier: notifierFunc(func(_ context.Context, owner int64, actual domain.StageChange) error {
 				recipients = append(recipients, owner)
 				assert.DeepEqual(test, change, actual)
 				return errors.New("delivery failed")
@@ -427,12 +427,12 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 		_, _, err = service.StoreCaseToTrack(ctx, 101, "number", "password")
 		assert.NoError(test, err)
 		stage = "B"
-		var changes []models.StageChange
+		var changes []domain.StageChange
 		var recipients []int64
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
 			TrackedCaseService: service, Clock: fixedClock,
-			Notifier:           notifierFunc(func(_ context.Context, owner int64, change models.StageChange) error {
+			Notifier:           notifierFunc(func(_ context.Context, owner int64, change domain.StageChange) error {
 				recipients = append(recipients, owner)
 				changes = append(changes, change)
 				return nil
@@ -454,7 +454,7 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 		// Then
 		assert.ErrorIs(test, err, context.Canceled)
 		assert.DeepEqual(test, []int64{101}, recipients)
-		assert.DeepEqual(test, []models.StageChange{{PreviousStage: "A", Stage: "B", CheckedAt: parseTime("2026-07-06T06:00:00Z")}}, changes)
+		assert.DeepEqual(test, []domain.StageChange{{PreviousStage: "A", Stage: "B", CheckedAt: parseTime("2026-07-06T06:00:00Z")}}, changes)
 	})
 }
 
@@ -463,10 +463,10 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 type tracking struct {
 	owners      []int64
 	ownersError error
-	scheduled   func(context.Context, int64) (models.Status, error)
+	scheduled   func(context.Context, int64) (domain.Status, error)
 }
 
-func (this tracking) RunScheduledCaseCheck(ctx context.Context, owner int64) (models.Status, error) {
+func (this tracking) RunScheduledCaseCheck(ctx context.Context, owner int64) (domain.Status, error) {
 	return this.scheduled(ctx, owner)
 }
 
@@ -484,7 +484,7 @@ func (this tracking) StoreCaseToTrack(context.Context, int64, string, string) (s
 	panic("unexpected StoreCaseToTrack call")
 }
 
-func (this tracking) CheckCaseStatus(context.Context, int64) (models.Status, error) {
+func (this tracking) CheckCaseStatus(context.Context, int64) (domain.Status, error) {
 	panic("unexpected CheckCaseStatus call")
 }
 
@@ -503,7 +503,7 @@ func parseTime(value string) time.Time {
 func newScheduler(test *testing.T, config schedule.Config) *schedule.Jobs {
 	test.Helper()
 	if config.Notifier == nil {
-		config.Notifier = notifierFunc(func(context.Context, int64, models.StageChange) error { return nil })
+		config.Notifier = notifierFunc(func(context.Context, int64, domain.StageChange) error { return nil })
 	}
 	return schedule.New(config)
 }
@@ -516,8 +516,8 @@ func (this scheduledPortal) Check(ctx context.Context, _ int64, number, password
 
 func (scheduledPortal) ForgetSession(int64) {}
 
-type notifierFunc func(context.Context, int64, models.StageChange) error
+type notifierFunc func(context.Context, int64, domain.StageChange) error
 
-func (this notifierFunc) NotifyStageChanged(ctx context.Context, owner int64, change models.StageChange) error {
+func (this notifierFunc) NotifyStageChanged(ctx context.Context, owner int64, change domain.StageChange) error {
 	return this(ctx, owner, change)
 }

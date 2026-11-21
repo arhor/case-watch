@@ -13,7 +13,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/platform/guard"
 	"github.com/arhor/case-watch/internal/services"
 	telegramApi "github.com/go-telegram/bot"
@@ -26,8 +26,8 @@ type Config struct {
 	Token              string
 	Endpoint           string
 	HTTPClient         *http.Client
-	TrackedCaseService models.TrackedCaseService
-	Clock              models.Clock
+	TrackedCaseService domain.TrackedCaseService
+	Clock              domain.Clock
 	OnFatal            func(error)
 }
 
@@ -35,10 +35,10 @@ type Bot struct {
 	handlers           map[string]commandHandler
 	client             *telegramApi.Bot
 	polling            atomic.Bool
-	trackedCaseService models.TrackedCaseService
+	trackedCaseService domain.TrackedCaseService
 	replyMu            sync.Mutex
 	repliesFailed      bool
-	clock              models.Clock
+	clock              domain.Clock
 	onFatal            func(error)
 	owners             map[int64]*state
 	mu                 sync.Mutex
@@ -111,7 +111,7 @@ func (this *Bot) Close() {
 }
 
 // NotifyStageChanged makes one bounded delivery attempt for a committed change.
-func (this *Bot) NotifyStageChanged(ctx context.Context, owner int64, change models.StageChange) error {
+func (this *Bot) NotifyStageChanged(ctx context.Context, owner int64, change domain.StageChange) error {
 	previous, current := change.PreviousStage, change.Stage
 	if previous == "" {
 		previous = "Не указан"
@@ -529,7 +529,7 @@ func privateOwner(sender *telegramModels.User, chat telegramModels.Chat) (int64,
 	return sender.ID, true
 }
 
-func formatStatus(s models.Status, err error) string {
+func formatStatus(s domain.Status, err error) string {
 	var parts []string
 	if err != nil {
 		parts = append(parts, "Не удалось обновить статус дела.")

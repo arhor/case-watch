@@ -41,7 +41,7 @@ Keep public methods together directly below their receiver type declaration, whe
 Place blank-identifier compile-time interface checks directly before the type declaration implementing those interfaces, in the same implementation file. Keep any type documentation comment attached to the type, between the checks and the declaration. Group multiple checks for the same type together; do not aggregate checks for different implementations in one file. These checks are an explicit exception to the private-declarations-at-the-end rule and do not require an `Internals` section by themselves.
 
 ```go
-var _ models.Store = (*Store)(nil)
+var _ domain.Store = (*Store)(nil)
 
 // Store implements transactional persistence.
 type Store struct {
