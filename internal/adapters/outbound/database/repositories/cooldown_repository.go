@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 )
 
-var _ models.CooldownRepository = (*CooldownRepository)(nil)
+var _ domain.CooldownRepository = (*CooldownRepository)(nil)
 
 type CooldownRepository struct {
 	executor QueryExecutor
@@ -24,12 +24,12 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 	ctx context.Context,
 	subjectType string,
 	subjectID string,
-) (models.Cooldown, error) {
+) (domain.Cooldown, error) {
 	if !validCooldownKey(subjectType, subjectID) {
-		return models.Cooldown{}, ErrInvalid
+		return domain.Cooldown{}, ErrInvalid
 	}
 	var (
-		c       models.Cooldown
+		c       domain.Cooldown
 		started int64
 	)
 	err := this.executor.QueryRowContext(
@@ -40,10 +40,10 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 	).Scan(&c.SubjectType, &c.SubjectID, &started)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return models.Cooldown{}, ErrNotFound
+		return domain.Cooldown{}, ErrNotFound
 	}
 	if err != nil {
-		return models.Cooldown{}, ErrStorage
+		return domain.Cooldown{}, ErrStorage
 	}
 
 	c.StartedAt = time.Unix(0, started).UTC()
@@ -53,7 +53,7 @@ func (this *CooldownRepository) FindBySubjectTypeAndSubjectID(
 
 func (this *CooldownRepository) Upsert(
 	ctx context.Context,
-	c models.Cooldown,
+	c domain.Cooldown,
 ) error {
 	if !validCooldownKey(c.SubjectType, c.SubjectID) || c.StartedAt.IsZero() {
 		return ErrInvalid

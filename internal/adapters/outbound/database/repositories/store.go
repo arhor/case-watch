@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
 var ErrTransaction = errors.New("invalid transaction lifecycle operation")
 
-var _ models.Store = (*Store)(nil)
+var _ domain.Store = (*Store)(nil)
 
 type Store struct {
 	db                  *sql.DB
@@ -30,7 +30,7 @@ func NewStore(db *sql.DB) *Store {
 	}
 }
 
-func (this *Store) RunInTx(ctx context.Context, fn func(models.Store) error) error {
+func (this *Store) RunInTx(ctx context.Context, fn func(domain.Store) error) error {
 	if this.inTx {
 		return ErrTransaction
 	}
@@ -59,14 +59,14 @@ func (this *Store) RunInTx(ctx context.Context, fn func(models.Store) error) err
 	return nil
 }
 
-func (this *Store) TrackedCases() models.TrackedCaseRepository {
+func (this *Store) TrackedCases() domain.TrackedCaseRepository {
 	return this.trackedCases
 }
 
-func (this *Store) TrackedCasesHistory() models.TrackedCasesHistoryRepository {
+func (this *Store) TrackedCasesHistory() domain.TrackedCasesHistoryRepository {
 	return this.trackedCasesHistory
 }
 
-func (this *Store) Cooldowns() models.CooldownRepository {
+func (this *Store) Cooldowns() domain.CooldownRepository {
 	return this.cooldowns
 }

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	realclock "github.com/arhor/case-watch/internal/platform/clock"
 	"github.com/arhor/case-watch/internal/platform/httpclient"
 )
@@ -49,11 +49,11 @@ func (this *Error) Is(target error) bool {
 type GdanskPortalClientOptions struct {
 	BaseURL   string
 	Transport http.RoundTripper
-	Clock     models.Clock
+	Clock     domain.Clock
 	Wait      func(context.Context, time.Duration) error
 }
 
-var _ models.Portal = (*GdanskPortalClient)(nil)
+var _ domain.Portal = (*GdanskPortalClient)(nil)
 
 // GdanskPortalClient checks case stages through the Gdańsk administration portal.
 // Each Check reuses user cookies with fresh RPC state over a shared connection
@@ -61,7 +61,7 @@ var _ models.Portal = (*GdanskPortalClient)(nil)
 type GdanskPortalClient struct {
 	base       string
 	httpClient *httpclient.HttpClient
-	clock      models.Clock
+	clock      domain.Clock
 	wait       func(context.Context, time.Duration) error
 	interval   time.Duration
 	overall    time.Duration
