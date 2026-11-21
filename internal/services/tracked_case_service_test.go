@@ -13,7 +13,7 @@ import (
 
 	"github.com/arhor/case-watch/internal/adapters/outbound/database"
 	"github.com/arhor/case-watch/internal/adapters/outbound/database/repositories"
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/testing/assert"
 	"github.com/arhor/case-watch/internal/testing/clock"
 )
@@ -190,8 +190,8 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		assert.True(test, joined1.status.NextEligibleAt.Equal(epoch.Add(190*time.Second)), "joins")
 		verifyObservation(test, joined1.status, "B", epoch.Add(130*time.Second))
 		verifyObservation(test, joined2.status, "B", epoch.Add(130*time.Second))
-		assert.DeepEqual(test, &models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(130 * time.Second)}, joined1.status.Change)
-		assert.Equal[*models.StageChange](test, nil, recent.Change)
+		assert.DeepEqual(test, &domain.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(130 * time.Second)}, joined1.status.Change)
+		assert.Equal[*domain.StageChange](test, nil, recent.Change)
 	})
 
 	test.Run("should deny work when owner is invalid", func(test *testing.T) {
@@ -277,7 +277,7 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		assert.True(test, trackedCase.CheckedAt.Equal(epoch), "failed refresh")
 		assert.Equal(test, 0, len(history), "failed refresh")
 		assert.True(test, !status.Fresh, "failed refresh")
-		assert.Equal[*models.StageChange](test, nil, status.Change)
+		assert.Equal[*domain.StageChange](test, nil, status.Change)
 		assert.Equal(test, 1, calls.Load(), "failed refresh")
 		verifyObservation(test, status, "A", epoch)
 	})
@@ -306,8 +306,8 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		assert.NoError(test, thirdError, "shared observation transaction")
 		assert.True(test, manual.Fresh, "shared observation transaction")
 		assert.True(test, scheduled.Fresh, "shared observation transaction")
-		assert.DeepEqual(test, &models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(time.Minute)}, manual.Change)
-		assert.DeepEqual(test, &models.StageChange{PreviousStage: "B", Stage: "A", CheckedAt: epoch.Add(2 * time.Minute)}, scheduled.Change)
+		assert.DeepEqual(test, &domain.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: epoch.Add(time.Minute)}, manual.Change)
+		assert.DeepEqual(test, &domain.StageChange{PreviousStage: "B", Stage: "A", CheckedAt: epoch.Add(2 * time.Minute)}, scheduled.Change)
 		assert.Equal(test, 2, len(history), "shared observation transaction")
 		assert.Equal(test, "B", history[0].Stage, "shared observation transaction")
 		assert.Equal(test, "A", history[1].Stage, "shared observation transaction")
@@ -889,7 +889,7 @@ func (this *fixture) trackCase(test *testing.T, owner int64) string {
 	return trackedCase.ID
 }
 
-func verifyObservation(test *testing.T, status models.Status, stage string, checked time.Time) {
+func verifyObservation(test *testing.T, status domain.Status, stage string, checked time.Time) {
 	test.Helper()
 	assert.True(test, !status.CheckedAt.IsZero(), "observation should have the expected stage and completion timestamp")
 	assert.Equal(test, stage, status.Stage, "observation should have the expected stage and completion timestamp")
@@ -914,7 +914,7 @@ func waitingContext(ctx context.Context) *waitContext {
 }
 
 type answer struct {
-	status models.Status
+	status domain.Status
 	err    error
 }
 

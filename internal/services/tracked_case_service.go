@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arhor/case-watch/internal/models"
+	"github.com/arhor/case-watch/internal/domain"
 	"github.com/arhor/case-watch/internal/platform/guard"
 )
 
@@ -22,26 +22,26 @@ var (
 	ErrCheck    = errors.New("portal check failed")
 	ErrStorage  = errors.New("case storage operation failed")
 	ErrInvalid  = errors.New("invalid tracked case input")
-	ErrNotFound = models.ErrNotFound
+	ErrNotFound = domain.ErrNotFound
 )
 
 type TrackedCaseServiceConfig struct {
-	Store   models.Store
-	Portal  models.Portal
-	Clock   models.Clock
+	Store   domain.Store
+	Portal  domain.Portal
+	Clock   domain.Clock
 	OnFatal func(error)
 }
 
-var _ models.TrackedCaseService = (*TrackedCaseService)(nil)
+var _ domain.TrackedCaseService = (*TrackedCaseService)(nil)
 
 type TrackedCaseService struct {
 	mu      sync.Mutex
 	closed  bool
 	owners  map[int64]*ownerState
-	store   models.Store
+	store   domain.Store
 	onFatal func(error)
-	portal  models.Portal
-	clock   models.Clock
+	portal  domain.Portal
+	clock   domain.Clock
 }
 
 func NewTrackedCaseService(config TrackedCaseServiceConfig) *TrackedCaseService {
@@ -61,7 +61,7 @@ func (this *TrackedCaseService) HasTrackedCase(ctx context.Context, owner int64)
 		return false, ErrDenied
 	}
 	_, err := this.store.TrackedCases().FindByOwner(ctx, owner)
-	if errors.Is(err, models.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -113,9 +113,9 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 	_, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if err == nil {
 		this.mu.Unlock()
-		return "", time.Time{}, models.ErrExists
+		return "", time.Time{}, domain.ErrExists
 	}
-	if !errors.Is(err, models.ErrNotFound) {
+	if !errors.Is(err, domain.ErrNotFound) {
 		this.mu.Unlock()
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
@@ -130,7 +130,7 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 			this.portal.ForgetSession(owner)
 		}
 	}()
-	id, err := models.NewTrackedCaseID()
+	id, err := domain.NewTrackedCaseID()
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
@@ -153,14 +153,14 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 	return stage, checkedAt, nil
 }
 
-func (this *TrackedCaseService) CheckCaseStatus(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) CheckCaseStatus(ctx context.Context, owner int64) (domain.Status, error) {
 	return this.check(ctx, owner, true)
 }
 
 // Scheduled and manual requests share active checks and the persisted case-start guard.
 // A guarded case is skipped for this slot; no queued retry is created. It never
 // consumes the user's manual guard. Recent successful cache is reused too.
-func (this *TrackedCaseService) RunScheduledCaseCheck(ctx context.Context, owner int64) (models.Status, error) {
+func (this *TrackedCaseService) RunScheduledCaseCheck(ctx context.Context, owner int64) (domain.Status, error) {
 	return this.check(ctx, owner, false)
 }
 
@@ -252,7 +252,7 @@ const (
 type check struct {
 	cancel       context.CancelFunc
 	done         chan struct{}
-	status       models.Status
+	status       domain.Status
 	err          error
 	waiters      int
 	creatingCase bool
@@ -283,11 +283,11 @@ func (this *TrackedCaseService) storageError(ctx context.Context, err error) err
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	if errors.Is(err, models.ErrNotFound) {
-		return models.ErrNotFound
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.ErrNotFound
 	}
-	if errors.Is(err, models.ErrExists) {
-		return models.ErrExists
+	if errors.Is(err, domain.ErrExists) {
+		return domain.ErrExists
 	}
 	if ctx.Err() == nil && this.onFatal != nil {
 		this.onFatal(ErrStorage)
@@ -315,31 +315,31 @@ func (this *TrackedCaseService) baseline(ctx context.Context, owner int64, numbe
 	return stage, this.clock.Now(), nil
 }
 
-func cached(stage string, checkedAt time.Time) models.Status {
-	return models.Status{Stage: stage, CheckedAt: checkedAt}
+func cached(stage string, checkedAt time.Time) domain.Status {
+	return domain.Status{Stage: stage, CheckedAt: checkedAt}
 }
 
-func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual bool) (models.Status, error) {
+func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
 	if owner <= 0 {
-		return models.Status{}, ErrDenied
+		return domain.Status{}, ErrDenied
 	}
 	if ctx.Err() != nil {
-		return models.Status{}, ctx.Err()
+		return domain.Status{}, ctx.Err()
 	}
 	this.mu.Lock()
 	if this.closed {
 		this.mu.Unlock()
-		return models.Status{}, ErrClosed
+		return domain.Status{}, ErrClosed
 	}
 	state := this.state(owner)
 	if state.removing {
 		this.mu.Unlock()
-		return models.Status{}, ErrRemoving
+		return domain.Status{}, ErrRemoving
 	}
 	if check := state.check; check != nil {
 		if check.creatingCase {
 			this.mu.Unlock()
-			return models.Status{}, ErrBusy
+			return domain.Status{}, ErrBusy
 		}
 		check.waiters++
 		this.mu.Unlock()
@@ -348,11 +348,11 @@ func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual b
 	trackedCase, err := this.store.TrackedCases().FindByOwner(ctx, owner)
 	if err != nil {
 		this.mu.Unlock()
-		return models.Status{}, this.storageError(ctx, err)
+		return domain.Status{}, this.storageError(ctx, err)
 	}
 	if trackedCase.OwnerID != owner {
 		this.mu.Unlock()
-		return models.Status{}, ErrDenied
+		return domain.Status{}, ErrDenied
 	}
 	now := this.clock.Now()
 	status := cached(trackedCase.Stage, trackedCase.CheckedAt)
@@ -385,7 +385,7 @@ func (this *TrackedCaseService) wait(
 	ctx context.Context,
 	check *check,
 	drain bool,
-) (models.Status, error) {
+) (domain.Status, error) {
 	defer func() {
 		if drain && ctx.Err() != nil {
 			<-check.done
@@ -425,7 +425,7 @@ func (this *TrackedCaseService) refresh(
 	owner int64,
 	state *ownerState,
 	check *check,
-	trackedCase models.TrackedCase,
+	trackedCase domain.TrackedCase,
 ) {
 	stage, checkedAt, err := this.baseline(ctx, owner, trackedCase.Number, trackedCase.Password)
 	this.mu.Lock()
@@ -438,7 +438,7 @@ func (this *TrackedCaseService) refresh(
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
-		var change *models.StageChange
+		var change *domain.StageChange
 		change, err = this.saveObservation(ctx, owner, trackedCase.ID, stage, checkedAt)
 		err = this.storageError(ctx, err)
 
@@ -465,7 +465,7 @@ func (this *TrackedCaseService) saveTrackedCase(
 	stage string,
 	checkedAt time.Time,
 ) error {
-	return this.store.RunInTx(ctx, func(store models.Store) error {
+	return this.store.RunInTx(ctx, func(store domain.Store) error {
 		return store.TrackedCases().Create(ctx, owner, id, number, password, stage, checkedAt)
 	})
 }
@@ -476,9 +476,9 @@ func (this *TrackedCaseService) saveObservation(
 	id string,
 	stage string,
 	checkedAt time.Time,
-) (*models.StageChange, error) {
-	var change *models.StageChange
-	err := this.store.RunInTx(ctx, func(store models.Store) error {
+) (*domain.StageChange, error) {
+	var change *domain.StageChange
+	err := this.store.RunInTx(ctx, func(store domain.Store) error {
 		trackedCase, err := store.TrackedCases().FindByIdentity(ctx, owner, id)
 		if err != nil {
 			return err
@@ -492,7 +492,7 @@ func (this *TrackedCaseService) saveObservation(
 		if err := store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, stage, checkedAt); err != nil {
 			return err
 		}
-		change = &models.StageChange{PreviousStage: trackedCase.Stage, Stage: stage, CheckedAt: checkedAt}
+		change = &domain.StageChange{PreviousStage: trackedCase.Stage, Stage: stage, CheckedAt: checkedAt}
 		return nil
 	})
 	if err != nil {
@@ -506,7 +506,7 @@ func (this *TrackedCaseService) deleteTrackedCase(
 	owner int64,
 	id string,
 ) error {
-	return this.store.RunInTx(ctx, func(store models.Store) error {
+	return this.store.RunInTx(ctx, func(store domain.Store) error {
 		if err := store.TrackedCases().SoftDelete(ctx, owner, id, time.Now().UTC()); err != nil {
 			return err
 		}
@@ -524,7 +524,7 @@ func (this *TrackedCaseService) checkEligibility(
 	manual bool,
 ) (time.Time, error) {
 	var next time.Time
-	err := this.store.RunInTx(ctx, func(store models.Store) error {
+	err := this.store.RunInTx(ctx, func(store domain.Store) error {
 		var err error
 		next, err = eligibility(ctx, store, owner, id, manual)
 		return err
@@ -538,12 +538,12 @@ func (this *TrackedCaseService) reserveCheck(
 	id string,
 	manual bool,
 	now time.Time,
-) (models.CheckReservation, error) {
+) (domain.CheckReservation, error) {
 	if now.IsZero() {
-		return models.CheckReservation{}, models.ErrInvalid
+		return domain.CheckReservation{}, domain.ErrInvalid
 	}
-	var result models.CheckReservation
-	err := this.store.RunInTx(ctx, func(store models.Store) error {
+	var result domain.CheckReservation
+	err := this.store.RunInTx(ctx, func(store domain.Store) error {
 		next, err := eligibility(ctx, store, owner, id, manual)
 		if err != nil {
 			return err
@@ -552,7 +552,7 @@ func (this *TrackedCaseService) reserveCheck(
 		if now.Before(next) {
 			return nil
 		}
-		if err = store.Cooldowns().Upsert(ctx, models.Cooldown{
+		if err = store.Cooldowns().Upsert(ctx, domain.Cooldown{
 			SubjectType: caseCheckCooldown,
 			SubjectID:   id,
 			StartedAt:   now,
@@ -560,7 +560,7 @@ func (this *TrackedCaseService) reserveCheck(
 			return err
 		}
 		if manual {
-			if err = store.Cooldowns().Upsert(ctx, models.Cooldown{
+			if err = store.Cooldowns().Upsert(ctx, domain.Cooldown{
 				SubjectType: manualCheckCooldown,
 				SubjectID:   strconv.FormatInt(owner, 10),
 				StartedAt:   now,
@@ -568,21 +568,21 @@ func (this *TrackedCaseService) reserveCheck(
 				return err
 			}
 		}
-		result = models.CheckReservation{
+		result = domain.CheckReservation{
 			Reserved:       true,
 			NextEligibleAt: now.Add(time.Minute),
 		}
 		return nil
 	})
 	if err != nil {
-		return models.CheckReservation{}, err
+		return domain.CheckReservation{}, err
 	}
 	return result, nil
 }
 
 func eligibility(
 	ctx context.Context,
-	store models.Store,
+	store domain.Store,
 	owner int64,
 	id string,
 	manual bool,
@@ -591,13 +591,13 @@ func eligibility(
 		return time.Time{}, err
 	}
 	c, err := store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, caseCheckCooldown, id)
-	if err != nil && !errors.Is(err, models.ErrNotFound) {
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return time.Time{}, err
 	}
 	caseStart := c.StartedAt
 	if manual {
 		c, err = store.Cooldowns().FindBySubjectTypeAndSubjectID(ctx, manualCheckCooldown, strconv.FormatInt(owner, 10))
-		if err != nil && !errors.Is(err, models.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return time.Time{}, err
 		}
 		if c.StartedAt.After(caseStart) {
