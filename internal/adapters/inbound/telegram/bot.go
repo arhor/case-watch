@@ -23,26 +23,26 @@ import (
 var ErrInvalidToken = errors.New("telegram token rejected")
 
 type Config struct {
-	Token       string
-	Endpoint    string
-	HTTPClient  *http.Client
+	Token               string
+	Endpoint            string
+	HTTPClient          *http.Client
 	TrackedCasesService *services.TrackedCasesService
-	Clock       models.Clock
-	OnFatal     func(error)
+	Clock               models.Clock
+	OnFatal             func(error)
 }
 
 type Bot struct {
-	handlers      map[string]commandHandler
-	client        *telegramApi.Bot
-	polling       atomic.Bool
-	trackedCasesService   *services.TrackedCasesService
-	replyMu       sync.Mutex
-	repliesFailed bool
-	clock         models.Clock
-	onFatal       func(error)
-	owners        map[int64]*state
-	mu            sync.Mutex
-	wg            sync.WaitGroup
+	handlers            map[string]commandHandler
+	client              *telegramApi.Bot
+	polling             atomic.Bool
+	trackedCasesService *services.TrackedCasesService
+	replyMu             sync.Mutex
+	repliesFailed       bool
+	clock               models.Clock
+	onFatal             func(error)
+	owners              map[int64]*state
+	mu                  sync.Mutex
+	wg                  sync.WaitGroup
 }
 
 // New constructs the bot and validates its token using ctx before returning.
@@ -127,9 +127,9 @@ func New(ctx context.Context, c Config) (*Bot, error) {
 	c.Clock = guard.Require("Clock", c.Clock)
 	bot := &Bot{
 		trackedCasesService: c.TrackedCasesService,
-		clock:       c.Clock,
-		owners:      make(map[int64]*state),
-		onFatal:     c.OnFatal,
+		clock:               c.Clock,
+		owners:              make(map[int64]*state),
+		onFatal:             c.OnFatal,
 	}
 
 	opts := []telegramApi.Option{

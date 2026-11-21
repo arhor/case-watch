@@ -59,10 +59,10 @@ func run(ctx context.Context) (result error) {
 	defer trackedCasesService.Shutdown()
 
 	telegramBot, err := telegram.New(work, telegram.Config{
-		Token:       cfg.TelegramBotToken,
+		Token:               cfg.TelegramBotToken,
 		TrackedCasesService: trackedCasesService,
-		Clock:       clock,
-		OnFatal:     stop,
+		Clock:               clock,
+		OnFatal:             stop,
 	})
 	if err != nil && ctx.Err() != nil {
 		return nil
@@ -71,9 +71,9 @@ func run(ctx context.Context) (result error) {
 	defer telegramBot.Close()
 
 	scheduled := schedule.New(schedule.Config{
-		Notifier:    telegramBot,
+		Notifier:            telegramBot,
 		TrackedCasesService: trackedCasesService,
-		Clock:       clock,
+		Clock:               clock,
 	})
 
 	if ctx.Err() != nil {

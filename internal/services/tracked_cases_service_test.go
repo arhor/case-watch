@@ -840,11 +840,11 @@ func (this portalFunc) Check(ctx context.Context, owner int64, number, password 
 
 type fixture struct {
 	trackedCasesService *TrackedCasesService
-	db      *sql.DB
-	store   *repositories.Store
-	clock   *clock.FixedClock
-	path    string
-	calls   atomic.Int32
+	db                  *sql.DB
+	store               *repositories.Store
+	clock               *clock.FixedClock
+	path                string
+	calls               atomic.Int32
 }
 
 func setup(test *testing.T, portal portalFunc) *fixture {

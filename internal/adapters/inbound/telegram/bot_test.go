@@ -755,7 +755,7 @@ func setup(test *testing.T) *fixture {
 	})
 	environment.bot = environment.newBot(test, server, Config{
 		TrackedCasesService: trackedCasesService,
-		Clock:       environment.clock,
+		Clock:               environment.clock,
 	})
 	return environment
 }

@@ -141,7 +141,7 @@ func TestJobsRun(test *testing.T) {
 		// Given
 		clock := clock.NewFixedClock(parseTime("2026-07-06T05:00:00Z"))
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: clock,
+			Clock:               clock,
 			TrackedCasesService: tracking{
 				ownersError: errors.New("private storage details"),
 			},
@@ -168,7 +168,7 @@ func TestJobsRun(test *testing.T) {
 		var calls []int64
 		var deadlines []time.Time
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: clock,
+			Clock:               clock,
 			TrackedCasesService: tracking{
 				owners: []int64{1, 2, 3},
 				scheduled: func(_ context.Context, owner int64) (models.Status, error) {
@@ -209,7 +209,7 @@ func TestJobsRun(test *testing.T) {
 			calls := 0
 			var waitedUntil time.Time
 			scheduler := newScheduler(test, schedule.Config{
-				Clock: clock,
+				Clock:               clock,
 				TrackedCasesService: tracking{
 					owners: []int64{1},
 					scheduled: func(context.Context, int64) (models.Status, error) {
@@ -280,7 +280,7 @@ func TestJobsRun(test *testing.T) {
 
 		waits, calls := 0, 0
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: clock,
+			Clock:               clock,
 			TrackedCasesService: tracking{
 				owners: []int64{1},
 				scheduled: func(context.Context, int64) (models.Status, error) {
@@ -341,8 +341,8 @@ func TestJobsRun(test *testing.T) {
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
 			TrackedCasesService: trackedCasesService,
-			Clock:       clock,
-			Wait: func(_ context.Context, deadline time.Time) error {
+			Clock:               clock,
+			Wait:                func(_ context.Context, deadline time.Time) error {
 				waits++
 				if waits == 2 {
 					cancel()
@@ -374,7 +374,7 @@ func TestJobsNotifications(test *testing.T) {
 		change := models.StageChange{PreviousStage: "A", Stage: "B", CheckedAt: fixedClock.Now()}
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
-			Clock: fixedClock,
+			Clock:               fixedClock,
 			TrackedCasesService: tracking{owners: []int64{1, 2, 3, 4}, scheduled: func(_ context.Context, owner int64) (models.Status, error) {
 				if owner == 2 {
 					return models.Status{}, nil
@@ -432,7 +432,7 @@ func TestJobsStageChangeIntegration(test *testing.T) {
 		waits := 0
 		scheduler := newScheduler(test, schedule.Config{
 			TrackedCasesService: service, Clock: fixedClock,
-			Notifier: notifierFunc(func(_ context.Context, owner int64, change models.StageChange) error {
+			Notifier:            notifierFunc(func(_ context.Context, owner int64, change models.StageChange) error {
 				recipients = append(recipients, owner)
 				changes = append(changes, change)
 				return nil

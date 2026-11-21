@@ -22,21 +22,21 @@ type StageChangeNotifier interface {
 }
 
 type Config struct {
-	Notifier    StageChangeNotifier
+	Notifier            StageChangeNotifier
 	TrackedCasesService models.TrackedCasesService
-	Clock       models.Clock
+	Clock               models.Clock
 	// Wait waits until the absolute deadline, or returns the context error.
 	// Nil uses a stoppable standard-library timer.
 	Wait func(context.Context, time.Time) error
 }
 
 type Jobs struct {
-	notifier    StageChangeNotifier
+	notifier            StageChangeNotifier
 	trackedCasesService models.TrackedCasesService
-	clock       models.Clock
-	wait        func(context.Context, time.Time) error
-	schedule    cron.Schedule
-	running     sync.Mutex
+	clock               models.Clock
+	wait                func(context.Context, time.Time) error
+	schedule            cron.Schedule
+	running             sync.Mutex
 }
 
 func New(config Config) *Jobs {
@@ -49,11 +49,11 @@ func New(config Config) *Jobs {
 		waitUntil = wait
 	}
 	return &Jobs{
-		notifier:    notifier,
+		notifier:            notifier,
 		trackedCasesService: trackedCasesService,
-		clock:       clock,
-		wait:        waitUntil,
-		schedule:    schedule,
+		clock:               clock,
+		wait:                waitUntil,
+		schedule:            schedule,
 	}
 }
 
