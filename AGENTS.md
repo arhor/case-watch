@@ -36,3 +36,5 @@ History primarily follows Conventional Commit prefixes such as `feat:`, `refacto
 ## Security & Configuration
 
 Copy `.env.example` only as a local reference; never commit real bot tokens, databases, or `.env` files. Use versioned image tags or immutable digests in Compose deployments, and review SQL migration compatibility before release.
+
+The current deployment host cannot enforce Docker Compose memory limits because its kernel lacks memory limit support or the required cgroup mount. Docker's warning that the memory limitation is discarded is known and expected here; it does not indicate a deployment failure or require remediation.
