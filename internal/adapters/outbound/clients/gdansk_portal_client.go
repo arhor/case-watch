@@ -378,7 +378,7 @@ func (this *gdanskRPCState) stage() (string, error) {
 
 // Keep the previous adapter's text/nodeValue compatibility across semantic
 // features without flattening properties in the generic state representation.
-func gdanskNodeHasText(node *vaadin.Node, text string) bool {
+func gdanskNodeHasText(node vaadin.Node, text string) bool {
 	for _, feature := range []vaadin.FeatureID{vaadin.ElementFeature, vaadin.PropertiesFeature, vaadin.TextFeature} {
 		for _, key := range []string{"text", "nodeValue"} {
 			value, _ := node.Property(feature, key)

@@ -84,6 +84,54 @@ func TestStateTreeApply(test *testing.T) {
 		assert.Equal(test, 0, len(current.Properties(vaadin.AttributesFeature)))
 		assert.Equal(test, 0, len(current.Properties(vaadin.StylesFeature)))
 	})
+	test.Run("should preserve removed handle snapshots when an ID is registered again in one message", func(test *testing.T) {
+		// Given
+		tree := vaadin.NewStateTree()
+		assert.NoError(test, tree.Apply(decodeChanges(test, `[{"node":1,"type":"put","feat":0,"key":"tag","value":"div"}]`)))
+		removed, _ := tree.FindByID(1)
+		changes := decodeChanges(test, `[
+   {"node":1,"type":"detach"},
+   {"node":1,"type":"attach"},
+   {"node":1,"type":"put","feat":0,"key":"tag","value":"span"}
+  ]`)
+
+		// When
+		err := tree.Apply(changes)
+		registered, exists := tree.FindByID(1)
+
+		// Then
+		assert.NoError(test, err)
+		assert.True(test, exists)
+		assert.True(test, removed != registered)
+		assert.Equal(test, "div", removed.Tag())
+		assert.Equal(test, "span", registered.Tag())
+	})
+
+	test.Run("should retain registration and old handles when re-registration fails validation", func(test *testing.T) {
+		// Given
+		tree := seedTree(test)
+		original, _ := tree.FindByID(1)
+		before := snapshotTree(tree)
+		changes := decodeChanges(test, `[
+   {"node":1,"type":"detach"},
+   {"node":1,"type":"attach"},
+   {"node":1,"type":"put","feat":0,"key":"tag","value":"span"},
+   {"node":1,"type":"splice","feat":2,"index":0,"addNodes":[999]}
+  ]`)
+
+		// When
+		err := tree.Apply(changes)
+		current, exists := tree.FindByID(1)
+		after := snapshotTree(tree)
+
+		// Then
+		assert.True(test, err != nil)
+		assert.True(test, exists)
+		assert.Equal(test, original, current)
+		assert.Equal(test, "body", original.Tag())
+		assert.DeepEqual(test, before, after)
+	})
+
 	test.Run("should retain descendants when child links and an old parent are removed", func(test *testing.T) {
 		// Given
 		tree := vaadin.NewStateTree()
@@ -228,7 +276,15 @@ func TestStateTreeApply(test *testing.T) {
 		classes := node.Classes()
 		classes[0] = "changed class"
 		nodes := tree.Nodes()
-		nodes[0] = nil
+		nodes[0] = nodes[1]
+		lookup, _ := tree.FindByID(1)
+		lookup = vaadin.Node{}
+		roots := tree.Roots()
+		roots[0] = vaadin.Node{}
+		childrenHandles := tree.Children(1)
+		childrenHandles[0] = vaadin.Node{}
+		subtree := tree.Subtree(1)
+		subtree[0] = subtree[1]
 
 		// Then
 		assert.DeepEqual(test, map[string]any{"nested": map[string]any{"items": []any{"original"}}}, node.Properties(vaadin.PropertiesFeature))
@@ -236,7 +292,36 @@ func TestStateTreeApply(test *testing.T) {
 		assert.DeepEqual(test, []string{"a", "b", "c"}, node.Classes())
 		current, exists := tree.FindByID(1)
 		assert.True(test, exists && current == node)
+		assert.Equal(test, vaadin.NodeID(1), current.ID())
+		assert.Equal(test, vaadin.Node{}, lookup)
+		child, exists := tree.FindByID(2)
+		assert.True(test, exists)
+		assert.Equal(test, vaadin.NodeID(2), child.ID())
 	})
+	test.Run("should preserve captured values when later mutations update live handles", func(test *testing.T) {
+		// Given
+		tree := seedTree(test)
+		before := snapshotTree(tree)
+		changes := decodeChanges(test, `[
+   {"node":1,"type":"put","feat":0,"key":"tag","value":"section"},
+   {"node":1,"type":"splice","feat":2,"index":0,"remove":3,"addNodes":[4,3,2]},
+   {"node":1,"type":"splice","feat":11,"index":0,"remove":3,"add":["changed"]}
+  ]`)
+
+		// When
+		err := tree.Apply(changes)
+		after := snapshotTree(tree)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal[any](test, "body", before[0].features[vaadin.ElementFeature]["tag"])
+		assert.DeepEqual(test, []vaadin.NodeID{2, 3, 4}, before[0].children)
+		assert.DeepEqual(test, []string{"a", "b", "c"}, before[0].classes)
+		assert.Equal[any](test, "section", after[0].features[vaadin.ElementFeature]["tag"])
+		assert.DeepEqual(test, []vaadin.NodeID{4, 3, 2}, after[0].children)
+		assert.DeepEqual(test, []string{"changed"}, after[0].classes)
+	})
+
 	for _, flow := range []string{"authenticated", "rpc"} {
 		test.Run("should reconstruct independently verified UI when replaying "+flow+" fixtures", func(test *testing.T) {
 			// Given
@@ -252,10 +337,11 @@ func TestStateTreeApply(test *testing.T) {
 			bootstrap, err := vaadin.DecodeBootstrap(fixture(test, file))
 			assert.NoError(test, err)
 			tree := vaadin.NewStateTree()
+			var channel []vaadin.Message
+			var beforeChannel, afterChannel []nodeSnapshot
 
 			// When
-			err = tree.Apply(bootstrap.Message.Changes)
-			assert.NoError(test, err)
+			assert.NoError(test, tree.Apply(bootstrap.Message.Changes))
 			if flow == "rpc" {
 				var responses []string
 				assert.NoError(test, json.Unmarshal(fixture(test, "rpc-authentication.json"), &responses))
@@ -267,16 +353,23 @@ func TestStateTreeApply(test *testing.T) {
 						assert.NoError(test, tree.Apply(message.Changes))
 					}
 				}
-			}
-			before := tree.Nodes()
-			channel, channelErr := vaadin.DecodeResponse(fixture(test, "rpc-channel.txt"))
-			for _, message := range channel {
-				assert.NoError(test, tree.Apply(message.Changes))
+				beforeChannel = snapshotTree(tree)
+				channel, err = vaadin.DecodeResponse(fixture(test, "rpc-channel.txt"))
+				assert.NoError(test, err)
+				for _, message := range channel {
+					assert.NoError(test, tree.Apply(message.Changes))
+				}
+				afterChannel = snapshotTree(tree)
 			}
 
 			// Then
-			assert.NoError(test, channelErr)
-			assert.DeepEqual(test, before, tree.Nodes())
+			if flow == "rpc" {
+				assert.Equal(test, 1, len(channel))
+				assert.Equal(test, uint64(5), channel[0].SyncID)
+				assert.Equal(test, uint64(5), channel[0].ClientID)
+				assert.Equal(test, 0, len(channel[0].Changes))
+				assert.DeepEqual(test, beforeChannel, afterChannel)
+			}
 			root, exists := tree.FindByID(reference.Tree.IDs[flow])
 			assert.True(test, exists)
 			assert.Equal(test, 48, assertReference(test, tree, root, reference.Tree, reference.Excluded[flow]))
@@ -336,6 +429,25 @@ func TestStateTreeSubtree(test *testing.T) {
 
 // -- Internals ----------------------------------------------------------------
 
+type nodeSnapshot struct {
+	id       vaadin.NodeID
+	features map[vaadin.FeatureID]map[string]any
+	children []vaadin.NodeID
+	classes  []string
+}
+
+func snapshotTree(tree *vaadin.StateTree) []nodeSnapshot {
+	snapshots := []nodeSnapshot{}
+	for _, node := range tree.Nodes() {
+		features := map[vaadin.FeatureID]map[string]any{}
+		for _, feature := range []vaadin.FeatureID{vaadin.ElementFeature, vaadin.PropertiesFeature, vaadin.AttributesFeature, vaadin.TextFeature, vaadin.StylesFeature} {
+			features[feature] = node.Properties(feature)
+		}
+		snapshots = append(snapshots, nodeSnapshot{id: node.ID(), features: features, children: node.ChildIDs(), classes: node.Classes()})
+	}
+	return snapshots
+}
+
 func decodeChanges(test *testing.T, data string) []vaadin.Change {
 	test.Helper()
 	messages, err := vaadin.DecodeResponse([]byte(`[{"syncId":0,"clientId":0,"changes":` + data + `}]`))
@@ -372,7 +484,7 @@ type referenceNode struct {
 	Children   []referenceNode          `json:"children"`
 }
 
-func assertReference(test *testing.T, tree *vaadin.StateTree, node *vaadin.Node, reference referenceNode, excluded []vaadin.NodeID) int {
+func assertReference(test *testing.T, tree *vaadin.StateTree, node vaadin.Node, reference referenceNode, excluded []vaadin.NodeID) int {
 	test.Helper()
 	assert.Equal(test, reference.Tag, node.Tag(), fmt.Sprintf("node %d", node.ID()))
 	text, present := node.Text()
@@ -395,7 +507,7 @@ func assertReference(test *testing.T, tree *vaadin.StateTree, node *vaadin.Node,
 	slices.Sort(expectedClasses)
 	slices.Sort(actualClasses)
 	assert.DeepEqual(test, expectedClasses, actualClasses)
-	actualChildren := []*vaadin.Node{}
+	actualChildren := []vaadin.Node{}
 	for _, child := range tree.Children(node.ID()) {
 		if !slices.Contains(excluded, child.ID()) {
 			actualChildren = append(actualChildren, child)

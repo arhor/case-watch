@@ -8,21 +8,24 @@ import (
 // StateTree belongs to one UI/session. It is not safe for concurrent mutation.
 // The zero value is an empty tree.
 type StateTree struct {
-	nodes map[NodeID]*Node
+	nodes map[NodeID]*nodeState
 }
 
-func NewStateTree() *StateTree { return &StateTree{nodes: map[NodeID]*Node{}} }
+func NewStateTree() *StateTree { return &StateTree{nodes: map[NodeID]*nodeState{}} }
 
 // Apply processes a complete message in order, allowing forward references
 // within that message. Invalid mutations leave the entire prior tree unchanged.
 func (this *StateTree) Apply(changes []Change) error {
 	pending := NewStateTree()
+	retainedRegistrations := map[NodeID]*nodeState{}
 	for id, node := range this.nodes {
-		nodeCopy := &Node{id: id, features: map[FeatureID]map[string]any{}, children: node.ChildIDs(), classes: node.Classes()}
+		handle := Node{state: node}
+		nodeCopy := &nodeState{id: id, features: map[FeatureID]map[string]any{}, children: handle.ChildIDs(), classes: handle.Classes()}
 		for feature := range node.features {
-			nodeCopy.features[feature] = node.Properties(feature)
+			nodeCopy.features[feature] = handle.Properties(feature)
 		}
 		pending.nodes[id] = nodeCopy
+		retainedRegistrations[id] = nodeCopy
 	}
 	for _, change := range changes {
 		if err := pending.apply(change); err != nil {
@@ -33,7 +36,9 @@ func (this *StateTree) Apply(changes []Change) error {
 		return err
 	}
 	for id, node := range pending.nodes {
-		if existing, ok := this.nodes[id]; ok {
+		// A detach followed by registration creates a new lifetime for that ID.
+		// Only surviving registrations may update previously returned handles.
+		if existing, ok := this.nodes[id]; ok && node == retainedRegistrations[id] {
 			*existing = *node
 			pending.nodes[id] = existing
 		}
@@ -42,48 +47,48 @@ func (this *StateTree) Apply(changes []Change) error {
 	return nil
 }
 
-func (this *StateTree) FindByID(id NodeID) (*Node, bool) {
+func (this *StateTree) FindByID(id NodeID) (Node, bool) {
 	node, exists := this.nodes[id]
-	return node, exists
+	return Node{state: node}, exists
 }
 
 // Nodes includes non-DOM protocol nodes in deterministic ID order.
-func (this *StateTree) Nodes() []*Node {
-	nodes := make([]*Node, 0, len(this.nodes))
+func (this *StateTree) Nodes() []Node {
+	nodes := make([]Node, 0, len(this.nodes))
 	for _, node := range this.nodes {
-		nodes = append(nodes, node)
+		nodes = append(nodes, Node{state: node})
 	}
-	sort.Slice(nodes, func(left, right int) bool { return nodes[left].id < nodes[right].id })
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].ID() < nodes[right].ID() })
 	return nodes
 }
 
 // Roots returns parentless DOM nodes (element or text features), including the
 // implicit document root. Detached nodes are absent, and inert protocol nodes
 // without DOM features are excluded. Multiple roots are ordered by ID.
-func (this *StateTree) Roots() []*Node {
+func (this *StateTree) Roots() []Node {
 	parents := map[NodeID]bool{}
 	for _, node := range this.nodes {
 		for _, child := range node.children {
 			parents[child] = true
 		}
 	}
-	roots := []*Node{}
+	roots := []Node{}
 	for _, node := range this.Nodes() {
-		_, element := node.features[ElementFeature]
-		_, text := node.features[TextFeature]
-		if !parents[node.id] && (element || text) {
+		_, element := node.state.features[ElementFeature]
+		_, text := node.state.features[TextFeature]
+		if !parents[node.ID()] && (element || text) {
 			roots = append(roots, node)
 		}
 	}
 	return roots
 }
 
-func (this *StateTree) Children(id NodeID) []*Node {
-	children := []*Node{}
+func (this *StateTree) Children(id NodeID) []Node {
+	children := []Node{}
 	if node, exists := this.nodes[id]; exists {
 		for _, childID := range node.children {
 			if child, exists := this.nodes[childID]; exists {
-				children = append(children, child)
+				children = append(children, Node{state: child})
 			}
 		}
 	}
@@ -92,8 +97,8 @@ func (this *StateTree) Children(id NodeID) []*Node {
 
 // Subtree returns preorder traversal, preserving child order. The iterative
 // traversal also guards against repeated references and unbounded recursion.
-func (this *StateTree) Subtree(id NodeID) []*Node {
-	result := []*Node{}
+func (this *StateTree) Subtree(id NodeID) []Node {
+	result := []Node{}
 	seen := map[NodeID]bool{}
 	pending := []NodeID{id}
 	for len(pending) > 0 {
@@ -105,7 +110,7 @@ func (this *StateTree) Subtree(id NodeID) []*Node {
 			continue
 		}
 		seen[current] = true
-		result = append(result, node)
+		result = append(result, Node{state: node})
 		for index := len(node.children) - 1; index >= 0; index-- {
 			pending = append(pending, node.children[index])
 		}
@@ -136,7 +141,7 @@ func (this *StateTree) apply(change Change) error {
 	node := this.nodes[NodeID(id)]
 	if node == nil {
 		// Mutation targets may be implicitly registered (notably the body root).
-		node = &Node{id: NodeID(id), features: map[FeatureID]map[string]any{}}
+		node = &nodeState{id: NodeID(id), features: map[FeatureID]map[string]any{}}
 		this.nodes[node.id] = node
 	}
 	if operation == Attach {
@@ -168,7 +173,7 @@ func (this *StateTree) apply(change Change) error {
 	}
 }
 
-func applyMap(node *Node, feature FeatureID, operation string, change Change) error {
+func applyMap(node *nodeState, feature FeatureID, operation string, change Change) error {
 	if operation != Put && operation != Remove {
 		return errors.New("unsupported map operation")
 	}
@@ -199,7 +204,7 @@ func applyMap(node *Node, feature FeatureID, operation string, change Change) er
 	return nil
 }
 
-func applyList(node *Node, feature FeatureID, operation string, change Change) error {
+func applyList(node *nodeState, feature FeatureID, operation string, change Change) error {
 	if operation == Clear {
 		if feature == ChildrenFeature {
 			node.children = nil

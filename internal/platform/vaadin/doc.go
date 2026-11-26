@@ -39,5 +39,8 @@
 // to be a document root. Independent roots are sorted by ID; Children and Subtree
 // preserve protocol child order. Subtree traversal is iterative and bounded by
 // the registry. Accessors copy mutable values; node handles retain identity while
-// registered. The tree supports a single caller and needs no shared registry.
+// registered. They are value handles to private state, so replacing a handle
+// cannot mutate the registry. Detach ends that registration: a reused numeric ID
+// receives a new handle and removed handles retain their last committed values.
+// The tree supports a single caller and needs no shared registry.
 package vaadin
