@@ -7,1300 +7,192 @@ var uidl = {
   "Vaadin-Security-Key": "example-security-key",
   "Vaadin-Push-ID": "00000000-0000-4000-8000-000000000001",
   "changes": [
-    {
-      "node": 1,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "body"
-    },
-    {
-      "node": 1,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        17
-      ]
-    },
-    {
-      "node": 1,
-      "type": "put",
-      "key": "pushUrl",
-      "feat": 5,
-      "value": ""
-    },
-    {
-      "node": 1,
-      "type": "put",
-      "key": "alwaysXhrToServer",
-      "feat": 5,
-      "value": true
-    },
-    {
-      "node": 1,
-      "type": "put",
-      "key": "pushMode",
-      "feat": 5,
-      "value": "DISABLED"
-    },
-    {
-      "node": 1,
-      "type": "put",
-      "key": "parameters",
-      "feat": 5,
-      "nodeValue": 2
-    },
-    {
-      "node": 2,
-      "type": "attach"
-    },
-    {
-      "node": 2,
-      "type": "put",
-      "key": "fallbackTransport",
-      "feat": 6,
-      "value": "long-polling"
-    },
-    {
-      "node": 2,
-      "type": "put",
-      "key": "transport",
-      "feat": 6,
-      "value": "websocket"
-    },
-    {
-      "node": 3,
-      "type": "attach"
-    },
-    {
-      "node": 3,
-      "type": "put",
-      "key": "text",
-      "feat": 7,
-      "value": "Example text 1"
-    },
-    {
-      "node": 4,
-      "type": "attach"
-    },
-    {
-      "node": 4,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "label"
-    },
-    {
-      "node": 4,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 4,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        3
-      ]
-    },
-    {
-      "node": 5,
-      "type": "attach"
-    },
-    {
-      "node": 5,
-      "type": "put",
-      "key": "text",
-      "feat": 7,
-      "value": "Example text 2"
-    },
-    {
-      "node": 6,
-      "type": "attach"
-    },
-    {
-      "node": 6,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "a"
-    },
-    {
-      "node": 6,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 6,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        5
-      ]
-    },
-    {
-      "node": 6,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "footer-link"
-      ]
-    },
-    {
-      "node": 6,
-      "type": "put",
-      "key": "href",
-      "feat": 3,
-      "value": "https://example.invalid/resource"
-    },
-    {
-      "node": 6,
-      "type": "put",
-      "key": "target",
-      "feat": 3,
-      "value": "_blank"
-    },
-    {
-      "node": 7,
-      "type": "attach"
-    },
-    {
-      "node": 7,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-horizontal-layout"
-    },
-    {
-      "node": 7,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        6
-      ]
-    },
-    {
-      "node": 7,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "flex-column",
-        "flex-md-row"
-      ]
-    },
-    {
-      "node": 7,
-      "type": "put",
-      "key": "theme",
-      "feat": 3,
-      "value": "spacing"
-    },
-    {
-      "node": 8,
-      "type": "attach"
-    },
-    {
-      "node": 8,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 8,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        7,
-        4
-      ]
-    },
-    {
-      "node": 8,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "container",
-        "justify-content-between"
-      ]
-    },
-    {
-      "node": 8,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 9,
-      "type": "attach"
-    },
-    {
-      "node": 9,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 9,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        8
-      ]
-    },
-    {
-      "node": 9,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "py-2",
-        "footer"
-      ]
-    },
-    {
-      "node": 9,
-      "type": "put",
-      "key": "flex-shrink",
-      "feat": 12,
-      "value": "0"
-    },
-    {
-      "node": 9,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 10,
-      "type": "attach"
-    },
-    {
-      "node": 10,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 10,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 10,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        18,
-        20,
-        28,
-        30
-      ]
-    },
-    {
-      "node": 10,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "container",
-        "mt-md-3",
-        "py-2",
-        "p-2",
-        "align-items-center",
-        "flex-column",
-        "align-self-center"
-      ]
-    },
-    {
-      "node": 10,
-      "type": "put",
-      "key": "background-color",
-      "feat": 12,
-      "value": "#f7f7f7"
-    },
-    {
-      "node": 10,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 11,
-      "type": "attach"
-    },
-    {
-      "node": 11,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 11,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        10
-      ]
-    },
-    {
-      "node": 11,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "pb-3"
-      ]
-    },
-    {
-      "node": 11,
-      "type": "put",
-      "key": "background-color",
-      "feat": 12,
-      "value": "#EAE7E2"
-    },
-    {
-      "node": 11,
-      "type": "put",
-      "key": "flex-grow",
-      "feat": 12,
-      "value": "1"
-    },
-    {
-      "node": 12,
-      "type": "attach"
-    },
-    {
-      "node": 12,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 12,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 12,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        32,
-        33,
-        34,
-        35
-      ]
-    },
-    {
-      "node": 12,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "flex-column",
-        "flex-md-row"
-      ]
-    },
-    {
-      "node": 12,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 12,
-      "type": "put",
-      "key": "align-items",
-      "feat": 12,
-      "value": "center"
-    },
-    {
-      "node": 12,
-      "type": "put",
-      "key": "justify-items",
-      "feat": 12,
-      "value": "center"
-    },
-    {
-      "node": 13,
-      "type": "attach"
-    },
-    {
-      "node": 13,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "img"
-    },
-    {
-      "node": 13,
-      "type": "put",
-      "key": "src",
-      "feat": 3,
-      "value": "https://example.invalid/resource"
-    },
-    {
-      "node": 13,
-      "type": "put",
-      "key": "height",
-      "feat": 12,
-      "value": "150px"
-    },
-    {
-      "node": 14,
-      "type": "attach"
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "a"
-    },
-    {
-      "node": 14,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        13
-      ]
-    },
-    {
-      "node": 14,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "d-flex",
-        "align-items-center"
-      ]
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "highlight",
-      "feat": 3,
-      "value": ""
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "href",
-      "feat": 3,
-      "value": ""
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "color",
-      "feat": 12,
-      "value": "#5b524c"
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "text-decoration",
-      "feat": 12,
-      "value": "none"
-    },
-    {
-      "node": 14,
-      "type": "put",
-      "key": "position",
-      "feat": 12,
-      "value": "relative"
-    },
-    {
-      "node": 15,
-      "type": "attach"
-    },
-    {
-      "node": 15,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 15,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        14,
-        12
-      ]
-    },
-    {
-      "node": 15,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "container",
-        "justify-content-between",
-        "align-items-center"
-      ]
-    },
-    {
-      "node": 15,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 16,
-      "type": "attach"
-    },
-    {
-      "node": 16,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 16,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        15
-      ]
-    },
-    {
-      "node": 16,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "mb-2",
-        "header"
-      ]
-    },
-    {
-      "node": 16,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 17,
-      "type": "attach"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 17,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        16,
-        11,
-        9
-      ]
-    },
-    {
-      "node": 17,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "flex-column",
-        "main-view"
-      ]
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "id",
-      "feat": 3,
-      "value": "Example text 3"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "background-color",
-      "feat": 12,
-      "value": "#EAE7E2"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "min-height",
-      "feat": 12,
-      "value": "100vh"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "box-sizing",
-      "feat": 12,
-      "value": "border-box"
-    },
-    {
-      "node": 17,
-      "type": "put",
-      "key": "height",
-      "feat": 12,
-      "value": "0px"
-    },
-    {
-      "node": 18,
-      "type": "attach"
-    },
-    {
-      "node": 18,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "img"
-    },
-    {
-      "node": 18,
-      "type": "put",
-      "key": "src",
-      "feat": 3,
-      "value": "https://example.invalid/resource"
-    },
-    {
-      "node": 18,
-      "type": "put",
-      "key": "width",
-      "feat": 12,
-      "value": "315px"
-    },
-    {
-      "node": 19,
-      "type": "attach"
-    },
-    {
-      "node": 19,
-      "type": "put",
-      "key": "text",
-      "feat": 7,
-      "value": "Example text 4"
-    },
-    {
-      "node": 20,
-      "type": "attach"
-    },
-    {
-      "node": 20,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "label"
-    },
-    {
-      "node": 20,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 20,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        19
-      ]
-    },
-    {
-      "node": 20,
-      "type": "put",
-      "key": "font-weight",
-      "feat": 12,
-      "value": "bold"
-    },
-    {
-      "node": 20,
-      "type": "put",
-      "key": "margin-top",
-      "feat": 12,
-      "value": "10px"
-    },
-    {
-      "node": 21,
-      "type": "attach"
-    },
-    {
-      "node": 21,
-      "type": "put",
-      "key": "text",
-      "feat": 7,
-      "value": "Log in"
-    },
-    {
-      "node": 22,
-      "type": "attach"
-    },
-    {
-      "node": 22,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-button"
-    },
-    {
-      "node": 22,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 22,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        21
-      ]
-    },
-    {
-      "node": 22,
-      "type": "put",
-      "key": "theme",
-      "feat": 3,
-      "value": "primary"
-    },
-    {
-      "node": 22,
-      "type": "put",
-      "key": "click",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDU="
-    },
-    {
-      "node": 22,
-      "type": "put",
-      "key": "cursor",
-      "feat": 12,
-      "value": "pointer"
-    },
-    {
-      "node": 23,
-      "type": "attach"
-    },
-    {
-      "node": 23,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "iron-icon"
-    },
-    {
-      "node": 23,
-      "type": "put",
-      "key": "icon",
-      "feat": 3,
-      "value": "lumo:edit"
-    },
-    {
-      "node": 23,
-      "type": "put",
-      "key": "slot",
-      "feat": 3,
-      "value": "prefix"
-    },
-    {
-      "node": 24,
-      "type": "attach"
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-password-field"
-    },
-    {
-      "node": 24,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        23
-      ]
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "invalid",
-      "feat": 1,
-      "value": false
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "label",
-      "feat": 1,
-      "value": "Password"
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "value",
-      "feat": 1,
-      "value": ""
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "required",
-      "feat": 1,
-      "value": true
-    },
-    {
-      "node": 24,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "pt-0"
-      ]
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "value-changed",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDY="
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "keyup",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDc="
-    },
-    {
-      "node": 24,
-      "type": "put",
-      "key": "width",
-      "feat": 12,
-      "value": "100%"
-    },
-    {
-      "node": 25,
-      "type": "attach"
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-text-field"
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "invalid",
-      "feat": 1,
-      "value": false
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "label",
-      "feat": 1,
-      "value": "Number of application"
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "value",
-      "feat": 1,
-      "value": ""
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "required",
-      "feat": 1,
-      "value": true
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "change",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDY="
-    },
-    {
-      "node": 25,
-      "type": "put",
-      "key": "width",
-      "feat": 12,
-      "value": "100%"
-    },
-    {
-      "node": 26,
-      "type": "attach"
-    },
-    {
-      "node": 26,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 26,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        25
-      ]
-    },
-    {
-      "node": 26,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 27,
-      "type": "attach"
-    },
-    {
-      "node": 27,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-form-layout"
-    },
-    {
-      "node": 27,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        26,
-        24,
-        22
-      ]
-    },
-    {
-      "node": 28,
-      "type": "attach"
-    },
-    {
-      "node": 28,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "div"
-    },
-    {
-      "node": 28,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        27
-      ]
-    },
-    {
-      "node": 28,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "p-2",
-        "my-auto",
-        "align-items-center",
-        "justify-content-center",
-        "flex-column",
-        "align-self-center"
-      ]
-    },
-    {
-      "node": 28,
-      "type": "put",
-      "key": "display",
-      "feat": 12,
-      "value": "flex"
-    },
-    {
-      "node": 29,
-      "type": "attach"
-    },
-    {
-      "node": 29,
-      "type": "put",
-      "key": "text",
-      "feat": 7,
-      "value": "Example text 8"
-    },
-    {
-      "node": 30,
-      "type": "attach"
-    },
-    {
-      "node": 30,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "label"
-    },
-    {
-      "node": 30,
-      "type": "clear",
-      "feat": 2
-    },
-    {
-      "node": 30,
-      "type": "splice",
-      "feat": 2,
-      "index": 0,
-      "addNodes": [
-        29
-      ]
-    },
-    {
-      "node": 30,
-      "type": "put",
-      "key": "font-size",
-      "feat": 12,
-      "value": "13px"
-    },
-    {
-      "node": 30,
-      "type": "put",
-      "key": "font-style",
-      "feat": 12,
-      "value": "italic"
-    },
-    {
-      "node": 31,
-      "type": "attach"
-    },
-    {
-      "node": 32,
-      "type": "attach"
-    },
-    {
-      "node": 32,
-      "type": "put",
-      "key": "visible",
-      "feat": 0,
-      "value": false
-    },
-    {
-      "node": 32,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-button"
-    },
-    {
-      "node": 33,
-      "type": "attach"
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-button"
-    },
-    {
-      "node": 33,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "language",
-        "m-1"
-      ]
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "click",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDU="
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "background-size",
-      "feat": 12,
-      "value": "100%"
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "background-image",
-      "feat": 12,
-      "value": "none"
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "height",
-      "feat": 12,
-      "value": "20px"
-    },
-    {
-      "node": 33,
-      "type": "put",
-      "key": "min-width",
-      "feat": 12,
-      "value": "32px"
-    },
-    {
-      "node": 34,
-      "type": "attach"
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-button"
-    },
-    {
-      "node": 34,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "language",
-        "m-1"
-      ]
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "click",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDU="
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "background-size",
-      "feat": 12,
-      "value": "100%"
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "background-image",
-      "feat": 12,
-      "value": "none"
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "height",
-      "feat": 12,
-      "value": "20px"
-    },
-    {
-      "node": 34,
-      "type": "put",
-      "key": "min-width",
-      "feat": 12,
-      "value": "32px"
-    },
-    {
-      "node": 35,
-      "type": "attach"
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "tag",
-      "feat": 0,
-      "value": "vaadin-button"
-    },
-    {
-      "node": 35,
-      "type": "splice",
-      "feat": 11,
-      "index": 0,
-      "add": [
-        "language",
-        "m-1",
-        "active"
-      ]
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "click",
-      "feat": 4,
-      "value": "RXhhbXBsZSB0ZXh0IDU="
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "background-size",
-      "feat": 12,
-      "value": "100%"
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "background-image",
-      "feat": 12,
-      "value": "none"
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "height",
-      "feat": 12,
-      "value": "20px"
-    },
-    {
-      "node": 35,
-      "type": "put",
-      "key": "min-width",
-      "feat": 12,
-      "value": "32px"
-    }
+    {"node": 1, "type": "put", "key": "tag", "feat": 0, "value": "body"},
+    {"node": 1, "type": "splice", "feat": 2, "index": 0, "addNodes": [17]},
+    {"node": 1, "type": "put", "key": "pushUrl", "feat": 5, "value": ""},
+    {"node": 1, "type": "put", "key": "alwaysXhrToServer", "feat": 5, "value": true},
+    {"node": 1, "type": "put", "key": "pushMode", "feat": 5, "value": "DISABLED"},
+    {"node": 1, "type": "put", "key": "parameters", "feat": 5, "nodeValue": 2},
+    {"node": 2, "type": "attach"},
+    {"node": 2, "type": "put", "key": "fallbackTransport", "feat": 6, "value": "long-polling"},
+    {"node": 2, "type": "put", "key": "transport", "feat": 6, "value": "websocket"},
+    {"node": 3, "type": "attach"},
+    {"node": 3, "type": "put", "key": "text", "feat": 7, "value": "Example text 1"},
+    {"node": 4, "type": "attach"},
+    {"node": 4, "type": "put", "key": "tag", "feat": 0, "value": "label"},
+    {"node": 4, "type": "clear", "feat": 2},
+    {"node": 4, "type": "splice", "feat": 2, "index": 0, "addNodes": [3]},
+    {"node": 5, "type": "attach"},
+    {"node": 5, "type": "put", "key": "text", "feat": 7, "value": "Example text 2"},
+    {"node": 6, "type": "attach"},
+    {"node": 6, "type": "put", "key": "tag", "feat": 0, "value": "a"},
+    {"node": 6, "type": "clear", "feat": 2},
+    {"node": 6, "type": "splice", "feat": 2, "index": 0, "addNodes": [5]},
+    {"node": 6, "type": "splice", "feat": 11, "index": 0, "add": ["footer-link"]},
+    {"node": 6, "type": "put", "key": "href", "feat": 3, "value": "https://example.invalid/resource"},
+    {"node": 6, "type": "put", "key": "target", "feat": 3, "value": "_blank"},
+    {"node": 7, "type": "attach"},
+    {"node": 7, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-horizontal-layout"},
+    {"node": 7, "type": "splice", "feat": 2, "index": 0, "addNodes": [6]},
+    {"node": 7, "type": "splice", "feat": 11, "index": 0, "add": ["flex-column", "flex-md-row"]},
+    {"node": 7, "type": "put", "key": "theme", "feat": 3, "value": "spacing"},
+    {"node": 8, "type": "attach"},
+    {"node": 8, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 8, "type": "splice", "feat": 2, "index": 0, "addNodes": [7, 4]},
+    {"node": 8, "type": "splice", "feat": 11, "index": 0, "add": ["container", "justify-content-between"]},
+    {"node": 8, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 9, "type": "attach"},
+    {"node": 9, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 9, "type": "splice", "feat": 2, "index": 0, "addNodes": [8]},
+    {"node": 9, "type": "splice", "feat": 11, "index": 0, "add": ["py-2", "footer"]},
+    {"node": 9, "type": "put", "key": "flex-shrink", "feat": 12, "value": "0"},
+    {"node": 9, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 10, "type": "attach"},
+    {"node": 10, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 10, "type": "clear", "feat": 2},
+    {"node": 10, "type": "splice", "feat": 2, "index": 0, "addNodes": [18, 20, 28, 30]},
+    {"node": 10, "type": "splice", "feat": 11, "index": 0, "add": ["container", "mt-md-3", "py-2", "p-2", "align-items-center", "flex-column", "align-self-center"]},
+    {"node": 10, "type": "put", "key": "background-color", "feat": 12, "value": "#f7f7f7"},
+    {"node": 10, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 11, "type": "attach"},
+    {"node": 11, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 11, "type": "splice", "feat": 2, "index": 0, "addNodes": [10]},
+    {"node": 11, "type": "splice", "feat": 11, "index": 0, "add": ["pb-3"]},
+    {"node": 11, "type": "put", "key": "background-color", "feat": 12, "value": "#EAE7E2"},
+    {"node": 11, "type": "put", "key": "flex-grow", "feat": 12, "value": "1"},
+    {"node": 12, "type": "attach"},
+    {"node": 12, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 12, "type": "clear", "feat": 2},
+    {"node": 12, "type": "splice", "feat": 2, "index": 0, "addNodes": [32, 33, 34, 35]},
+    {"node": 12, "type": "splice", "feat": 11, "index": 0, "add": ["flex-column", "flex-md-row"]},
+    {"node": 12, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 12, "type": "put", "key": "align-items", "feat": 12, "value": "center"},
+    {"node": 12, "type": "put", "key": "justify-items", "feat": 12, "value": "center"},
+    {"node": 13, "type": "attach"},
+    {"node": 13, "type": "put", "key": "tag", "feat": 0, "value": "img"},
+    {"node": 13, "type": "put", "key": "src", "feat": 3, "value": "https://example.invalid/resource"},
+    {"node": 13, "type": "put", "key": "height", "feat": 12, "value": "150px"},
+    {"node": 14, "type": "attach"},
+    {"node": 14, "type": "put", "key": "tag", "feat": 0, "value": "a"},
+    {"node": 14, "type": "splice", "feat": 2, "index": 0, "addNodes": [13]},
+    {"node": 14, "type": "splice", "feat": 11, "index": 0, "add": ["d-flex", "align-items-center"]},
+    {"node": 14, "type": "put", "key": "highlight", "feat": 3, "value": ""},
+    {"node": 14, "type": "put", "key": "href", "feat": 3, "value": ""},
+    {"node": 14, "type": "put", "key": "color", "feat": 12, "value": "#5b524c"},
+    {"node": 14, "type": "put", "key": "text-decoration", "feat": 12, "value": "none"},
+    {"node": 14, "type": "put", "key": "position", "feat": 12, "value": "relative"},
+    {"node": 15, "type": "attach"},
+    {"node": 15, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 15, "type": "splice", "feat": 2, "index": 0, "addNodes": [14, 12]},
+    {"node": 15, "type": "splice", "feat": 11, "index": 0, "add": ["container", "justify-content-between", "align-items-center"]},
+    {"node": 15, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 16, "type": "attach"},
+    {"node": 16, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 16, "type": "splice", "feat": 2, "index": 0, "addNodes": [15]},
+    {"node": 16, "type": "splice", "feat": 11, "index": 0, "add": ["mb-2", "header"]},
+    {"node": 16, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 17, "type": "attach"},
+    {"node": 17, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 17, "type": "splice", "feat": 2, "index": 0, "addNodes": [16, 11, 9]},
+    {"node": 17, "type": "splice", "feat": 11, "index": 0, "add": ["flex-column", "main-view"]},
+    {"node": 17, "type": "put", "key": "id", "feat": 3, "value": "Example text 3"},
+    {"node": 17, "type": "put", "key": "background-color", "feat": 12, "value": "#EAE7E2"},
+    {"node": 17, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 17, "type": "put", "key": "min-height", "feat": 12, "value": "100vh"},
+    {"node": 17, "type": "put", "key": "box-sizing", "feat": 12, "value": "border-box"},
+    {"node": 17, "type": "put", "key": "height", "feat": 12, "value": "0px"},
+    {"node": 18, "type": "attach"},
+    {"node": 18, "type": "put", "key": "tag", "feat": 0, "value": "img"},
+    {"node": 18, "type": "put", "key": "src", "feat": 3, "value": "https://example.invalid/resource"},
+    {"node": 18, "type": "put", "key": "width", "feat": 12, "value": "315px"},
+    {"node": 19, "type": "attach"},
+    {"node": 19, "type": "put", "key": "text", "feat": 7, "value": "Example text 4"},
+    {"node": 20, "type": "attach"},
+    {"node": 20, "type": "put", "key": "tag", "feat": 0, "value": "label"},
+    {"node": 20, "type": "clear", "feat": 2},
+    {"node": 20, "type": "splice", "feat": 2, "index": 0, "addNodes": [19]},
+    {"node": 20, "type": "put", "key": "font-weight", "feat": 12, "value": "bold"},
+    {"node": 20, "type": "put", "key": "margin-top", "feat": 12, "value": "10px"},
+    {"node": 21, "type": "attach"},
+    {"node": 21, "type": "put", "key": "text", "feat": 7, "value": "Log in"},
+    {"node": 22, "type": "attach"},
+    {"node": 22, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-button"},
+    {"node": 22, "type": "clear", "feat": 2},
+    {"node": 22, "type": "splice", "feat": 2, "index": 0, "addNodes": [21]},
+    {"node": 22, "type": "put", "key": "theme", "feat": 3, "value": "primary"},
+    {"node": 22, "type": "put", "key": "click", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDU="},
+    {"node": 22, "type": "put", "key": "cursor", "feat": 12, "value": "pointer"},
+    {"node": 23, "type": "attach"},
+    {"node": 23, "type": "put", "key": "tag", "feat": 0, "value": "iron-icon"},
+    {"node": 23, "type": "put", "key": "icon", "feat": 3, "value": "lumo:edit"},
+    {"node": 23, "type": "put", "key": "slot", "feat": 3, "value": "prefix"},
+    {"node": 24, "type": "attach"},
+    {"node": 24, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-password-field"},
+    {"node": 24, "type": "splice", "feat": 2, "index": 0, "addNodes": [23]},
+    {"node": 24, "type": "put", "key": "invalid", "feat": 1, "value": false},
+    {"node": 24, "type": "put", "key": "label", "feat": 1, "value": "Password"},
+    {"node": 24, "type": "put", "key": "value", "feat": 1, "value": ""},
+    {"node": 24, "type": "put", "key": "required", "feat": 1, "value": true},
+    {"node": 24, "type": "splice", "feat": 11, "index": 0, "add": ["pt-0"]},
+    {"node": 24, "type": "put", "key": "value-changed", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDY="},
+    {"node": 24, "type": "put", "key": "keyup", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDc="},
+    {"node": 24, "type": "put", "key": "width", "feat": 12, "value": "100%"},
+    {"node": 25, "type": "attach"},
+    {"node": 25, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-text-field"},
+    {"node": 25, "type": "put", "key": "invalid", "feat": 1, "value": false},
+    {"node": 25, "type": "put", "key": "label", "feat": 1, "value": "Number of application"},
+    {"node": 25, "type": "put", "key": "value", "feat": 1, "value": ""},
+    {"node": 25, "type": "put", "key": "required", "feat": 1, "value": true},
+    {"node": 25, "type": "put", "key": "change", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDY="},
+    {"node": 25, "type": "put", "key": "width", "feat": 12, "value": "100%"},
+    {"node": 26, "type": "attach"},
+    {"node": 26, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 26, "type": "splice", "feat": 2, "index": 0, "addNodes": [25]},
+    {"node": 26, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 27, "type": "attach"},
+    {"node": 27, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-form-layout"},
+    {"node": 27, "type": "splice", "feat": 2, "index": 0, "addNodes": [26, 24, 22]},
+    {"node": 28, "type": "attach"},
+    {"node": 28, "type": "put", "key": "tag", "feat": 0, "value": "div"},
+    {"node": 28, "type": "splice", "feat": 2, "index": 0, "addNodes": [27]},
+    {"node": 28, "type": "splice", "feat": 11, "index": 0, "add": ["p-2", "my-auto", "align-items-center", "justify-content-center", "flex-column", "align-self-center"]},
+    {"node": 28, "type": "put", "key": "display", "feat": 12, "value": "flex"},
+    {"node": 29, "type": "attach"},
+    {"node": 29, "type": "put", "key": "text", "feat": 7, "value": "Example text 8"},
+    {"node": 30, "type": "attach"},
+    {"node": 30, "type": "put", "key": "tag", "feat": 0, "value": "label"},
+    {"node": 30, "type": "clear", "feat": 2},
+    {"node": 30, "type": "splice", "feat": 2, "index": 0, "addNodes": [29]},
+    {"node": 30, "type": "put", "key": "font-size", "feat": 12, "value": "13px"},
+    {"node": 30, "type": "put", "key": "font-style", "feat": 12, "value": "italic"},
+    {"node": 31, "type": "attach"},
+    {"node": 32, "type": "attach"},
+    {"node": 32, "type": "put", "key": "visible", "feat": 0, "value": false},
+    {"node": 32, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-button"},
+    {"node": 33, "type": "attach"},
+    {"node": 33, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-button"},
+    {"node": 33, "type": "splice", "feat": 11, "index": 0, "add": ["language", "m-1"]},
+    {"node": 33, "type": "put", "key": "click", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDU="},
+    {"node": 33, "type": "put", "key": "background-size", "feat": 12, "value": "100%"},
+    {"node": 33, "type": "put", "key": "background-image", "feat": 12, "value": "none"},
+    {"node": 33, "type": "put", "key": "height", "feat": 12, "value": "20px"},
+    {"node": 33, "type": "put", "key": "min-width", "feat": 12, "value": "32px"},
+    {"node": 34, "type": "attach"},
+    {"node": 34, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-button"},
+    {"node": 34, "type": "splice", "feat": 11, "index": 0, "add": ["language", "m-1"]},
+    {"node": 34, "type": "put", "key": "click", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDU="},
+    {"node": 34, "type": "put", "key": "background-size", "feat": 12, "value": "100%"},
+    {"node": 34, "type": "put", "key": "background-image", "feat": 12, "value": "none"},
+    {"node": 34, "type": "put", "key": "height", "feat": 12, "value": "20px"},
+    {"node": 34, "type": "put", "key": "min-width", "feat": 12, "value": "32px"},
+    {"node": 35, "type": "attach"},
+    {"node": 35, "type": "put", "key": "tag", "feat": 0, "value": "vaadin-button"},
+    {"node": 35, "type": "splice", "feat": 11, "index": 0, "add": ["language", "m-1", "active"]},
+    {"node": 35, "type": "put", "key": "click", "feat": 4, "value": "RXhhbXBsZSB0ZXh0IDU="},
+    {"node": 35, "type": "put", "key": "background-size", "feat": 12, "value": "100%"},
+    {"node": 35, "type": "put", "key": "background-image", "feat": 12, "value": "none"},
+    {"node": 35, "type": "put", "key": "height", "feat": 12, "value": "20px"},
+    {"node": 35, "type": "put", "key": "min-width", "feat": 12, "value": "32px"}
   ]
 };
 var config = {"v-uiId": 42};

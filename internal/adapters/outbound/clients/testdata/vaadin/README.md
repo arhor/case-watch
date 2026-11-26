@@ -41,10 +41,11 @@ Use a fresh state for each of these independent flows:
 2. **Authenticated bootstrap:** decode `bootstrap-authenticated.html` into an
    empty state. Do not append it to the incremental authentication state.
 
-`rpc-channel.json` is the fifth response, stored as a raw framed HTTP body
-including `for(;;);`, with one trailing newline. Despite the filename extension,
-it is not a bare JSON document. It may be applied after authentication as
-additional protocol evidence; it makes no UI changes and is not a required fifth
+`rpc-channel.txt` is the fifth response, stored as a raw framed HTTP body
+including `for(;;);`, with one trailing newline. The `.txt` extension reflects
+that the framing makes it a wire response rather than a bare JSON document. It
+may be applied after authentication as additional protocol evidence; it makes no
+UI changes and is not a required fifth
 authentication step. The first three authentication responses likewise have no
 changes; retain them for their synchronization metadata and sequence positions.
 
