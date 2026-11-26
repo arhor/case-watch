@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"github.com/arhor/case-watch/internal/domain"
 	realclock "github.com/arhor/case-watch/internal/platform/clock"
 	"github.com/arhor/case-watch/internal/platform/httpclient"
+	"github.com/arhor/case-watch/internal/platform/vaadin"
 )
 
 const (
@@ -143,22 +143,18 @@ type gdanskPortalSession struct {
 	userID      string
 	lastRequest time.Time
 	requests    int
-	uiID        float64
+	uiID        uint64
 	state       gdanskRPCState
 }
 
 type gdanskRPCState struct {
-	props        map[float64]map[string]any
-	children     map[float64][]float64
-	sync, client any
+	tree         *vaadin.StateTree
+	sync, client uint64
 	token        string
 }
 
 func (this *GdanskPortalClient) newSession() *gdanskPortalSession {
-	return &gdanskPortalSession{
-		config: this,
-		state:  gdanskRPCState{props: map[float64]map[string]any{}, children: map[float64][]float64{}},
-	}
+	return &gdanskPortalSession{config: this, state: gdanskRPCState{tree: vaadin.NewStateTree()}}
 }
 
 func (this *gdanskPortalSession) request(ctx context.Context, method, path string, body any) ([]byte, error) {
@@ -223,20 +219,12 @@ func (this *gdanskPortalSession) bootstrap(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	uidl, err := gdanskBootstrapObject(b, "var uidl =")
+	bootstrap, err := vaadin.DecodeBootstrap(b)
 	if err != nil {
 		return err
 	}
-	config, err := gdanskBootstrapObject(b, "var config =")
-	if err != nil {
-		return err
-	}
-	id, ok := config["v-uiId"].(float64)
-	if !ok || !gdanskRPCInteger(id) {
-		return errors.New("missing UI identifier")
-	}
-	this.uiID = id
-	if err := this.state.apply(uidl); err != nil {
+	this.uiID = bootstrap.UIID
+	if err := this.state.apply(bootstrap.Message); err != nil {
 		return err
 	}
 	if _, err := this.state.stage(); err == nil {
@@ -276,14 +264,20 @@ func (this *gdanskPortalSession) authenticate(ctx context.Context, number, passw
 		if err != nil {
 			return err
 		}
-		if err := this.state.applyResponse(b); err != nil {
+		messages, err := vaadin.DecodeResponse(b)
+		if err != nil {
 			return err
+		}
+		for _, message := range messages {
+			if err := this.state.apply(message); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func gdanskRPCEvent(node float64, name string) map[string]any {
+func gdanskRPCEvent(node vaadin.NodeID, name string) map[string]any {
 	data := map[string]any{}
 	if name == "click" {
 		for _, key := range []string{"shiftKey", "metaKey", "ctrlKey", "altKey"} {
@@ -296,27 +290,25 @@ func gdanskRPCEvent(node float64, name string) map[string]any {
 	return map[string]any{"type": "event", "node": node, "event": name, "data": data}
 }
 
-func gdanskRPCChange(node float64, value, event string) []any {
+func gdanskRPCChange(node vaadin.NodeID, value, event string) []any {
 	return []any{
-		map[string]any{"type": "mSync", "node": node, "feature": 1, "property": "value", "value": value},
+		map[string]any{"type": "mSync", "node": node, "feature": vaadin.PropertiesFeature, "property": "value", "value": value},
 		gdanskRPCEvent(node, event),
 	}
 }
 
-func (this *gdanskRPCState) applyResponse(b []byte) error {
-	var messages []map[string]any
-	if err := json.Unmarshal(bytes.TrimPrefix(b, []byte("for(;;);")), &messages); err != nil || len(messages) == 0 {
-		return errors.New("invalid RPC response")
+func (this *gdanskRPCState) apply(message vaadin.Message) error {
+	if err := this.tree.Apply(message.Changes); err != nil {
+		return err
 	}
-	for _, message := range messages {
-		if err := this.apply(message); err != nil {
-			return err
-		}
+	this.sync, this.client = message.SyncID, message.ClientID
+	if message.SecurityKey != nil {
+		this.token = *message.SecurityKey
 	}
 	return nil
 }
 
-func (this *gdanskRPCState) loginComponents() (number, password, button float64, err error) {
+func (this *gdanskRPCState) loginComponents() (number, password, button vaadin.NodeID, err error) {
 	number, err = this.find("vaadin-text-field", "Number of application")
 	if err != nil {
 		return
@@ -329,122 +321,25 @@ func (this *gdanskRPCState) loginComponents() (number, password, button float64,
 	return
 }
 
-func gdanskBootstrapObject(b []byte, marker string) (map[string]any, error) {
-	i := bytes.Index(b, []byte(marker))
-	if i < 0 {
-		return nil, errors.New("bootstrap marker missing")
-	}
-	var v map[string]any
-	err := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(b[i+len(marker):]))).Decode(&v)
-	return v, err
-}
-
-func (this *gdanskRPCState) apply(v map[string]any) error {
-	sync, sok := v["syncId"].(float64)
-	client, cok := v["clientId"].(float64)
-	if !sok || !cok || !gdanskRPCInteger(sync) || !gdanskRPCInteger(client) {
-		return errors.New("invalid RPC synchronization state")
-	}
-	this.sync, this.client = sync, client
-	if t, ok := v["Vaadin-Security-Key"].(string); ok {
-		this.token = t
-	}
-	rawChanges, exists := v["changes"]
-	if !exists {
-		return nil
-	}
-	cs, ok := rawChanges.([]any)
-	if !ok {
-		return errors.New("invalid RPC changes")
-	}
-	for _, raw := range cs {
-		c, ok := raw.(map[string]any)
-		if !ok {
-			return errors.New("invalid RPC change")
+func (this *gdanskRPCState) find(tag, label string) (vaadin.NodeID, error) {
+	var found []vaadin.NodeID
+	for _, node := range this.tree.Nodes() {
+		property, _ := node.Property(vaadin.PropertiesFeature, "label")
+		if node.Tag() != tag || (label != "" && property != label) {
+			continue
 		}
-		n, ok := c["node"].(float64)
-		if !ok || !gdanskRPCInteger(n) {
-			return errors.New("invalid RPC node")
-		}
-		if this.props[n] == nil {
-			this.props[n] = map[string]any{}
-		}
-		feat, _ := c["feat"].(float64)
-		switch c["type"] {
-		case "attach":
-		case "put":
-			k, ok := c["key"].(string)
-			if !ok {
-				return errors.New("invalid property key")
+		if tag == "vaadin-button" {
+			matches := false
+			for _, child := range this.tree.Children(node.ID()) {
+				if gdanskNodeHasText(child, "Log in") {
+					matches = true
+				}
 			}
-			// Only semantic properties participate in discovery; styles and listeners must not overwrite them.
-			if feat == 0 || feat == 1 || feat == 7 {
-				this.props[n][k] = c["value"]
-			}
-		case "remove":
-			if feat == 0 || feat == 1 || feat == 7 {
-				k, _ := c["key"].(string)
-				delete(this.props[n], k)
-			}
-		case "detach":
-			delete(this.props, n)
-			delete(this.children, n)
-		case "clear", "empty":
-			if feat == 2 {
-				delete(this.children, n)
-			}
-		case "splice":
-			if feat != 2 {
+			if !matches {
 				continue
 			}
-			old := this.children[n]
-			i, ok := c["index"].(float64)
-			if !ok || !gdanskRPCInteger(i) {
-				return errors.New("invalid child index")
-			}
-			r, _ := c["remove"].(float64)
-			if !gdanskRPCInteger(r) || i > float64(len(old)) || i+r > float64(len(old)) {
-				return errors.New("invalid child splice")
-			}
-			next := append([]float64{}, old[:int(i)]...)
-			if raw, exists := c["addNodes"]; exists {
-				added, ok := raw.([]any)
-				if !ok {
-					return errors.New("invalid child nodes")
-				}
-				for _, x := range added {
-					f, ok := x.(float64)
-					if !ok || !gdanskRPCInteger(f) {
-						return errors.New("invalid child node")
-					}
-					next = append(next, f)
-				}
-			}
-			this.children[n] = append(next, old[int(i+r):]...)
-		default:
-			return errors.New("unsupported RPC change")
 		}
-	}
-	return nil
-}
-
-func (this *gdanskRPCState) find(tag, label string) (float64, error) {
-	var found []float64
-	for n, p := range this.props {
-		if p["tag"] == tag && (label == "" || p["label"] == label) {
-			if tag == "vaadin-button" {
-				matches := false
-				for _, child := range this.children[n] {
-					if this.props[child]["text"] == "Log in" {
-						matches = true
-					}
-				}
-				if !matches {
-					continue
-				}
-			}
-			found = append(found, n)
-		}
+		found = append(found, node.ID())
 	}
 	if len(found) != 1 {
 		return 0, errors.New("missing or ambiguous login component")
@@ -453,47 +348,25 @@ func (this *gdanskRPCState) find(tag, label string) (float64, error) {
 }
 
 func (this *gdanskRPCState) stage() (string, error) {
-	// Locate the field in the same row as the stage caption.
-	var contains func(float64, string, map[float64]bool) bool
-	contains = func(n float64, text string, seen map[float64]bool) bool {
-		if seen[n] {
-			return false
-		}
-		seen[n] = true
-		p := this.props[n]
-		if p["text"] == text || p["nodeValue"] == text {
-			return true
-		}
-		for _, ch := range this.children[n] {
-			if contains(ch, text, seen) {
-				return true
-			}
-		}
-		return false
-	}
-	for n := range this.children {
-		if !contains(n, "Stage of your case", map[float64]bool{}) {
+	// Portal-specific stage semantics stay outside the generic state tree.
+	for _, node := range this.tree.Nodes() {
+		if len(node.ChildIDs()) == 0 {
 			continue
 		}
+		containsCaption := false
 		var values []string
-		var walk func(float64, map[float64]bool)
-		walk = func(id float64, seen map[float64]bool) {
-			if seen[id] {
-				return
+		for _, descendant := range this.tree.Subtree(node.ID()) {
+			if gdanskNodeHasText(descendant, "Stage of your case") {
+				containsCaption = true
 			}
-			seen[id] = true
-			p := this.props[id]
-			if p["tag"] == "vaadin-text-field" {
-				if v, ok := p["value"].(string); ok && strings.TrimSpace(v) != "" {
-					values = append(values, v)
+			if descendant.Tag() == "vaadin-text-field" {
+				property, _ := descendant.Property(vaadin.PropertiesFeature, "value")
+				if value, ok := property.(string); ok && strings.TrimSpace(value) != "" {
+					values = append(values, value)
 				}
 			}
-			for _, ch := range this.children[id] {
-				walk(ch, seen)
-			}
 		}
-		walk(n, map[float64]bool{})
-		if len(values) == 1 {
+		if containsCaption && len(values) == 1 {
 			return values[0], nil
 		}
 	}
@@ -503,8 +376,18 @@ func (this *gdanskRPCState) stage() (string, error) {
 	return "", &Error{Kind: Protocol}
 }
 
-func gdanskRPCInteger(v float64) bool {
-	return v >= 0 && v <= 1<<53-1 && math.Trunc(v) == v
+// Keep the previous adapter's text/nodeValue compatibility across semantic
+// features without flattening properties in the generic state representation.
+func gdanskNodeHasText(node *vaadin.Node, text string) bool {
+	for _, feature := range []vaadin.FeatureID{vaadin.ElementFeature, vaadin.PropertiesFeature, vaadin.TextFeature} {
+		for _, key := range []string{"text", "nodeValue"} {
+			value, _ := node.Property(feature, key)
+			if value == text {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func waitContext(ctx context.Context, delay time.Duration) error {
