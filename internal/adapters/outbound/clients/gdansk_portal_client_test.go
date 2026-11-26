@@ -363,7 +363,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 				return
 			}
 			if index == 0 {
-				bootstrap, _ := gdanskBootstrapObject(data, "var uidl =")
+				bootstrap, _ := testBootstrapObject(data, "var uidl =")
 				remapNodes(bootstrap)
 				encoded, _ := json.Marshal(bootstrap)
 				responseWriter.Write(append(append([]byte("<script>var uidl = "), encoded...), []byte(";var config = {\"v-uiId\":42};</script>")...))
@@ -480,7 +480,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			calls++
 			data, _ := os.ReadFile("testdata/bootstrap.html")
-			bootstrap, _ := gdanskBootstrapObject(data, "var uidl =")
+			bootstrap, _ := testBootstrapObject(data, "var uidl =")
 			changes := bootstrap["changes"].([]any)
 			for _, raw := range changes {
 				change := raw.(map[string]any)
@@ -511,7 +511,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			calls++
 			data, _ := os.ReadFile("testdata/bootstrap.html")
-			bootstrap, _ := gdanskBootstrapObject(data, "var uidl =")
+			bootstrap, _ := testBootstrapObject(data, "var uidl =")
 			changes := bootstrap["changes"].([]any)
 			for _, raw := range changes {
 				change := raw.(map[string]any)
@@ -534,6 +534,73 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		assert.True(test, err != nil, "operation should return an error")
 		assert.Equal(test, 1, calls)
 	})
+	for _, flow := range []string{"authenticated", "incremental"} {
+		test.Run("should preserve stage and authentication sequence when replaying shared "+flow+" fixtures", func(test *testing.T) {
+			// Given
+			bootstrapFile := "testdata/vaadin/bootstrap-authenticated.html"
+			expectedRequests := 1
+			if flow == "incremental" {
+				bootstrapFile = "testdata/vaadin/bootstrap-login.html"
+				expectedRequests = 5
+			}
+			data, err := os.ReadFile(bootstrapFile)
+			assert.NoError(test, err)
+			bootstrap, err := testBootstrapObject(data, "var uidl =")
+			assert.NoError(test, err)
+			initialKey := bootstrap["Vaadin-Security-Key"]
+			if flow == "authenticated" {
+				delete(bootstrap, "Vaadin-Security-Key")
+				for _, raw := range bootstrap["changes"].([]any) {
+					change := raw.(map[string]any)
+					if change["key"] == "text" && change["value"] == "Stage of your case" {
+						change["key"] = "nodeValue"
+					}
+				}
+			}
+			encoded, err := json.Marshal(bootstrap)
+			assert.NoError(test, err)
+			document := append(append([]byte("var uidl = "), encoded...), []byte(`;var config = {"v-uiId":42};`)...)
+			responsesData, err := os.ReadFile("testdata/vaadin/rpc-authentication.json")
+			assert.NoError(test, err)
+			var responses []string
+			assert.NoError(test, json.Unmarshal(responsesData, &responses))
+			// The first HTTP reply carries two messages. Neither counter progression
+			// nor key replacement is inferred from request/response position.
+			responses[0] = `for(;;);[{"syncId":7,"clientId":8,"Vaadin-Security-Key":"intermediate-key"},{"syncId":20,"clientId":21,"Vaadin-Security-Key":"replacement-key","changes":[]}]`
+			calls := 0
+			client := NewGdanskPortalClient(GdanskPortalClientOptions{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				index := calls
+				calls++
+				if index == 0 {
+					return reply(string(document)), nil
+				}
+				var payload map[string]any
+				assert.NoError(test, json.NewDecoder(request.Body).Decode(&payload))
+				expectedSync, expectedClient := float64(index-1), float64(index-1)
+				expectedKey := initialKey
+				if index > 1 {
+					expectedKey = "replacement-key"
+				}
+				if index == 2 {
+					expectedSync, expectedClient = 20, 21
+				}
+				assert.Equal[any](test, expectedSync, payload["syncId"])
+				assert.Equal[any](test, expectedClient, payload["clientId"])
+				assert.Equal(test, expectedKey, payload["csrfToken"])
+				assert.True(test, index <= len(responses))
+				return reply(responses[index-1]), nil
+			}), Wait: func(ctx context.Context, _ time.Duration) error { return ctx.Err() }})
+
+			// When
+			stage, _, err := client.Check(context.Background(), 1, "EXAMPLE-0001", "example-password")
+
+			// Then
+			assert.NoError(test, err)
+			assert.Equal(test, "Example stage", stage)
+			assert.Equal(test, expectedRequests, calls)
+		})
+	}
+
 }
 
 func TestGdanskPortalClientClose(test *testing.T) {
@@ -609,4 +676,15 @@ func serveCheckFlow(test *testing.T, responseWriter http.ResponseWriter, step in
 		return
 	}
 	responseWriter.Write(data)
+}
+
+// testBootstrapObject lets regression tests alter the original fixture JSON.
+func testBootstrapObject(data []byte, marker string) (map[string]any, error) {
+	index := bytes.Index(data, []byte(marker))
+	if index < 0 {
+		return nil, errors.New("bootstrap marker missing")
+	}
+	var object map[string]any
+	err := json.NewDecoder(bytes.NewReader(data[index+len(marker):])).Decode(&object)
+	return object, err
 }
