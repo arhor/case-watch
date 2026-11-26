@@ -1,0 +1,704 @@
+{
+  "formatVersion": 1,
+  "scope": "Informational container with contact-form branch excluded; empty wrappers retained.",
+  "excludedBranches": {
+    "authenticated": [
+      76
+    ],
+    "rpc": [
+      89
+    ]
+  },
+  "tree": {
+    "ids": {
+      "authenticated": 10,
+      "rpc": 36
+    },
+    "tag": "div",
+    "classes": [
+      "container",
+      "mt-md-3",
+      "py-2",
+      "flex-column"
+    ],
+    "styles": {
+      "background-color": "#f7f7f7",
+      "display": "flex",
+      "width": "100%"
+    },
+    "children": [
+      {
+        "ids": {
+          "authenticated": 29,
+          "rpc": 42
+        },
+        "tag": "div",
+        "classes": [
+          "flex-md-row",
+          "flex-column"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 28,
+              "rpc": 41
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-4",
+              "col-lg-3"
+            ],
+            "styles": {
+              "display": "flex",
+              "justify-content": "center"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 27,
+                  "rpc": 40
+                },
+                "tag": "label",
+                "styles": {
+                  "font-weight": "bold"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 26,
+                      "rpc": 39
+                    },
+                    "text": "Name and surname"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 25,
+              "rpc": 38
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-8",
+              "col-lg-9"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 24,
+                  "rpc": 37
+                },
+                "tag": "vaadin-text-field",
+                "properties": {
+                  "readonly": true,
+                  "invalid": false,
+                  "value": "Example Applicant"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ids": {
+          "authenticated": 35,
+          "rpc": 48
+        },
+        "tag": "div",
+        "classes": [
+          "flex-md-row",
+          "flex-column"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 34,
+              "rpc": 47
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-4",
+              "col-lg-3"
+            ],
+            "styles": {
+              "display": "flex",
+              "justify-content": "center"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 33,
+                  "rpc": 46
+                },
+                "tag": "label",
+                "styles": {
+                  "font-weight": "bold"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 32,
+                      "rpc": 45
+                    },
+                    "text": "Case number"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 31,
+              "rpc": 44
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-8",
+              "col-lg-9"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 30,
+                  "rpc": 43
+                },
+                "tag": "vaadin-text-field",
+                "properties": {
+                  "readonly": true,
+                  "invalid": false,
+                  "value": "EXAMPLE-0001"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ids": {
+          "authenticated": 41,
+          "rpc": 54
+        },
+        "tag": "div",
+        "classes": [
+          "flex-md-row",
+          "flex-column"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 40,
+              "rpc": 53
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-4",
+              "col-lg-3"
+            ],
+            "styles": {
+              "display": "flex",
+              "justify-content": "center"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 39,
+                  "rpc": 52
+                },
+                "tag": "label",
+                "styles": {
+                  "font-weight": "bold"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 38,
+                      "rpc": 51
+                    },
+                    "text": "Date of filing the application"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 37,
+              "rpc": 50
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-8",
+              "col-lg-9"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 36,
+                  "rpc": 49
+                },
+                "tag": "vaadin-text-field",
+                "properties": {
+                  "readonly": true,
+                  "invalid": false,
+                  "value": "2020-01-01"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ids": {
+          "authenticated": 53,
+          "rpc": 66
+        },
+        "tag": "div",
+        "classes": [
+          "flex-column"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 52,
+              "rpc": 65
+            },
+            "tag": "div",
+            "classes": [
+              "flex-md-row",
+              "flex-column"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 51,
+                  "rpc": 64
+                },
+                "tag": "div",
+                "classes": [
+                  "flex-column",
+                  "col-12",
+                  "col-md-4",
+                  "col-lg-3"
+                ],
+                "styles": {
+                  "display": "flex",
+                  "justify-content": "center"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 50,
+                      "rpc": 63
+                    },
+                    "tag": "label",
+                    "styles": {
+                      "font-weight": "bold"
+                    },
+                    "children": [
+                      {
+                        "ids": {
+                          "authenticated": 49,
+                          "rpc": 62
+                        },
+                        "text": "Stage of your case"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ids": {
+                  "authenticated": 48,
+                  "rpc": 61
+                },
+                "tag": "div",
+                "classes": [
+                  "flex-column",
+                  "col-12",
+                  "col-md-8",
+                  "col-lg-9"
+                ],
+                "styles": {
+                  "display": "flex"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 47,
+                      "rpc": 60
+                    },
+                    "tag": "vaadin-text-field",
+                    "properties": {
+                      "readonly": true,
+                      "invalid": false,
+                      "value": "Example stage"
+                    },
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 46,
+              "rpc": 59
+            },
+            "tag": "div",
+            "classes": [
+              "flex-md-row",
+              "flex-column"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 45,
+                  "rpc": 58
+                },
+                "tag": "div",
+                "classes": [
+                  "flex-column",
+                  "col-12",
+                  "col-md-4",
+                  "col-lg-3"
+                ],
+                "styles": {
+                  "display": "flex",
+                  "justify-content": "center"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 44,
+                      "rpc": 57
+                    },
+                    "tag": "label",
+                    "styles": {
+                      "font-weight": "bold"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "ids": {
+                  "authenticated": 43,
+                  "rpc": 56
+                },
+                "tag": "div",
+                "classes": [
+                  "flex-column",
+                  "col-12",
+                  "col-md-8",
+                  "col-lg-9"
+                ],
+                "styles": {
+                  "display": "flex"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 42,
+                      "rpc": 55
+                    },
+                    "tag": "vaadin-text-area",
+                    "styles": {
+                      "margin-left": "20px",
+                      "color": "#666",
+                      "width": "100%",
+                      "resize": "none",
+                      "min-height": "6em",
+                      "font-style": "italic"
+                    },
+                    "properties": {
+                      "readonly": true,
+                      "invalid": false,
+                      "value": "Example description"
+                    },
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ids": {
+          "authenticated": 59,
+          "rpc": 72
+        },
+        "tag": "div",
+        "classes": [
+          "flex-md-row",
+          "flex-column"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 58,
+              "rpc": 71
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-4",
+              "col-lg-3"
+            ],
+            "styles": {
+              "display": "flex",
+              "justify-content": "center"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 57,
+                  "rpc": 70
+                },
+                "tag": "label",
+                "styles": {
+                  "font-weight": "bold"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 56,
+                      "rpc": 69
+                    },
+                    "text": "Notes"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 55,
+              "rpc": 68
+            },
+            "tag": "div",
+            "classes": [
+              "flex-column",
+              "col-12",
+              "col-md-8",
+              "col-lg-9"
+            ],
+            "styles": {
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 54,
+                  "rpc": 67
+                },
+                "tag": "vaadin-text-area",
+                "properties": {
+                  "readonly": true,
+                  "invalid": false,
+                  "value": ""
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ids": {
+          "authenticated": 60,
+          "rpc": 73
+        },
+        "tag": "div",
+        "styles": {
+          "display": "flex"
+        },
+        "children": []
+      },
+      {
+        "ids": {
+          "authenticated": 61,
+          "rpc": 74
+        },
+        "tag": "div",
+        "styles": {
+          "display": "flex"
+        },
+        "children": []
+      },
+      {
+        "ids": {
+          "authenticated": 70,
+          "rpc": 83
+        },
+        "tag": "div",
+        "classes": [
+          "flex-column",
+          "flex-md-row"
+        ],
+        "styles": {
+          "display": "flex"
+        },
+        "children": [
+          {
+            "ids": {
+              "authenticated": 69,
+              "rpc": 82
+            },
+            "tag": "div",
+            "classes": [
+              "col-12",
+              "col-md-4",
+              "col-lg-3",
+              "flex-column"
+            ],
+            "styles": {
+              "display": "flex",
+              "justify-content": "center"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 68,
+                  "rpc": 81
+                },
+                "tag": "label",
+                "styles": {
+                  "font-weight": "bold"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 67,
+                      "rpc": 80
+                    },
+                    "text": "Documents"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ids": {
+              "authenticated": 66,
+              "rpc": 79
+            },
+            "tag": "div",
+            "classes": [
+              "col-12",
+              "col-lg-9",
+              "col-md-8",
+              "flex-column"
+            ],
+            "styles": {
+              "padding": "0px",
+              "display": "flex"
+            },
+            "children": [
+              {
+                "ids": {
+                  "authenticated": 65,
+                  "rpc": 78
+                },
+                "tag": "div",
+                "styles": {
+                  "flex-direction": "column",
+                  "display": "flex"
+                },
+                "children": [
+                  {
+                    "ids": {
+                      "authenticated": 64,
+                      "rpc": 77
+                    },
+                    "tag": "div",
+                    "classes": [
+                      "flex-column"
+                    ],
+                    "styles": {
+                      "display": "flex"
+                    },
+                    "children": [
+                      {
+                        "ids": {
+                          "authenticated": 63,
+                          "rpc": 76
+                        },
+                        "tag": "vaadin-text-field",
+                        "classes": [
+                          "col-12"
+                        ],
+                        "properties": {
+                          "readonly": true,
+                          "invalid": false,
+                          "value": "Incoming documents on 2020-01-01"
+                        },
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "ids": {
+                      "authenticated": 62,
+                      "rpc": 75
+                    },
+                    "tag": "hr",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

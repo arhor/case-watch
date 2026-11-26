@@ -29,6 +29,9 @@ go.work.sum
 # env file
 .env
 
+# Private source captures used to prepare anonymized test fixtures
+/DO_NOT_COMMIT/
+
 # Editor/IDE
 .idea/
 .vscode/

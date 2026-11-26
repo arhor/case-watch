@@ -1,0 +1,3123 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Offline Vaadin fixture</title></head><body>
+<script>
+var uidl = {
+  "syncId": 0,
+  "clientId": 0,
+  "Vaadin-Security-Key": "example-security-key",
+  "Vaadin-Push-ID": "00000000-0000-4000-8000-000000000001",
+  "changes": [
+    {
+      "node": 1,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "body"
+    },
+    {
+      "node": 1,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        23
+      ]
+    },
+    {
+      "node": 1,
+      "type": "put",
+      "key": "pushUrl",
+      "feat": 5,
+      "value": ""
+    },
+    {
+      "node": 1,
+      "type": "put",
+      "key": "alwaysXhrToServer",
+      "feat": 5,
+      "value": true
+    },
+    {
+      "node": 1,
+      "type": "put",
+      "key": "pushMode",
+      "feat": 5,
+      "value": "DISABLED"
+    },
+    {
+      "node": 1,
+      "type": "put",
+      "key": "parameters",
+      "feat": 5,
+      "nodeValue": 2
+    },
+    {
+      "node": 2,
+      "type": "attach"
+    },
+    {
+      "node": 2,
+      "type": "put",
+      "key": "fallbackTransport",
+      "feat": 6,
+      "value": "long-polling"
+    },
+    {
+      "node": 2,
+      "type": "put",
+      "key": "transport",
+      "feat": 6,
+      "value": "websocket"
+    },
+    {
+      "node": 3,
+      "type": "attach"
+    },
+    {
+      "node": 3,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Example text 1"
+    },
+    {
+      "node": 4,
+      "type": "attach"
+    },
+    {
+      "node": 4,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 4,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 4,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        3
+      ]
+    },
+    {
+      "node": 5,
+      "type": "attach"
+    },
+    {
+      "node": 5,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Example text 2"
+    },
+    {
+      "node": 6,
+      "type": "attach"
+    },
+    {
+      "node": 6,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "a"
+    },
+    {
+      "node": 6,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 6,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        5
+      ]
+    },
+    {
+      "node": 6,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "footer-link"
+      ]
+    },
+    {
+      "node": 6,
+      "type": "put",
+      "key": "href",
+      "feat": 3,
+      "value": "https://example.invalid/resource"
+    },
+    {
+      "node": 6,
+      "type": "put",
+      "key": "target",
+      "feat": 3,
+      "value": "_blank"
+    },
+    {
+      "node": 7,
+      "type": "attach"
+    },
+    {
+      "node": 7,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-horizontal-layout"
+    },
+    {
+      "node": 7,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        6
+      ]
+    },
+    {
+      "node": 7,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "flex-md-row"
+      ]
+    },
+    {
+      "node": 7,
+      "type": "put",
+      "key": "theme",
+      "feat": 3,
+      "value": "spacing"
+    },
+    {
+      "node": 8,
+      "type": "attach"
+    },
+    {
+      "node": 8,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 8,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        7,
+        4
+      ]
+    },
+    {
+      "node": 8,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "container",
+        "justify-content-between"
+      ]
+    },
+    {
+      "node": 8,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 9,
+      "type": "attach"
+    },
+    {
+      "node": 9,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 9,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        8
+      ]
+    },
+    {
+      "node": 9,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "py-2",
+        "footer"
+      ]
+    },
+    {
+      "node": 9,
+      "type": "put",
+      "key": "flex-shrink",
+      "feat": 12,
+      "value": "0"
+    },
+    {
+      "node": 9,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 10,
+      "type": "attach"
+    },
+    {
+      "node": 10,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 10,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 10,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        29,
+        35,
+        41,
+        53,
+        59,
+        60,
+        61,
+        70,
+        76
+      ]
+    },
+    {
+      "node": 10,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "container",
+        "mt-md-3",
+        "py-2",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 10,
+      "type": "put",
+      "key": "background-color",
+      "feat": 12,
+      "value": "#f7f7f7"
+    },
+    {
+      "node": 10,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 10,
+      "type": "put",
+      "key": "width",
+      "feat": 12,
+      "value": "100%"
+    },
+    {
+      "node": 11,
+      "type": "attach"
+    },
+    {
+      "node": 11,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 11,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        10
+      ]
+    },
+    {
+      "node": 11,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "pb-3"
+      ]
+    },
+    {
+      "node": 11,
+      "type": "put",
+      "key": "background-color",
+      "feat": 12,
+      "value": "#EAE7E2"
+    },
+    {
+      "node": 11,
+      "type": "put",
+      "key": "flex-grow",
+      "feat": 12,
+      "value": "1"
+    },
+    {
+      "node": 12,
+      "type": "attach"
+    },
+    {
+      "node": 12,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "iron-icon"
+    },
+    {
+      "node": 12,
+      "type": "put",
+      "key": "icon",
+      "feat": 3,
+      "value": "vaadin:close"
+    },
+    {
+      "node": 12,
+      "type": "put",
+      "key": "slot",
+      "feat": 3,
+      "value": "prefix"
+    },
+    {
+      "node": 13,
+      "type": "attach"
+    },
+    {
+      "node": 13,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 13,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        12
+      ]
+    },
+    {
+      "node": 13,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "close-cookies"
+      ]
+    },
+    {
+      "node": 13,
+      "type": "put",
+      "key": "theme",
+      "feat": 3,
+      "value": "icon"
+    },
+    {
+      "node": 13,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 13,
+      "type": "put",
+      "key": "min-height",
+      "feat": 12,
+      "value": "32px"
+    },
+    {
+      "node": 13,
+      "type": "put",
+      "key": "min-width",
+      "feat": 12,
+      "value": "32px"
+    },
+    {
+      "node": 14,
+      "type": "attach"
+    },
+    {
+      "node": 14,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 14,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 14,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        77
+      ]
+    },
+    {
+      "node": 14,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "mt-1",
+        "d-block"
+      ]
+    },
+    {
+      "node": 15,
+      "type": "attach"
+    },
+    {
+      "node": 15,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "img"
+    },
+    {
+      "node": 15,
+      "type": "put",
+      "key": "alt",
+      "feat": 1,
+      "value": "Example text 9"
+    },
+    {
+      "node": 15,
+      "type": "put",
+      "key": "src",
+      "feat": 3,
+      "value": "https://example.invalid/resource"
+    },
+    {
+      "node": 15,
+      "type": "put",
+      "key": "float",
+      "feat": 12,
+      "value": "left"
+    },
+    {
+      "node": 16,
+      "type": "attach"
+    },
+    {
+      "node": 16,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 16,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        15,
+        14
+      ]
+    },
+    {
+      "node": 17,
+      "type": "attach"
+    },
+    {
+      "node": 17,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 17,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        16,
+        13
+      ]
+    },
+    {
+      "node": 17,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "container",
+        "py-2",
+        "justify-content-between",
+        "align-items-center",
+        "rounded",
+        "cookies"
+      ]
+    },
+    {
+      "node": 17,
+      "type": "put",
+      "key": "flex-shrink",
+      "feat": 12,
+      "value": "0"
+    },
+    {
+      "node": 17,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 18,
+      "type": "attach"
+    },
+    {
+      "node": 18,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 18,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 18,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        79,
+        80,
+        81,
+        82
+      ]
+    },
+    {
+      "node": 18,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "flex-md-row"
+      ]
+    },
+    {
+      "node": 18,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 18,
+      "type": "put",
+      "key": "align-items",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 18,
+      "type": "put",
+      "key": "justify-items",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 19,
+      "type": "attach"
+    },
+    {
+      "node": 19,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "img"
+    },
+    {
+      "node": 19,
+      "type": "put",
+      "key": "src",
+      "feat": 3,
+      "value": "https://example.invalid/resource"
+    },
+    {
+      "node": 19,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "150px"
+    },
+    {
+      "node": 20,
+      "type": "attach"
+    },
+    {
+      "node": 20,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "a"
+    },
+    {
+      "node": 20,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        19
+      ]
+    },
+    {
+      "node": 20,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "d-flex",
+        "align-items-center"
+      ]
+    },
+    {
+      "node": 20,
+      "type": "put",
+      "key": "href",
+      "feat": 3,
+      "value": ""
+    },
+    {
+      "node": 20,
+      "type": "put",
+      "key": "color",
+      "feat": 12,
+      "value": "#5b524c"
+    },
+    {
+      "node": 20,
+      "type": "put",
+      "key": "text-decoration",
+      "feat": 12,
+      "value": "none"
+    },
+    {
+      "node": 20,
+      "type": "put",
+      "key": "position",
+      "feat": 12,
+      "value": "relative"
+    },
+    {
+      "node": 21,
+      "type": "attach"
+    },
+    {
+      "node": 21,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 21,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        20,
+        18
+      ]
+    },
+    {
+      "node": 21,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "container",
+        "justify-content-between",
+        "align-items-center"
+      ]
+    },
+    {
+      "node": 21,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 22,
+      "type": "attach"
+    },
+    {
+      "node": 22,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 22,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        21
+      ]
+    },
+    {
+      "node": 22,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "mb-2",
+        "header"
+      ]
+    },
+    {
+      "node": 22,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 23,
+      "type": "attach"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 23,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        22,
+        17,
+        11,
+        9
+      ]
+    },
+    {
+      "node": 23,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "main-view"
+      ]
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "id",
+      "feat": 3,
+      "value": "Example text 3"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "background-color",
+      "feat": 12,
+      "value": "#EAE7E2"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "min-height",
+      "feat": 12,
+      "value": "100vh"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "box-sizing",
+      "feat": 12,
+      "value": "border-box"
+    },
+    {
+      "node": 23,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "0px"
+    },
+    {
+      "node": 24,
+      "type": "attach"
+    },
+    {
+      "node": 24,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 24,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 24,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 24,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "Example Applicant"
+    },
+    {
+      "node": 24,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 25,
+      "type": "attach"
+    },
+    {
+      "node": 25,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 25,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        24
+      ]
+    },
+    {
+      "node": 25,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 25,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 26,
+      "type": "attach"
+    },
+    {
+      "node": 26,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Name and surname"
+    },
+    {
+      "node": 27,
+      "type": "attach"
+    },
+    {
+      "node": 27,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 27,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 27,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        26
+      ]
+    },
+    {
+      "node": 27,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 28,
+      "type": "attach"
+    },
+    {
+      "node": 28,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 28,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        27
+      ]
+    },
+    {
+      "node": 28,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 28,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 28,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 29,
+      "type": "attach"
+    },
+    {
+      "node": 29,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 29,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        28,
+        25
+      ]
+    },
+    {
+      "node": 29,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 29,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 30,
+      "type": "attach"
+    },
+    {
+      "node": 30,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 30,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 30,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 30,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "EXAMPLE-0001"
+    },
+    {
+      "node": 30,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 31,
+      "type": "attach"
+    },
+    {
+      "node": 31,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 31,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        30
+      ]
+    },
+    {
+      "node": 31,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 31,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 32,
+      "type": "attach"
+    },
+    {
+      "node": 32,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Case number"
+    },
+    {
+      "node": 33,
+      "type": "attach"
+    },
+    {
+      "node": 33,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 33,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 33,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        32
+      ]
+    },
+    {
+      "node": 33,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 34,
+      "type": "attach"
+    },
+    {
+      "node": 34,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 34,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        33
+      ]
+    },
+    {
+      "node": 34,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 34,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 34,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 35,
+      "type": "attach"
+    },
+    {
+      "node": 35,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 35,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        34,
+        31
+      ]
+    },
+    {
+      "node": 35,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 35,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 36,
+      "type": "attach"
+    },
+    {
+      "node": 36,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 36,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 36,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 36,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "2020-01-01"
+    },
+    {
+      "node": 36,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 37,
+      "type": "attach"
+    },
+    {
+      "node": 37,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 37,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        36
+      ]
+    },
+    {
+      "node": 37,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 37,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 38,
+      "type": "attach"
+    },
+    {
+      "node": 38,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Date of filing the application"
+    },
+    {
+      "node": 39,
+      "type": "attach"
+    },
+    {
+      "node": 39,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 39,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 39,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        38
+      ]
+    },
+    {
+      "node": 39,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 40,
+      "type": "attach"
+    },
+    {
+      "node": 40,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 40,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        39
+      ]
+    },
+    {
+      "node": 40,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 40,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 40,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 41,
+      "type": "attach"
+    },
+    {
+      "node": 41,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 41,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        40,
+        37
+      ]
+    },
+    {
+      "node": 41,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 41,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 42,
+      "type": "attach"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-area"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "Example description"
+    },
+    {
+      "node": 42,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "margin-left",
+      "feat": 12,
+      "value": "20px"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "color",
+      "feat": 12,
+      "value": "#666"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "width",
+      "feat": 12,
+      "value": "100%"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "resize",
+      "feat": 12,
+      "value": "none"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "min-height",
+      "feat": 12,
+      "value": "6em"
+    },
+    {
+      "node": 42,
+      "type": "put",
+      "key": "font-style",
+      "feat": 12,
+      "value": "italic"
+    },
+    {
+      "node": 43,
+      "type": "attach"
+    },
+    {
+      "node": 43,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 43,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        42
+      ]
+    },
+    {
+      "node": 43,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 43,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 43,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 44,
+      "type": "attach"
+    },
+    {
+      "node": 44,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 44,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 44,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 44,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 45,
+      "type": "attach"
+    },
+    {
+      "node": 45,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 45,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        44
+      ]
+    },
+    {
+      "node": 45,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 45,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 45,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 45,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 46,
+      "type": "attach"
+    },
+    {
+      "node": 46,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 46,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        45,
+        43
+      ]
+    },
+    {
+      "node": 46,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 46,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 46,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 47,
+      "type": "attach"
+    },
+    {
+      "node": 47,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 47,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 47,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 47,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "Example stage"
+    },
+    {
+      "node": 47,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 47,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 48,
+      "type": "attach"
+    },
+    {
+      "node": 48,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 48,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        47
+      ]
+    },
+    {
+      "node": 48,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 48,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 48,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 49,
+      "type": "attach"
+    },
+    {
+      "node": 49,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Stage of your case"
+    },
+    {
+      "node": 50,
+      "type": "attach"
+    },
+    {
+      "node": 50,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 50,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 50,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        49
+      ]
+    },
+    {
+      "node": 50,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 50,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 51,
+      "type": "attach"
+    },
+    {
+      "node": 51,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 51,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        50
+      ]
+    },
+    {
+      "node": 51,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 51,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 51,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 51,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 52,
+      "type": "attach"
+    },
+    {
+      "node": 52,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 52,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        51,
+        48
+      ]
+    },
+    {
+      "node": 52,
+      "type": "empty",
+      "featType": true,
+      "feat": 19
+    },
+    {
+      "node": 52,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 52,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 53,
+      "type": "attach"
+    },
+    {
+      "node": 53,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 53,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 53,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        52,
+        46
+      ]
+    },
+    {
+      "node": 53,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column"
+      ]
+    },
+    {
+      "node": 53,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 54,
+      "type": "attach"
+    },
+    {
+      "node": 54,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-area"
+    },
+    {
+      "node": 54,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 54,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 54,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": ""
+    },
+    {
+      "node": 54,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 55,
+      "type": "attach"
+    },
+    {
+      "node": 55,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 55,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        54
+      ]
+    },
+    {
+      "node": 55,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-8",
+        "col-lg-9"
+      ]
+    },
+    {
+      "node": 55,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 56,
+      "type": "attach"
+    },
+    {
+      "node": 56,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Notes"
+    },
+    {
+      "node": 57,
+      "type": "attach"
+    },
+    {
+      "node": 57,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 57,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 57,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        56
+      ]
+    },
+    {
+      "node": 57,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 58,
+      "type": "attach"
+    },
+    {
+      "node": 58,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 58,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        57
+      ]
+    },
+    {
+      "node": 58,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "col-12",
+        "col-md-4",
+        "col-lg-3"
+      ]
+    },
+    {
+      "node": 58,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 58,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 59,
+      "type": "attach"
+    },
+    {
+      "node": 59,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 59,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        58,
+        55
+      ]
+    },
+    {
+      "node": 59,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-md-row",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 59,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 60,
+      "type": "attach"
+    },
+    {
+      "node": 60,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 60,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 61,
+      "type": "attach"
+    },
+    {
+      "node": 61,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 61,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 62,
+      "type": "attach"
+    },
+    {
+      "node": 62,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "hr"
+    },
+    {
+      "node": 63,
+      "type": "attach"
+    },
+    {
+      "node": 63,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 63,
+      "type": "put",
+      "key": "readonly",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 63,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 63,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": "Incoming documents on 2020-01-01"
+    },
+    {
+      "node": 63,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "col-12"
+      ]
+    },
+    {
+      "node": 63,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 64,
+      "type": "attach"
+    },
+    {
+      "node": 64,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 64,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        63
+      ]
+    },
+    {
+      "node": 64,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column"
+      ]
+    },
+    {
+      "node": 64,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 65,
+      "type": "attach"
+    },
+    {
+      "node": 65,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 65,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        64,
+        62
+      ]
+    },
+    {
+      "node": 65,
+      "type": "put",
+      "key": "flex-direction",
+      "feat": 12,
+      "value": "column"
+    },
+    {
+      "node": 65,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 66,
+      "type": "attach"
+    },
+    {
+      "node": 66,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 66,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        65
+      ]
+    },
+    {
+      "node": 66,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "col-12",
+        "col-lg-9",
+        "col-md-8",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 66,
+      "type": "put",
+      "key": "padding",
+      "feat": 12,
+      "value": "0px"
+    },
+    {
+      "node": 66,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 67,
+      "type": "attach"
+    },
+    {
+      "node": 67,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Documents"
+    },
+    {
+      "node": 68,
+      "type": "attach"
+    },
+    {
+      "node": 68,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "label"
+    },
+    {
+      "node": 68,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 68,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        67
+      ]
+    },
+    {
+      "node": 68,
+      "type": "put",
+      "key": "font-weight",
+      "feat": 12,
+      "value": "bold"
+    },
+    {
+      "node": 69,
+      "type": "attach"
+    },
+    {
+      "node": 69,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 69,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        68
+      ]
+    },
+    {
+      "node": 69,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "col-12",
+        "col-md-4",
+        "col-lg-3",
+        "flex-column"
+      ]
+    },
+    {
+      "node": 69,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 69,
+      "type": "put",
+      "key": "justify-content",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 70,
+      "type": "attach"
+    },
+    {
+      "node": 70,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 70,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        69,
+        66
+      ]
+    },
+    {
+      "node": 70,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "flex-md-row"
+      ]
+    },
+    {
+      "node": 70,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 71,
+      "type": "attach"
+    },
+    {
+      "node": 71,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Send"
+    },
+    {
+      "node": 72,
+      "type": "attach"
+    },
+    {
+      "node": 72,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 72,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 72,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        71
+      ]
+    },
+    {
+      "node": 72,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "red-button"
+      ]
+    },
+    {
+      "node": 72,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 72,
+      "type": "put",
+      "key": "background-color",
+      "feat": 12,
+      "value": "var(--red-color)"
+    },
+    {
+      "node": 72,
+      "type": "put",
+      "key": "color",
+      "feat": 12,
+      "value": "white"
+    },
+    {
+      "node": 72,
+      "type": "put",
+      "key": "width",
+      "feat": 12,
+      "value": "200px"
+    },
+    {
+      "node": 73,
+      "type": "attach"
+    },
+    {
+      "node": 73,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 73,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        72
+      ]
+    },
+    {
+      "node": 73,
+      "type": "put",
+      "key": "align-self",
+      "feat": 12,
+      "value": "center"
+    },
+    {
+      "node": 73,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 74,
+      "type": "attach"
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-field"
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "label",
+      "feat": 1,
+      "value": "Example text 10"
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "placeholder",
+      "feat": 1,
+      "value": "Example text 11"
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": ""
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "required",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 74,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 75,
+      "type": "attach"
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-text-area"
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "invalid",
+      "feat": 1,
+      "value": false
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "label",
+      "feat": 1,
+      "value": "Example text 12"
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "placeholder",
+      "feat": 1,
+      "value": "Example text 13"
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "value",
+      "feat": 1,
+      "value": ""
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "required",
+      "feat": 1,
+      "value": true
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "change",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDY="
+    },
+    {
+      "node": 75,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "200px"
+    },
+    {
+      "node": 76,
+      "type": "attach"
+    },
+    {
+      "node": 76,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "div"
+    },
+    {
+      "node": 76,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        75,
+        74,
+        73
+      ]
+    },
+    {
+      "node": 76,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "flex-column",
+        "w-100"
+      ]
+    },
+    {
+      "node": 76,
+      "type": "put",
+      "key": "display",
+      "feat": 12,
+      "value": "flex"
+    },
+    {
+      "node": 77,
+      "type": "attach"
+    },
+    {
+      "node": 77,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Example text 14"
+    },
+    {
+      "node": 78,
+      "type": "attach"
+    },
+    {
+      "node": 78,
+      "type": "put",
+      "key": "text",
+      "feat": 7,
+      "value": "Example text 15"
+    },
+    {
+      "node": 79,
+      "type": "attach"
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "visible",
+      "feat": 0,
+      "value": true
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 79,
+      "type": "clear",
+      "feat": 2
+    },
+    {
+      "node": 79,
+      "type": "splice",
+      "feat": 2,
+      "index": 0,
+      "addNodes": [
+        78
+      ]
+    },
+    {
+      "node": 79,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "mr-2"
+      ]
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "background-color",
+      "feat": 12,
+      "value": "var(--lumo-shade-20pct)"
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "--lumo-button-size",
+      "feat": 12,
+      "value": "var(--lumo-size-s)"
+    },
+    {
+      "node": 79,
+      "type": "put",
+      "key": "font-size",
+      "feat": 12,
+      "value": "var(--lumo-font-size-s)"
+    },
+    {
+      "node": 80,
+      "type": "attach"
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 80,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "language",
+        "m-1"
+      ]
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "background-size",
+      "feat": 12,
+      "value": "100%"
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "background-image",
+      "feat": 12,
+      "value": "none"
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "20px"
+    },
+    {
+      "node": 80,
+      "type": "put",
+      "key": "min-width",
+      "feat": 12,
+      "value": "32px"
+    },
+    {
+      "node": 81,
+      "type": "attach"
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 81,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "language",
+        "m-1"
+      ]
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "background-size",
+      "feat": 12,
+      "value": "100%"
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "background-image",
+      "feat": 12,
+      "value": "none"
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "20px"
+    },
+    {
+      "node": 81,
+      "type": "put",
+      "key": "min-width",
+      "feat": 12,
+      "value": "32px"
+    },
+    {
+      "node": 82,
+      "type": "attach"
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "tag",
+      "feat": 0,
+      "value": "vaadin-button"
+    },
+    {
+      "node": 82,
+      "type": "splice",
+      "feat": 11,
+      "index": 0,
+      "add": [
+        "language",
+        "m-1",
+        "active"
+      ]
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "click",
+      "feat": 4,
+      "value": "RXhhbXBsZSB0ZXh0IDU="
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "background-size",
+      "feat": 12,
+      "value": "100%"
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "background-image",
+      "feat": 12,
+      "value": "none"
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "height",
+      "feat": 12,
+      "value": "20px"
+    },
+    {
+      "node": 82,
+      "type": "put",
+      "key": "min-width",
+      "feat": 12,
+      "value": "32px"
+    }
+  ]
+};
+var config = {"v-uiId": 42};
+</script>
+</body></html>
