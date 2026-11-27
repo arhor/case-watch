@@ -12,10 +12,12 @@ type Portal interface {
 }
 
 // PortalSnapshot carries the opaque content and stage from one successful observation.
+// HTMLAvailable distinguishes a successful empty extraction from an unavailable extraction.
 type PortalSnapshot struct {
-	Stage     string
-	HTML      string
-	CheckedAt time.Time
+	Stage         string
+	HTML          string
+	HTMLAvailable bool
+	CheckedAt     time.Time
 }
 
 // StageChange describes a committed observation that changed the stored stage.
