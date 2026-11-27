@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -123,7 +124,26 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 	if err := ctx.Err(); err != nil {
 		return domain.PortalSnapshot{}, err
 	}
-	return domain.PortalSnapshot{Stage: stage, CheckedAt: this.clock.Now()}, nil
+	html := ""
+	roots, selectionErr := selectGdanskCaseContent(session.state.tree, stage)
+	if selectionErr != nil {
+		log.Print("portal HTML extraction unavailable: selection")
+	} else if len(roots) > 0 {
+		rendered, renderErr := vaadin.RenderHTML(session.state.tree, roots...)
+		if renderErr != nil {
+			log.Print("portal HTML extraction unavailable: rendering")
+		} else {
+			if strings.TrimSpace(rendered) == "" {
+				log.Print("portal HTML extraction returned empty output")
+			} else {
+				html = rendered
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.PortalSnapshot{}, err
+	}
+	return domain.PortalSnapshot{Stage: stage, HTML: html, CheckedAt: this.clock.Now()}, nil
 }
 
 // Close releases idle connections of the transport created by the client. An injected

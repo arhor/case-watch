@@ -47,7 +47,7 @@ func TestTrackedCaseRepository(test *testing.T) {
 		byOwner, ownerErr := store.TrackedCases().FindByOwner(ctx, 101)
 		byIdentity, identityErr := store.TrackedCases().FindByIdentity(ctx, 101, id)
 		all, allErr := store.TrackedCases().FindAll(ctx)
-		updated := domain.PortalSnapshot{Stage: "A", CheckedAt: checkedAt.Add(time.Minute)}
+		updated := domain.PortalSnapshot{Stage: "B", CheckedAt: checkedAt.Add(time.Minute)}
 		updateErr := store.TrackedCases().UpdateObservation(ctx, 101, id, updated)
 		cleared, clearedErr := store.TrackedCases().FindByOwner(ctx, 101)
 		withHTML := domain.PortalSnapshot{Stage: "A", HTML: "<p>delete me</p>", CheckedAt: updated.CheckedAt.Add(time.Minute)}

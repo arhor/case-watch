@@ -1,0 +1,93 @@
+package clients
+
+import (
+	"os"
+	"testing"
+
+	"github.com/arhor/case-watch/internal/platform/vaadin"
+	"github.com/arhor/case-watch/internal/testing/assert"
+)
+
+func TestSelectGdanskCaseContent(test *testing.T) {
+	test.Run("should select ordered informational branches and exclude the contact form", func(test *testing.T) {
+		// Given
+		tree := authenticatedGdanskTree(test)
+
+		// When
+		roots, err := selectGdanskCaseContent(tree, "Example stage")
+		rootIDs := make([]vaadin.NodeID, 0, len(roots))
+		for _, root := range roots {
+			rootIDs = append(rootIDs, root.ID())
+		}
+
+		// Then
+		assert.NoError(test, err)
+		assert.DeepEqual(test, []vaadin.NodeID{29, 35, 41, 53, 59, 70}, rootIDs)
+	})
+
+	test.Run("should fail closed when one informational branch also contains interactive content", func(test *testing.T) {
+		// Given
+		tree := authenticatedGdanskTree(test)
+		roots, err := selectGdanskCaseContent(tree, "Example stage")
+		assert.NoError(test, err)
+		branch := roots[0]
+		assert.NoError(test, tree.Apply([]vaadin.Change{
+			{"node": float64(90001), "type": vaadin.Attach},
+			{"node": float64(90001), "type": vaadin.Put, "feat": float64(vaadin.ElementFeature), "key": "tag", "value": "button"},
+			{"node": float64(branch.ID()), "type": vaadin.Splice, "feat": float64(vaadin.ChildrenFeature), "index": float64(len(branch.ChildIDs())), "addNodes": []any{float64(90001)}},
+		}))
+
+		// When
+		selected, selectionError := selectGdanskCaseContent(tree, "Example stage")
+
+		// Then
+		assert.True(test, selectionError != nil, "mixed branch should make the selected fragment unavailable")
+		assert.Equal(test, 0, len(selected))
+	})
+
+	test.Run("should stop selector traversal at the renderer depth limit", func(test *testing.T) {
+		// Given
+		tree := authenticatedGdanskTree(test)
+		roots, err := selectGdanskCaseContent(tree, "Example stage")
+		assert.NoError(test, err)
+		parent := roots[0]
+		parentID := parent.ID()
+		changes := make([]vaadin.Change, 0, (gdanskSelectionMaxDepth+2)*3)
+		for index := 0; index <= gdanskSelectionMaxDepth; index++ {
+			nodeID := vaadin.NodeID(91000 + index)
+			childIndex := 0
+			if index == 0 {
+				childIndex = len(parent.ChildIDs())
+			}
+			changes = append(changes,
+				vaadin.Change{"node": float64(nodeID), "type": vaadin.Attach},
+				vaadin.Change{"node": float64(nodeID), "type": vaadin.Put, "feat": float64(vaadin.ElementFeature), "key": "tag", "value": "div"},
+				vaadin.Change{"node": float64(parentID), "type": vaadin.Splice, "feat": float64(vaadin.ChildrenFeature), "index": float64(childIndex), "addNodes": []any{float64(nodeID)}},
+			)
+			parentID = nodeID
+		}
+		assert.NoError(test, tree.Apply(changes))
+
+		// When
+		selected, selectionError := selectGdanskCaseContent(tree, "Example stage")
+		_, classificationError := classifyGdanskBranch(tree, roots[0])
+
+		// Then
+		assert.True(test, selectionError != nil, "over-depth trees should be rejected before rendering")
+		assert.True(test, classificationError != nil, "branch classification should use the same depth bound")
+		assert.Equal(test, 0, len(selected))
+	})
+}
+
+// -- Internals ----------------------------------------------------------------
+
+func authenticatedGdanskTree(test *testing.T) *vaadin.StateTree {
+	test.Helper()
+	data, err := os.ReadFile("testdata/vaadin/bootstrap-authenticated.html")
+	assert.NoError(test, err)
+	bootstrap, err := vaadin.DecodeBootstrap(data)
+	assert.NoError(test, err)
+	tree := vaadin.NewStateTree()
+	assert.NoError(test, tree.Apply(bootstrap.Message.Changes))
+	return tree
+}

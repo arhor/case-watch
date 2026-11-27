@@ -69,7 +69,7 @@ func TestNewTrackedCaseService(test *testing.T) {
 }
 
 func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
-	test.Run("should replace opaque HTML on success and retain it after failure", func(test *testing.T) {
+	test.Run("should clear HTML after a successful stage-only observation and retain it after a failed check", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		id := environment.trackCase(test, 101)
@@ -89,7 +89,7 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		failed, failedErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(3 * time.Minute))
 		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
-			return domain.PortalSnapshot{Stage: "A"}, nil
+			return domain.PortalSnapshot{Stage: "B"}, nil
 		})
 		stageOnly, stageOnlyErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		stored, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
@@ -104,10 +104,11 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		assert.Equal(test, "<p>after &amp; exact</p>\n", updated.HTML)
 		assert.Equal(test, updated.HTML, failed.HTML)
 		assert.Equal(test, updated.CheckedAt, failed.CheckedAt)
+		assert.Equal(test, "B", stageOnly.Stage)
 		assert.Equal(test, "", stageOnly.HTML)
 		assert.Equal(test, "", stored.HTML)
 		assert.True(test, stageOnly.CheckedAt.After(updated.CheckedAt))
-		assert.Equal(test, 0, len(history), "HTML-only update must not add stage history")
+		assert.Equal(test, 1, len(history), "the stage change should still add its normal history entry")
 	})
 
 	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {

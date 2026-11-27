@@ -535,7 +535,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		assert.Equal(test, 1, calls)
 	})
 	for _, flow := range []string{"authenticated", "incremental"} {
-		test.Run("should preserve stage and authentication sequence when replaying shared "+flow+" fixtures", func(test *testing.T) {
+		test.Run("should render selected content and preserve authentication sequence for "+flow+" fixtures", func(test *testing.T) {
 			// Given
 			bootstrapFile := "testdata/vaadin/bootstrap-authenticated.html"
 			expectedRequests := 1
@@ -548,15 +548,6 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			bootstrap, err := testBootstrapObject(data, "var uidl =")
 			assert.NoError(test, err)
 			initialKey := bootstrap["Vaadin-Security-Key"]
-			if flow == "authenticated" {
-				delete(bootstrap, "Vaadin-Security-Key")
-				for _, raw := range bootstrap["changes"].([]any) {
-					change := raw.(map[string]any)
-					if change["key"] == "text" && change["value"] == "Stage of your case" {
-						change["key"] = "nodeValue"
-					}
-				}
-			}
 			encoded, err := json.Marshal(bootstrap)
 			assert.NoError(test, err)
 			document := append(append([]byte("var uidl = "), encoded...), []byte(`;var config = {"v-uiId":42};`)...)
@@ -597,9 +588,39 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			// Then
 			assert.NoError(test, err)
 			assert.Equal(test, "Example stage", snapshot.Stage)
+			expectedHTML, readError := os.ReadFile("testdata/vaadin/expected-content.html")
+			assert.NoError(test, readError)
+			assert.Equal(test, strings.TrimSpace(string(expectedHTML)), snapshot.HTML)
 			assert.Equal(test, expectedRequests, calls)
 		})
 	}
+	test.Run("should extract stage without a security key when an authenticated bootstrap uses legacy nodeValue text", func(test *testing.T) {
+		// Given
+		data, err := os.ReadFile("testdata/vaadin/bootstrap-authenticated.html")
+		assert.NoError(test, err)
+		bootstrap, err := testBootstrapObject(data, "var uidl =")
+		assert.NoError(test, err)
+		delete(bootstrap, "Vaadin-Security-Key")
+		for _, raw := range bootstrap["changes"].([]any) {
+			change := raw.(map[string]any)
+			if change["key"] == "text" && change["value"] == "Stage of your case" {
+				change["key"] = "nodeValue"
+			}
+		}
+		encoded, err := json.Marshal(bootstrap)
+		assert.NoError(test, err)
+		document := append(append([]byte("var uidl = "), encoded...), []byte(`;var config = {"v-uiId":42};`)...)
+		client := NewGdanskPortalClient(GdanskPortalClientOptions{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return reply(string(document)), nil
+		})})
+
+		// When
+		snapshot, err := client.Check(context.Background(), 1, "", "")
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "Example stage", snapshot.Stage)
+	})
 
 }
 
