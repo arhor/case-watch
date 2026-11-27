@@ -100,6 +100,7 @@ func TestIsExcludedControl(test *testing.T) {
 		{name: "editable div", node: htmlFixtureNode{tag: "div", attributes: map[string]any{"contenteditable": ""}}, excluded: true},
 		{name: "readonly empty field", node: field("vaadin-text-field", "")},
 		{name: "resource loading image", node: element("img"), excluded: true},
+		{name: "Vaadin grid", node: element("vaadin-grid", element("vaadin-grid-column", text("partial cell"))), excluded: true},
 	} {
 		test.Run("should report own exclusion when node is "+scenario.name, func(test *testing.T) {
 			// Given

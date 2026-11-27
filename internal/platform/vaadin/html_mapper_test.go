@@ -10,6 +10,17 @@ import (
 )
 
 func TestRenderHTML(test *testing.T) {
+	test.Run("should preserve whitespace between inline text and a row", func(test *testing.T) {
+		// Given
+		tree, roots := htmlTree(test, text("intro"), text(" "), informationRow("caption", field("vaadin-text-field", "value")))
+
+		// When
+		actual, err := vaadin.RenderHTML(tree, roots...)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "intro "+tableHTML("<tr><td><strong>caption</strong></td><td>value</td></tr>"), actual)
+	})
 	for _, flow := range []struct {
 		name, bootstrap string
 		ids             []vaadin.NodeID

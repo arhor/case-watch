@@ -125,6 +125,15 @@ func (this htmlRenderer) container(nodes []Node, context renderContext) string {
 			continue
 		}
 		if whitespaceNode(node) {
+			previous := index - 1
+			for previous >= 0 && IsHidden(nodes[previous]) {
+				previous--
+			}
+			if previous >= 0 && !whitespaceNode(nodes[previous]) && !isBlockTag(htmlTag(nodes[previous])) {
+				flush()
+				output.WriteString(this.node(node, context))
+				continue
+			}
 			next := index + 1
 			for next < len(nodes) && (IsHidden(nodes[next]) || whitespaceNode(nodes[next])) {
 				next++

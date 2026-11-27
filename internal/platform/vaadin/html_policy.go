@@ -48,9 +48,15 @@ func IsExcludedControl(node Node) bool {
 	case "vaadin-text-field", "vaadin-text-area":
 		_, ok := ReadOnlyValue(node)
 		return !ok
-	case "script", "style", "template", "iframe", "object", "embed", "svg", "math", "link", "meta", "img", "audio", "video", "source", "track", "picture", "base", "canvas", "noscript",
-		"form", "input", "button", "select", "textarea", "option", "optgroup", "fieldset", "datalist", "output", "details", "summary",
-		"vaadin-password-field", "vaadin-button", "vaadin-checkbox", "vaadin-checkbox-group", "vaadin-radio-button", "vaadin-radio-group", "vaadin-select", "vaadin-combo-box", "vaadin-multi-select-combo-box", "vaadin-date-picker", "vaadin-time-picker", "vaadin-date-time-picker", "vaadin-number-field", "vaadin-integer-field", "vaadin-email-field", "vaadin-upload", "vaadin-rich-text-editor", "vaadin-login-form", "vaadin-login-overlay", "vaadin-context-menu", "vaadin-menu-bar":
+	case "script", "style", "template", "iframe", "object", "embed", "svg", "math", "link", "meta", "img", "audio",
+		"video", "source", "track", "picture", "base", "canvas", "noscript", "form", "input", "button", "select",
+		"textarea", "option", "optgroup", "fieldset", "datalist", "output", "details", "summary",
+		"vaadin-password-field", "vaadin-button", "vaadin-checkbox", "vaadin-checkbox-group", "vaadin-radio-button",
+		"vaadin-radio-group", "vaadin-select", "vaadin-combo-box", "vaadin-multi-select-combo-box",
+		"vaadin-date-picker", "vaadin-time-picker", "vaadin-date-time-picker", "vaadin-number-field",
+		"vaadin-integer-field", "vaadin-email-field", "vaadin-upload", "vaadin-rich-text-editor", "vaadin-login-form",
+		"vaadin-login-overlay", "vaadin-context-menu", "vaadin-menu-bar", "vaadin-grid", "vaadin-grid-column",
+		"vaadin-grid-selection-column", "vaadin-grid-sorter", "vaadin-grid-filter", "vaadin-grid-filter-column":
 		return true
 	}
 	for _, feature := range []FeatureID{AttributesFeature, PropertiesFeature} {

@@ -47,7 +47,7 @@ class-based visibility or inherited styles are inferred. Rendering stops at
 hidden ancestors. `ReadOnlyValue` and `IsExcludedControl` likewise describe the
 node itself and are reusable by content selectors.
 
-Editable native controls/forms, known interactive Vaadin controls, passwords,
+Editable native controls/forms, known interactive Vaadin controls, Vaadin grids and their column/filter/sorter components, passwords,
 contenteditable containers, and active/resource elements (including script,
 style, template, iframe, SVG, MathML, image, media and embeds) exclude their
 entire subtrees. Unknown passive components transparently preserve supported
