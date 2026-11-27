@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -705,15 +706,22 @@ func (this portal) Check(ctx context.Context, owner int64, number, password stri
 }
 
 type fixture struct {
-	bot     *Bot
-	store   *repositories.Store
-	clock   *clock.FixedClock
-	mu      sync.Mutex
-	replies []string
-	deletes int
-	calls   int
-	stage   string
-	path    string
+	bot                 *Bot
+	store               *repositories.Store
+	clock               *clock.FixedClock
+	mu                  sync.Mutex
+	replies             []string
+	richMessages        []string
+	richCalls           int
+	richStatus          int
+	skipEntityDetection bool
+	plainCalls          int
+	plainFailOnCall     int
+	plainCancel         context.CancelFunc
+	deletes             int
+	calls               int
+	stage               string
+	path                string
 }
 
 func setup(test *testing.T) *fixture {
@@ -724,10 +732,35 @@ func setup(test *testing.T) *fixture {
 		defer environment.mu.Unlock()
 		responseWriter.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.HasSuffix(request.URL.Path, "/sendRichMessage"):
+			request.ParseMultipartForm(1 << 20)
+			var payload struct {
+				HTML                string `json:"html"`
+				SkipEntityDetection bool   `json:"skip_entity_detection"`
+			}
+			if err := json.Unmarshal([]byte(request.FormValue("rich_message")), &payload); err != nil {
+				test.Errorf("decode rich message: %v", err)
+			}
+			environment.richCalls++
+			environment.richMessages = append(environment.richMessages, payload.HTML)
+			environment.skipEntityDetection = payload.SkipEntityDetection
+			if environment.richStatus > 0 && environment.richStatus != http.StatusOK {
+				responseWriter.Write([]byte(fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"synthetic rejection"}`, environment.richStatus)))
+			} else {
+				responseWriter.Write([]byte(`{"ok":true,"result":{"message_id":42,"chat":{"id":101,"type":"private"},"date":1}}`))
+			}
 		case strings.HasSuffix(request.URL.Path, "/sendMessage"):
 			request.ParseMultipartForm(1 << 20)
-			environment.replies = append(environment.replies, request.FormValue("text"))
-			responseWriter.Write([]byte(`{"ok":true,"result":{"message_id":42,"chat":{"id":101,"type":"private"},"date":1}}`))
+			environment.plainCalls++
+			if environment.plainCalls == environment.plainFailOnCall {
+				responseWriter.Write([]byte(`{"ok":false,"error_code":500,"description":"synthetic transport failure"}`))
+			} else {
+				environment.replies = append(environment.replies, request.FormValue("text"))
+				responseWriter.Write([]byte(`{"ok":true,"result":{"message_id":42,"chat":{"id":101,"type":"private"},"date":1}}`))
+			}
+			if environment.plainCancel != nil {
+				environment.plainCancel()
+			}
 		case strings.HasSuffix(request.URL.Path, "/deleteMessage"):
 			environment.deletes++
 			responseWriter.Write([]byte(`{"ok":false,"error_code":400,"description":"synthetic-password"}`))
