@@ -32,15 +32,13 @@ type TrackedCaseRepository interface {
 		id string,
 		number string,
 		password string,
-		stage string,
-		checkedAt time.Time,
+		snapshot PortalSnapshot,
 	) error
 	UpdateObservation(
 		ctx context.Context,
 		owner int64,
 		id string,
-		stage string,
-		checkedAt time.Time,
+		snapshot PortalSnapshot,
 	) error
 	SoftDelete(ctx context.Context, owner int64, id string, now time.Time) error
 }

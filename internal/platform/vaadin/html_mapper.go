@@ -129,7 +129,7 @@ func (this htmlRenderer) container(nodes []Node, context renderContext) string {
 			for previous >= 0 && IsHidden(nodes[previous]) {
 				previous--
 			}
-			if previous >= 0 && !whitespaceNode(nodes[previous]) && !isBlockTag(htmlTag(nodes[previous])) {
+			if previous >= 0 && !whitespaceNode(nodes[previous]) && !this.hasBlock(nodes[previous]) {
 				flush()
 				output.WriteString(this.node(node, context))
 				continue

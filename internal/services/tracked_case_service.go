@@ -134,7 +134,7 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 	if err != nil {
 		return "", time.Time{}, ErrStorage
 	}
-	stage, checkedAt, err := this.baseline(work, owner, number, password)
+	snapshot, err := this.baseline(work, owner, number, password)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -146,11 +146,11 @@ func (this *TrackedCaseService) StoreCaseToTrack(ctx context.Context, owner int6
 	if work.Err() != nil {
 		return "", time.Time{}, work.Err()
 	}
-	if err = this.saveTrackedCase(work, owner, id, number, password, stage, checkedAt); err != nil {
+	if err = this.saveTrackedCase(work, owner, id, number, password, snapshot); err != nil {
 		return "", time.Time{}, this.storageError(ctx, err)
 	}
 	committed = true
-	return stage, checkedAt, nil
+	return snapshot.Stage, snapshot.CheckedAt, nil
 }
 
 func (this *TrackedCaseService) CheckCaseStatus(ctx context.Context, owner int64) (domain.Status, error) {
@@ -302,21 +302,22 @@ func canceled(ctx context.Context, fallback error) error {
 	return fallback
 }
 
-func (this *TrackedCaseService) baseline(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
+func (this *TrackedCaseService) baseline(ctx context.Context, owner int64, number, password string) (domain.PortalSnapshot, error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	stage, _, err := this.portal.Check(bounded, owner, number, password)
+	snapshot, err := this.portal.Check(bounded, owner, number, password)
 	if err != nil {
-		return "", time.Time{}, canceled(bounded, ErrCheck)
+		return domain.PortalSnapshot{}, canceled(bounded, ErrCheck)
 	}
 	if err = bounded.Err(); err != nil {
-		return "", time.Time{}, err
+		return domain.PortalSnapshot{}, err
 	}
-	return stage, this.clock.Now(), nil
+	snapshot.CheckedAt = this.clock.Now()
+	return snapshot, nil
 }
 
-func cached(stage string, checkedAt time.Time) domain.Status {
-	return domain.Status{Stage: stage, CheckedAt: checkedAt}
+func cached(snapshot domain.PortalSnapshot) domain.Status {
+	return domain.Status{Stage: snapshot.Stage, HTML: snapshot.HTML, CheckedAt: snapshot.CheckedAt}
 }
 
 func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual bool) (domain.Status, error) {
@@ -355,7 +356,8 @@ func (this *TrackedCaseService) check(ctx context.Context, owner int64, manual b
 		return domain.Status{}, ErrDenied
 	}
 	now := this.clock.Now()
-	status := cached(trackedCase.Stage, trackedCase.CheckedAt)
+	snapshot := domain.PortalSnapshot{Stage: trackedCase.Stage, HTML: trackedCase.HTML, CheckedAt: trackedCase.CheckedAt}
+	status := cached(snapshot)
 	if now.Before(trackedCase.CheckedAt.Add(time.Minute)) {
 		status.NextEligibleAt, err = this.checkEligibility(ctx, owner, trackedCase.ID, manual)
 		status.NextEligibleAt = later(status.NextEligibleAt, trackedCase.CheckedAt.Add(time.Minute))
@@ -427,7 +429,7 @@ func (this *TrackedCaseService) refresh(
 	check *check,
 	trackedCase domain.TrackedCase,
 ) {
-	stage, checkedAt, err := this.baseline(ctx, owner, trackedCase.Number, trackedCase.Password)
+	snapshot, err := this.baseline(ctx, owner, trackedCase.Number, trackedCase.Password)
 	this.mu.Lock()
 
 	defer this.mu.Unlock()
@@ -439,15 +441,15 @@ func (this *TrackedCaseService) refresh(
 		err = ctx.Err()
 	} else if err == nil {
 		var change *domain.StageChange
-		change, err = this.saveObservation(ctx, owner, trackedCase.ID, stage, checkedAt)
+		change, err = this.saveObservation(ctx, owner, trackedCase.ID, snapshot)
 		err = this.storageError(ctx, err)
 
 		if err == nil {
 			next := check.status.NextEligibleAt
-			check.status = cached(stage, checkedAt)
+			check.status = cached(snapshot)
 			check.status.Fresh = true
 			check.status.Change = change
-			check.status.NextEligibleAt = later(next, checkedAt.Add(time.Minute))
+			check.status.NextEligibleAt = later(next, snapshot.CheckedAt.Add(time.Minute))
 		}
 	}
 
@@ -462,11 +464,10 @@ func (this *TrackedCaseService) saveTrackedCase(
 	owner int64,
 	id string,
 	number, password string,
-	stage string,
-	checkedAt time.Time,
+	snapshot domain.PortalSnapshot,
 ) error {
 	return this.store.RunInTx(ctx, func(store domain.Store) error {
-		return store.TrackedCases().Create(ctx, owner, id, number, password, stage, checkedAt)
+		return store.TrackedCases().Create(ctx, owner, id, number, password, snapshot)
 	})
 }
 
@@ -474,8 +475,7 @@ func (this *TrackedCaseService) saveObservation(
 	ctx context.Context,
 	owner int64,
 	id string,
-	stage string,
-	checkedAt time.Time,
+	snapshot domain.PortalSnapshot,
 ) (*domain.StageChange, error) {
 	var change *domain.StageChange
 	err := this.store.RunInTx(ctx, func(store domain.Store) error {
@@ -483,16 +483,16 @@ func (this *TrackedCaseService) saveObservation(
 		if err != nil {
 			return err
 		}
-		if err = store.TrackedCases().UpdateObservation(ctx, owner, id, stage, checkedAt); err != nil {
+		if err = store.TrackedCases().UpdateObservation(ctx, owner, id, snapshot); err != nil {
 			return err
 		}
-		if trackedCase.Stage == stage {
+		if trackedCase.Stage == snapshot.Stage {
 			return nil
 		}
-		if err := store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, stage, checkedAt); err != nil {
+		if err := store.TrackedCasesHistory().Append(ctx, id, trackedCase.Stage, snapshot.Stage, snapshot.CheckedAt); err != nil {
 			return err
 		}
-		change = &domain.StageChange{PreviousStage: trackedCase.Stage, Stage: stage, CheckedAt: checkedAt}
+		change = &domain.StageChange{PreviousStage: trackedCase.Stage, Stage: snapshot.Stage, CheckedAt: snapshot.CheckedAt}
 		return nil
 	})
 	if err != nil {

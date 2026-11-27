@@ -699,8 +699,9 @@ func TestBotNotifyStageChanged(test *testing.T) {
 
 type portal func(context.Context, string, string) (string, time.Time, error)
 
-func (this portal) Check(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
-	return this(ctx, number, password)
+func (this portal) Check(ctx context.Context, owner int64, number, password string) (domain.PortalSnapshot, error) {
+	stage, checkedAt, err := this(ctx, number, password)
+	return domain.PortalSnapshot{Stage: stage, CheckedAt: checkedAt}, err
 }
 
 type fixture struct {
