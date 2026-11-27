@@ -247,6 +247,18 @@ func TestPrepareRichMessagePlaceholderSafety(test *testing.T) {
 		assert.NoError(test, err)
 		assert.Equal(test, fragment, prepared.PlainText)
 	})
+
+	test.Run("should not treat invalid input bytes matching the placeholder as preformatted content", func(test *testing.T) {
+		// Given
+		fragment := "\xffcase-watch-preformatted-0\xfe<pre>code</pre>"
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "\uFFFDcase-watch-preformatted-0\uFFFD\ncode", prepared.PlainText)
+	})
 }
 
 func TestPrepareRichMessageLimits(test *testing.T) {

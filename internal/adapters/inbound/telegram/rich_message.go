@@ -80,6 +80,7 @@ func prepareRichMessage(fragment string) (preparedRichMessage, error) {
 	if len(fragment) > maxHTMLBytes {
 		return preparedRichMessage{}, errors.New("HTML fragment exceeds safe processing limits")
 	}
+	fragment = strings.ToValidUTF8(fragment, "\uFFFD")
 	contextNode := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
 	nodes, err := html.ParseFragment(strings.NewReader(fragment), contextNode)
 	if err != nil {
