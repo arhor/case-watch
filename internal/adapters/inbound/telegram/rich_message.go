@@ -501,10 +501,7 @@ func safeHref(node *html.Node) string {
 func renderPlain(node *html.Node) string {
 	var output strings.Builder
 	preformattedContents := make([]string, 0)
-	markerPrefix := "\uE000case-watch-preformatted-"
-	for strings.Contains(plainNodeText(node), markerPrefix) {
-		markerPrefix += "\uE000"
-	}
+	markerPrefix := "\xffcase-watch-preformatted-"
 	var walk func(*html.Node, bool)
 	walk = func(current *html.Node, inCell bool) {
 		if current.Type == html.TextNode {
@@ -543,7 +540,7 @@ func renderPlain(node *html.Node) string {
 			return
 		}
 		if tag == "pre" {
-			marker := markerPrefix + strconv.Itoa(len(preformattedContents)) + "\uE001"
+			marker := markerPrefix + strconv.Itoa(len(preformattedContents)) + "\xfe"
 			preformattedContents = append(preformattedContents, plainNodeText(current))
 			output.WriteString(marker)
 			output.WriteString("\n")
@@ -574,12 +571,33 @@ func renderPlain(node *html.Node) string {
 		}
 	}
 	walk(node, false)
-	plain := strings.TrimSpace(output.String())
-	for index, content := range preformattedContents {
-		marker := markerPrefix + strconv.Itoa(index) + "\uE001"
-		plain = strings.Replace(plain, marker, content, 1)
+	plainWithMarkers := strings.TrimSpace(output.String())
+	var plain strings.Builder
+	plain.Grow(len(plainWithMarkers))
+	for offset := 0; offset < len(plainWithMarkers); {
+		markerStart := strings.Index(plainWithMarkers[offset:], markerPrefix)
+		if markerStart < 0 {
+			plain.WriteString(plainWithMarkers[offset:])
+			break
+		}
+		markerStart += offset
+		plain.WriteString(plainWithMarkers[offset:markerStart])
+		markerEndOffset := strings.IndexByte(plainWithMarkers[markerStart:], '\xfe')
+		if markerEndOffset < 0 {
+			plain.WriteString(plainWithMarkers[markerStart:])
+			break
+		}
+		markerEnd := markerStart + markerEndOffset
+		preformattedIndex, err := strconv.Atoi(plainWithMarkers[markerStart+len(markerPrefix) : markerEnd])
+		if err != nil || preformattedIndex < 0 || preformattedIndex >= len(preformattedContents) {
+			plain.WriteString(plainWithMarkers[markerStart : markerStart+len(markerPrefix)])
+			offset = markerStart + len(markerPrefix)
+			continue
+		}
+		plain.WriteString(preformattedContents[preformattedIndex])
+		offset = markerEnd + 1
 	}
-	return plain
+	return plain.String()
 }
 
 func isPlainBlock(node *html.Node) bool {

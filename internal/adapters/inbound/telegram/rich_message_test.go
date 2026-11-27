@@ -235,6 +235,20 @@ func TestPrepareRichMessageInputLimit(test *testing.T) {
 	})
 }
 
+func TestPrepareRichMessagePlaceholderSafety(test *testing.T) {
+	test.Run("should render text containing repeated former placeholder prefixes without repeated scans", func(test *testing.T) {
+		// Given
+		fragment := "\uE000case-watch-preformatted-" + strings.Repeat("\uE000", 10000)
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, fragment, prepared.PlainText)
+	})
+}
+
 func TestPrepareRichMessageLimits(test *testing.T) {
 	test.Run("should keep rich text at the documented limit and fall back above it when preparing HTML", func(test *testing.T) {
 		// Given
