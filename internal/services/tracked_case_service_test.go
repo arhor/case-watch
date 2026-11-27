@@ -69,15 +69,15 @@ func TestNewTrackedCaseService(test *testing.T) {
 }
 
 func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
-	test.Run("should replace opaque HTML on success and retain it after failure", func(test *testing.T) {
+	test.Run("should retain stored HTML when extraction is unavailable and clear it after a successful empty extraction", func(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		id := environment.trackCase(test, 101)
-		firstSnapshot := domain.PortalSnapshot{Stage: "A", HTML: "<p>before</p>", CheckedAt: epoch}
+		firstSnapshot := domain.PortalSnapshot{Stage: "A", HTML: "<p>before</p>", HTMLAvailable: true, CheckedAt: epoch}
 		assert.NoError(test, environment.store.TrackedCases().UpdateObservation(context.Background(), 101, id, firstSnapshot))
 		environment.clock.Set(epoch.Add(time.Minute))
 		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
-			return domain.PortalSnapshot{Stage: "A", HTML: "<p>after &amp; exact</p>\n"}, nil
+			return domain.PortalSnapshot{Stage: "A", HTML: "<p>after &amp; exact</p>\n", HTMLAvailable: true}, nil
 		})
 
 		// When
@@ -89,25 +89,33 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		failed, failedErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		environment.clock.Set(epoch.Add(3 * time.Minute))
 		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
-			return domain.PortalSnapshot{Stage: "A"}, nil
+			return domain.PortalSnapshot{Stage: "B"}, nil
 		})
-		stageOnly, stageOnlyErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+		unavailable, unavailableErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+		environment.clock.Set(epoch.Add(4 * time.Minute))
+		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
+			return domain.PortalSnapshot{Stage: "B", HTMLAvailable: true}, nil
+		})
+		empty, emptyErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 		stored, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
 		// Then
 		assert.NoError(test, updateErr)
 		assert.ErrorIs(test, failedErr, ErrCheck)
-		assert.NoError(test, stageOnlyErr)
+		assert.NoError(test, unavailableErr)
+		assert.NoError(test, emptyErr)
 		assert.NoError(test, readErr)
 		assert.NoError(test, historyErr)
 		assert.Equal(test, "<p>after &amp; exact</p>\n", updated.HTML)
 		assert.Equal(test, updated.HTML, failed.HTML)
 		assert.Equal(test, updated.CheckedAt, failed.CheckedAt)
-		assert.Equal(test, "", stageOnly.HTML)
+		assert.Equal(test, updated.HTML, unavailable.HTML)
+		assert.Equal(test, "B", unavailable.Stage)
+		assert.Equal(test, "", empty.HTML)
 		assert.Equal(test, "", stored.HTML)
-		assert.True(test, stageOnly.CheckedAt.After(updated.CheckedAt))
-		assert.Equal(test, 0, len(history), "HTML-only update must not add stage history")
+		assert.True(test, empty.CheckedAt.After(unavailable.CheckedAt))
+		assert.Equal(test, 1, len(history), "the stage change should still add its normal history entry")
 	})
 
 	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {
@@ -809,7 +817,7 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 		id := environment.trackCase(test, 101)
 		previousHTML := "<p>previous committed observation</p>"
 		assert.NoError(test, environment.store.TrackedCases().UpdateObservation(context.Background(), 101, id, domain.PortalSnapshot{
-			Stage: "A", HTML: previousHTML, CheckedAt: epoch,
+			Stage: "A", HTML: previousHTML, HTMLAvailable: true, CheckedAt: epoch,
 		}))
 		db, err := sql.Open("sqlite", environment.path)
 		assert.NoError(test, err)
@@ -828,7 +836,7 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 
 		// When
 		_, observeErr := environment.trackedCaseService.saveObservation(context.Background(), 101, id, domain.PortalSnapshot{
-			Stage: "B", HTML: "<p>attempted replacement</p>", CheckedAt: epoch.Add(time.Minute),
+			Stage: "B", HTML: "<p>attempted replacement</p>", HTMLAvailable: true, CheckedAt: epoch.Add(time.Minute),
 		})
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
