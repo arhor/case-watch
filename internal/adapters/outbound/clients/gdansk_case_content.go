@@ -11,7 +11,6 @@ import (
 
 type gdanskTreeEntry struct {
 	node      vaadin.Node
-	parent    vaadin.NodeID
 	ancestors []vaadin.NodeID
 }
 
@@ -60,7 +59,7 @@ func selectGdanskCaseContent(tree *vaadin.StateTree, stage string) ([]vaadin.Nod
 	container := entriesByID[containers[0]].node
 	var roots []vaadin.Node
 	for _, branch := range tree.Children(container.ID()) {
-		classification := classifyGdanskBranch(tree, branch, false)
+		classification := classifyGdanskBranch(tree, branch)
 		if classification == gdanskBranchMixed {
 			return nil, errors.New("ambiguous content branch")
 		}
@@ -100,11 +99,7 @@ func attachedGdanskEntries(tree *vaadin.StateTree) []gdanskTreeEntry {
 		if vaadin.IsHidden(node) {
 			return
 		}
-		parent := vaadin.NodeID(0)
-		if len(ancestors) > 0 {
-			parent = ancestors[len(ancestors)-1]
-		}
-		entries = append(entries, gdanskTreeEntry{node: node, parent: parent, ancestors: append([]vaadin.NodeID(nil), ancestors...)})
+		entries = append(entries, gdanskTreeEntry{node: node, ancestors: append([]vaadin.NodeID(nil), ancestors...)})
 		nextAncestors := append(append([]vaadin.NodeID(nil), ancestors...), node.ID())
 		if vaadin.IsExcludedControl(node) {
 			return
@@ -148,15 +143,15 @@ func hasGdanskContainerClasses(classes []string) bool {
 	return true
 }
 
-func classifyGdanskBranch(tree *vaadin.StateTree, root vaadin.Node, excludedAncestor bool) gdanskBranchKind {
-	if vaadin.IsHidden(root) || excludedAncestor {
+func classifyGdanskBranch(tree *vaadin.StateTree, root vaadin.Node) gdanskBranchKind {
+	if vaadin.IsHidden(root) {
 		return gdanskBranchExcluded
 	}
 	containsReadOnly := false
 	containsInteractive := false
-	var inspect func(vaadin.Node, bool)
-	inspect = func(node vaadin.Node, excluded bool) {
-		if vaadin.IsHidden(node) || excluded {
+	var inspect func(vaadin.Node)
+	inspect = func(node vaadin.Node) {
+		if vaadin.IsHidden(node) {
 			return
 		}
 		if _, ok := vaadin.ReadOnlyValue(node); ok {
@@ -167,10 +162,10 @@ func classifyGdanskBranch(tree *vaadin.StateTree, root vaadin.Node, excludedAnce
 			return
 		}
 		for _, child := range tree.Children(node.ID()) {
-			inspect(child, false)
+			inspect(child)
 		}
 	}
-	inspect(root, false)
+	inspect(root)
 	if containsReadOnly && containsInteractive {
 		return gdanskBranchMixed
 	}
