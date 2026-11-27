@@ -77,6 +77,9 @@ func (this *Bot) replyRich(ctx context.Context, id int64, fragment string) {
 }
 
 func prepareRichMessage(fragment string) (preparedRichMessage, error) {
+	if len(fragment) > maxHTMLBytes {
+		return preparedRichMessage{}, errors.New("HTML fragment exceeds safe processing limits")
+	}
 	contextNode := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
 	nodes, err := html.ParseFragment(strings.NewReader(fragment), contextNode)
 	if err != nil {
@@ -115,7 +118,10 @@ func prepareRichMessage(fragment string) (preparedRichMessage, error) {
 
 // -- Internals ----------------------------------------------------------------
 
-const maxHTMLNodes = 50000
+const (
+	maxHTMLBytes = 1 << 20 // Bound parser memory and work before building the HTML tree.
+	maxHTMLNodes = 50000
+)
 
 type renderState struct {
 	blocks         int
@@ -150,7 +156,7 @@ func sanitizeTree(node *html.Node, depth int) bool {
 
 func excludedTag(tag string) bool {
 	switch strings.ToLower(tag) {
-	case "script", "style", "template", "iframe", "object", "embed", "form", "input", "textarea", "select", "option", "button", "audio", "video", "source", "img", "svg", "canvas", "tg-emoji", "tg-spoiler", "tg-user", "tg-mention", "tg-bot-command", "tg-quote", "tg-button", "tg-button-row", "tg-map", "tg-document", "tg-collage", "tg-slideshow", "tg-math", "tg-math-block", "tg-reference", "tg-time":
+	case "head", "title", "meta", "base", "link", "script", "style", "template", "iframe", "object", "embed", "form", "input", "textarea", "select", "option", "button", "audio", "video", "source", "img", "svg", "canvas", "tg-emoji", "tg-spoiler", "tg-user", "tg-mention", "tg-bot-command", "tg-quote", "tg-button", "tg-button-row", "tg-map", "tg-document", "tg-collage", "tg-slideshow", "tg-math", "tg-math-block", "tg-reference", "tg-time":
 		return true
 	default:
 		return false

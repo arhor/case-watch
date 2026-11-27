@@ -10,6 +10,22 @@ import (
 )
 
 func TestPrepareRichMessage(test *testing.T) {
+	test.Run("should omit document metadata from rich and plain output when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<head><title>Internal portal title</title><meta name="description" content="secret metadata"><base href="https://example.com"><link rel="stylesheet" href="secret.css"></head><p>Visible content</p>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "<p>Visible content</p>", prepared.HTML)
+		assert.Equal(test, "Visible content", prepared.PlainText)
+		for _, metadata := range []string{"Internal portal title", "secret metadata", "secret.css"} {
+			assert.True(test, !strings.Contains(prepared.HTML, metadata) && !strings.Contains(prepared.PlainText, metadata), "document metadata should be omitted from both outputs")
+		}
+	})
+
 	test.Run("should preserve safe table content and omit hidden or unsafe content when adapting generic HTML", func(test *testing.T) {
 		// Given
 		fragment := `<table><tbody><tr><td><strong>Caption</strong></td><td>Value &amp; more</td></tr><tr><td></td><td><em>Explanation</em></td></tr><tr><td>Documents</td><td><div>First</div><hr><div>Second</div><p>Third</p><script>secret</script></td></tr></tbody></table><p hidden>hidden</p><a href="javascript:alert(1)">safe label</a><a href="https://example.com/item">source</a>`
@@ -179,6 +195,32 @@ func TestPrepareRichMessage(test *testing.T) {
 		assert.Equal(test, "Intro\none | two\nthree", prepared.PlainText)
 	})
 
+}
+
+func TestPrepareRichMessageInputLimit(test *testing.T) {
+	test.Run("should reject a single text node above the input byte limit before parsing HTML", func(test *testing.T) {
+		// Given
+		fragment := strings.Repeat("x", maxHTMLBytes+1)
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.True(test, err != nil, "oversized HTML input should be rejected")
+		assert.Equal(test, preparedRichMessage{}, prepared)
+	})
+
+	test.Run("should reject a many-node fragment beyond the tree node limit", func(test *testing.T) {
+		// Given
+		fragment := strings.Repeat("<b>x</b>", maxHTMLNodes/2+1)
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.True(test, err != nil, "excessive HTML node count should be rejected")
+		assert.Equal(test, preparedRichMessage{}, prepared)
+	})
 }
 
 func TestPrepareRichMessageLimits(test *testing.T) {
