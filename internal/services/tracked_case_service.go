@@ -440,6 +440,9 @@ func (this *TrackedCaseService) refresh(
 	} else if ctx.Err() != nil {
 		err = ctx.Err()
 	} else if err == nil {
+		if !snapshot.HTMLAvailable {
+			snapshot.HTML = trackedCase.HTML
+		}
 		var change *domain.StageChange
 		change, err = this.saveObservation(ctx, owner, trackedCase.ID, snapshot)
 		err = this.storageError(ctx, err)
