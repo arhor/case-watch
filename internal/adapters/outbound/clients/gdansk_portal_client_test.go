@@ -64,18 +64,18 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		}})
 
 		// When
-		firstStage, firstCheckedAt, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
-		secondStage, secondCheckedAt, err2 := client.Check(context.Background(), 1, "", "")
+		firstSnapshot, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		secondSnapshot, err2 := client.Check(context.Background(), 1, "", "")
 
 		// Then
 		assert.NoError(test, err)
 		assert.NoError(test, err2)
 		assert.Equal(test, 10, calls)
 		assert.Equal(test, 8, waits)
-		assert.Equal(test, "Synthetic stage", firstStage)
-		assert.Equal(test, firstStage, secondStage)
-		assert.True(test, secondCheckedAt.Equal(clock.Now()), "completion timestamp should use the injected clock")
-		assert.True(test, firstCheckedAt.Before(secondCheckedAt), "each check should record its own completion time")
+		assert.Equal(test, "Synthetic stage", firstSnapshot.Stage)
+		assert.Equal(test, firstSnapshot.Stage, secondSnapshot.Stage)
+		assert.True(test, secondSnapshot.CheckedAt.Equal(clock.Now()), "completion timestamp should use the injected clock")
+		assert.True(test, firstSnapshot.CheckedAt.Before(secondSnapshot.CheckedAt), "each check should record its own completion time")
 	})
 
 	for _, scenario := range []struct {
@@ -99,15 +99,15 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			client := NewGdanskPortalClient(GdanskPortalClientOptions{Transport: scenario.transport})
 
 			// When
-			stage, checkedAt, err := client.Check(context.Background(), 1, "", "secret-password")
+			snapshot, err := client.Check(context.Background(), 1, "", "secret-password")
 
 			// Then
 			var safe *Error
 			assert.True(test, errors.As(err, &safe), "portal failure should expose a safe error classification")
 			assert.Equal(test, scenario.kind, safe.Kind)
 			assert.True(test, !strings.Contains(err.Error(), "secret"), "portal error should not expose secrets")
-			assert.Equal(test, "", stage)
-			assert.True(test, checkedAt.IsZero(), "failed check should not report a completion timestamp")
+			assert.Equal(test, "", snapshot.Stage)
+			assert.True(test, snapshot.CheckedAt.IsZero(), "failed check should not report a completion timestamp")
 		})
 	}
 
@@ -122,7 +122,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		client.overall = time.Millisecond
 
 		// When
-		_, _, err := client.Check(context.Background(), 1, "", "")
+		_, err := client.Check(context.Background(), 1, "", "")
 
 		// Then
 		assert.ErrorIs(test, err, context.DeadlineExceeded)
@@ -137,7 +137,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		cancel()
 
 		// When
-		_, _, err := client.Check(ctx, 1, "", "")
+		_, err := client.Check(ctx, 1, "", "")
 
 		// Then
 		assert.ErrorIs(test, err, context.Canceled)
@@ -155,7 +155,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		client.perRequest = time.Millisecond
 
 		// When
-		_, _, err := client.Check(context.Background(), 1, "", "")
+		_, err := client.Check(context.Background(), 1, "", "")
 
 		// Then
 		assert.ErrorIs(test, err, context.DeadlineExceeded)
@@ -173,7 +173,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		}), Wait: func(ctx context.Context, delay time.Duration) error { cancel(); return ctx.Err() }})
 
 		// When
-		_, _, err := client.Check(ctx, 1, "", "")
+		_, err := client.Check(ctx, 1, "", "")
 
 		// Then
 		assert.ErrorIs(test, err, context.Canceled)
@@ -190,7 +190,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.True(test, err != nil, "operation should return an error")
@@ -208,7 +208,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.True(test, err != nil, "operation should return an error")
@@ -279,11 +279,11 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer cancel()
 
 		// When
-		stage, _, err := newGdanskTestClient(server.URL).Check(ctx, 1, "synthetic-case", "synthetic-password")
+		snapshot, err := newGdanskTestClient(server.URL).Check(ctx, 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.NoError(test, err)
-		assert.Equal(test, "Synthetic stage", stage)
+		assert.Equal(test, "Synthetic stage", snapshot.Stage)
 		assert.Equal(test, 5, calls)
 	})
 
@@ -302,7 +302,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.True(test, err != nil, "operation should return an error")
@@ -337,11 +337,11 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			client.budget = scenario.budget
 
 			// When
-			stage, _, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+			snapshot, err := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 			// Then
 			assert.True(test, err != nil, "operation should return an error")
-			assert.Equal(test, "", stage)
+			assert.Equal(test, "", snapshot.Stage)
 			assert.Equal(test, scenario.expectedRequests, calls)
 		})
 	}
@@ -388,11 +388,11 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		stage, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		snapshot, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.NoError(test, err)
-		assert.Equal(test, "Synthetic stage", stage)
+		assert.Equal(test, "Synthetic stage", snapshot.Stage)
 	})
 
 	test.Run("should stop when caller deadline expires", func(test *testing.T) {
@@ -407,7 +407,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer cancel()
 
 		// When
-		_, _, err := client.Check(ctx, 1, "synthetic-case", "synthetic-password")
+		_, err := client.Check(ctx, 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.ErrorIs(test, err, context.DeadlineExceeded)
@@ -431,8 +431,8 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer client.Close()
 
 		// When
-		_, _, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
-		_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.NoError(test, err1)
@@ -463,8 +463,8 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer client.Close()
 
 		// When
-		_, _, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
-		_, _, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err1 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err2 := client.Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		var safe *Error
@@ -498,7 +498,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.True(test, err != nil, "operation should return an error")
@@ -528,7 +528,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 		defer server.Close()
 
 		// When
-		_, _, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
+		_, err := newGdanskTestClient(server.URL).Check(context.Background(), 1, "synthetic-case", "synthetic-password")
 
 		// Then
 		assert.True(test, err != nil, "operation should return an error")
@@ -592,11 +592,11 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			}), Wait: func(ctx context.Context, _ time.Duration) error { return ctx.Err() }})
 
 			// When
-			stage, _, err := client.Check(context.Background(), 1, "EXAMPLE-0001", "example-password")
+			snapshot, err := client.Check(context.Background(), 1, "EXAMPLE-0001", "example-password")
 
 			// Then
 			assert.NoError(test, err)
-			assert.Equal(test, "Example stage", stage)
+			assert.Equal(test, "Example stage", snapshot.Stage)
 			assert.Equal(test, expectedRequests, calls)
 		})
 	}

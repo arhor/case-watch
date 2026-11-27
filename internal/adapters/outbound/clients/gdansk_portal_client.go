@@ -96,7 +96,7 @@ func NewGdanskPortalClient(options GdanskPortalClientOptions) *GdanskPortalClien
 }
 
 // Check returns the portal's stage text and the completion time of one bounded check.
-func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error) {
+func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number, password string) (snapshot domain.PortalSnapshot, err error) {
 	ctx, cancel := context.WithTimeout(ctx, this.overall)
 	defer cancel()
 	defer func() { err = classify(err) }()
@@ -109,21 +109,21 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 	session := this.newSession()
 	session.userID = strconv.FormatInt(ownerID, 10)
 	if err := session.bootstrap(ctx); err != nil {
-		return "", time.Time{}, err
+		return domain.PortalSnapshot{}, err
 	}
 	if _, stageErr := session.state.stage(); stageErr != nil {
 		if err := session.authenticate(ctx, number, password); err != nil {
-			return "", time.Time{}, err
+			return domain.PortalSnapshot{}, err
 		}
 	}
-	stage, err = session.state.stage()
+	stage, err := session.state.stage()
 	if err != nil {
-		return "", time.Time{}, err
+		return domain.PortalSnapshot{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return "", time.Time{}, err
+		return domain.PortalSnapshot{}, err
 	}
-	return stage, this.clock.Now(), nil
+	return domain.PortalSnapshot{Stage: stage, CheckedAt: this.clock.Now()}, nil
 }
 
 // Close releases idle connections of the transport created by the client. An injected

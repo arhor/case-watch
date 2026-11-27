@@ -26,7 +26,7 @@ func (this *TrackedCaseRepository) FindByOwner(ctx context.Context, owner int64)
 	}
 	return scanTrackedCase(
 		this.executor.QueryRowContext(ctx, `
-			SELECT id, owner_id, case_number, password, curr_state, checked_at
+			SELECT id, owner_id, case_number, password, curr_state, curr_html, checked_at
 			  FROM tracked_cases
 			 WHERE deleted_at IS NULL
 			   AND owner_id = ?
@@ -51,7 +51,7 @@ func (this *TrackedCaseRepository) FindByIdentity(ctx context.Context, owner int
 
 func (this *TrackedCaseRepository) FindAll(ctx context.Context) ([]domain.TrackedCase, error) {
 	rows, err := this.executor.QueryContext(ctx, `
-		SELECT id, owner_id, case_number, password, curr_state, checked_at
+		SELECT id, owner_id, case_number, password, curr_state, curr_html, checked_at
 		  FROM tracked_cases
 		 WHERE deleted_at IS NULL
 		 ORDER BY owner_id
@@ -80,10 +80,9 @@ func (this *TrackedCaseRepository) Create(
 	id string,
 	number string,
 	password string,
-	stage string,
-	checkedAt time.Time,
+	snapshot domain.PortalSnapshot,
 ) error {
-	if owner <= 0 || !validID(id) || strings.TrimSpace(number) == "" || strings.TrimSpace(password) == "" || checkedAt.IsZero() {
+	if owner <= 0 || !validID(id) || strings.TrimSpace(number) == "" || strings.TrimSpace(password) == "" || snapshot.CheckedAt.IsZero() {
 		return ErrInvalid
 	}
 	var exists bool
@@ -105,9 +104,9 @@ func (this *TrackedCaseRepository) Create(
 		return ErrExists
 	}
 	_, err := this.executor.ExecContext(ctx, `
-		INSERT INTO tracked_cases (id, owner_id, case_number, password, curr_state, checked_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, owner, number, password, stage, stamp(checkedAt))
+		INSERT INTO tracked_cases (id, owner_id, case_number, password, curr_state, curr_html, checked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, id, owner, number, password, snapshot.Stage, nullableHTML(snapshot.HTML), stamp(snapshot.CheckedAt))
 	if err != nil {
 		return ErrStorage
 	}
@@ -118,21 +117,21 @@ func (this *TrackedCaseRepository) UpdateObservation(
 	ctx context.Context,
 	owner int64,
 	id string,
-	stage string,
-	checkedAt time.Time,
+	snapshot domain.PortalSnapshot,
 ) error {
-	if owner <= 0 || !validID(id) || checkedAt.IsZero() {
+	if owner <= 0 || !validID(id) || snapshot.CheckedAt.IsZero() {
 		return ErrInvalid
 	}
 	return rowAffected(
 		this.executor.ExecContext(ctx, `
 			UPDATE tracked_cases
 			   SET curr_state = ?
+			     , curr_html = ?
 			     , checked_at = ?
 			 WHERE owner_id = ?
 			   AND id = ?
 			   AND deleted_at IS NULL
-			`, stage, stamp(checkedAt), owner, id,
+			`, snapshot.Stage, nullableHTML(snapshot.HTML), stamp(snapshot.CheckedAt), owner, id,
 		),
 	)
 }
@@ -148,6 +147,7 @@ func (this *TrackedCaseRepository) SoftDelete(ctx context.Context, owner int64, 
 			     , case_number = NULL
 			     , password = NULL
 			     , curr_state = NULL
+			     , curr_html = NULL
 			     , checked_at = NULL
 			 WHERE owner_id = ?
 			   AND id = ?
@@ -166,18 +166,24 @@ func scanTrackedCase(
 ) (domain.TrackedCase, error) {
 	var trackedCase domain.TrackedCase
 	var checked string
-	err := row.Scan(&trackedCase.ID, &trackedCase.OwnerID, &trackedCase.Number, &trackedCase.Password, &trackedCase.Stage, &checked)
+	var html sql.NullString
+	err := row.Scan(&trackedCase.ID, &trackedCase.OwnerID, &trackedCase.Number, &trackedCase.Password, &trackedCase.Stage, &html, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return trackedCase, ErrNotFound
 	}
 	if err != nil {
 		return domain.TrackedCase{}, ErrStorage
 	}
+	trackedCase.HTML = html.String
 	trackedCase.CheckedAt, err = time.Parse(time.RFC3339Nano, checked)
 	if err != nil {
 		return domain.TrackedCase{}, ErrStorage
 	}
 	return trackedCase, nil
+}
+
+func nullableHTML(html string) sql.NullString {
+	return sql.NullString{String: html, Valid: html != ""}
 }
 
 func rowAffected(result sql.Result, err error) error {

@@ -69,6 +69,47 @@ func TestNewTrackedCaseService(test *testing.T) {
 }
 
 func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
+	test.Run("should replace opaque HTML on success and retain it after failure", func(test *testing.T) {
+		// Given
+		environment := setup(test, nil)
+		id := environment.trackCase(test, 101)
+		firstSnapshot := domain.PortalSnapshot{Stage: "A", HTML: "<p>before</p>", CheckedAt: epoch}
+		assert.NoError(test, environment.store.TrackedCases().UpdateObservation(context.Background(), 101, id, firstSnapshot))
+		environment.clock.Set(epoch.Add(time.Minute))
+		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
+			return domain.PortalSnapshot{Stage: "A", HTML: "<p>after &amp; exact</p>\n"}, nil
+		})
+
+		// When
+		updated, updateErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+		environment.clock.Set(epoch.Add(2 * time.Minute))
+		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
+			return domain.PortalSnapshot{}, ErrCheck
+		})
+		failed, failedErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+		environment.clock.Set(epoch.Add(3 * time.Minute))
+		environment.trackedCaseService.portal = snapshotPortalFunc(func(context.Context, int64, string, string) (domain.PortalSnapshot, error) {
+			return domain.PortalSnapshot{Stage: "A"}, nil
+		})
+		stageOnly, stageOnlyErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+		stored, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
+		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
+
+		// Then
+		assert.NoError(test, updateErr)
+		assert.ErrorIs(test, failedErr, ErrCheck)
+		assert.NoError(test, stageOnlyErr)
+		assert.NoError(test, readErr)
+		assert.NoError(test, historyErr)
+		assert.Equal(test, "<p>after &amp; exact</p>\n", updated.HTML)
+		assert.Equal(test, updated.HTML, failed.HTML)
+		assert.Equal(test, updated.CheckedAt, failed.CheckedAt)
+		assert.Equal(test, "", stageOnly.HTML)
+		assert.Equal(test, "", stored.HTML)
+		assert.True(test, stageOnly.CheckedAt.After(updated.CheckedAt))
+		assert.Equal(test, 0, len(history), "HTML-only update must not add stage history")
+	})
+
 	test.Run("should use completion freshness without consuming guards when cache is recent", func(test *testing.T) {
 		// Given
 		environment := setup(test, func(context.Context, string, string) (string, time.Time, error) {
@@ -165,12 +206,21 @@ func TestTrackedCaseServiceCheckCaseStatus(test *testing.T) {
 		firstResult, secondResult, thirdResult := make(chan answer, 1), make(chan answer, 1), make(chan answer, 1)
 
 		// When
-		go func() { status, err := environment.trackedCaseService.CheckCaseStatus(first, 101); firstResult <- answer{status, err} }()
+		go func() {
+			status, err := environment.trackedCaseService.CheckCaseStatus(first, 101)
+			firstResult <- answer{status, err}
+		}()
 		<-entered
 		<-first.entered
-		go func() { status, err := environment.trackedCaseService.RunScheduledCaseCheck(second, 101); secondResult <- answer{status, err} }()
+		go func() {
+			status, err := environment.trackedCaseService.RunScheduledCaseCheck(second, 101)
+			secondResult <- answer{status, err}
+		}()
 		<-second.entered
-		go func() { status, err := environment.trackedCaseService.CheckCaseStatus(third, 101); thirdResult <- answer{status, err} }()
+		go func() {
+			status, err := environment.trackedCaseService.CheckCaseStatus(third, 101)
+			thirdResult <- answer{status, err}
+		}()
 		<-third.entered
 		cancel()
 		canceled := <-firstResult
@@ -596,7 +646,7 @@ func TestTrackedCaseServiceRemoveTrackedCase(test *testing.T) {
 		_, missing := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		block.Store(false)
 		newID := environment.trackCase(test, 101)
-		_, lateObservation := environment.trackedCaseService.saveObservation(context.Background(), 101, id, "LATE", environment.clock.Now())
+		_, lateObservation := environment.trackedCaseService.saveObservation(context.Background(), 101, id, domain.PortalSnapshot{Stage: "LATE", CheckedAt: environment.clock.Now()})
 		environment.clock.Set(epoch.Add(119 * time.Second))
 		cached, statusErr := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
 
@@ -667,7 +717,10 @@ func TestTrackedCaseServiceRemoveTrackedCase(test *testing.T) {
 		environment.clock.Set(epoch.Add(time.Minute))
 		block.Store(true)
 		work := make(chan error, 1)
-		go func() { _, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101); work <- err }()
+		go func() {
+			_, err := environment.trackedCaseService.CheckCaseStatus(context.Background(), 101)
+			work <- err
+		}()
 		<-entered
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -770,7 +823,7 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 		}
 
 		// When
-		_, observeErr := environment.trackedCaseService.saveObservation(context.Background(), 101, id, "B", epoch.Add(time.Minute))
+		_, observeErr := environment.trackedCaseService.saveObservation(context.Background(), 101, id, domain.PortalSnapshot{Stage: "B", CheckedAt: epoch.Add(time.Minute)})
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
@@ -834,8 +887,17 @@ const number, password = "synthetic-number", "synthetic-password"
 
 type portalFunc func(context.Context, string, string) (string, time.Time, error)
 
-func (this portalFunc) Check(ctx context.Context, owner int64, number, password string) (string, time.Time, error) {
-	return this(ctx, number, password)
+type snapshotPortalFunc func(context.Context, int64, string, string) (domain.PortalSnapshot, error)
+
+func (this snapshotPortalFunc) Check(ctx context.Context, owner int64, number, password string) (domain.PortalSnapshot, error) {
+	return this(ctx, owner, number, password)
+}
+
+func (snapshotPortalFunc) ForgetSession(int64) {}
+
+func (this portalFunc) Check(ctx context.Context, owner int64, number, password string) (domain.PortalSnapshot, error) {
+	stage, checkedAt, err := this(ctx, number, password)
+	return domain.PortalSnapshot{Stage: stage, CheckedAt: checkedAt}, err
 }
 
 type fixture struct {

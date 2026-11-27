@@ -5,11 +5,17 @@ import (
 	"time"
 )
 
-// Portal performs one bounded logical check without automatic retries and
-// returns the portal's stage text verbatim with its completion time.
+// Portal performs one bounded logical check without automatic retries.
 type Portal interface {
-	Check(ctx context.Context, ownerID int64, number, password string) (stage string, checkedAt time.Time, err error)
+	Check(ctx context.Context, ownerID int64, number, password string) (PortalSnapshot, error)
 	ForgetSession(ownerID int64)
+}
+
+// PortalSnapshot carries the opaque content and stage from one successful observation.
+type PortalSnapshot struct {
+	Stage     string
+	HTML      string
+	CheckedAt time.Time
 }
 
 // StageChange describes a committed observation that changed the stored stage.
@@ -26,6 +32,7 @@ type Status struct {
 	// Change is present only on the fresh result of the check that committed it.
 	Change         *StageChange
 	Stage          string
+	HTML           string
 	CheckedAt      time.Time
 	Fresh          bool
 	InProgress     bool
@@ -37,6 +44,7 @@ type TrackedCase struct {
 	OwnerID          int64
 	Number, Password string
 	Stage            string
+	HTML             string
 	CheckedAt        time.Time
 }
 
