@@ -118,8 +118,9 @@ func prepareRichMessage(fragment string) (preparedRichMessage, error) {
 const maxHTMLNodes = 50000
 
 type renderState struct {
-	blocks int
-	depth  int
+	blocks         int
+	depth          int
+	cellHasContent bool
 }
 
 func sanitizeTree(node *html.Node, depth int) bool {
@@ -180,8 +181,12 @@ func hiddenNode(node *html.Node) bool {
 
 func renderRichChildren(output *strings.Builder, node *html.Node, state *renderState, depth int, inCell bool) error {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if isBlockWrapper(child) && hasPrecedingInlineContent(child) {
-			output.WriteString("<br>")
+		if isBlockWrapper(child) {
+			needsSeparator := inCell && state.cellHasContent && !hasTrailingCellBreak(child.PrevSibling, child)
+			needsSeparator = needsSeparator || !inCell && hasPrecedingInlineContent(child)
+			if needsSeparator {
+				output.WriteString("<br>")
+			}
 		}
 		if err := renderRichNode(output, child, state, depth, inCell); err != nil {
 			return err
@@ -191,6 +196,20 @@ func renderRichChildren(output *strings.Builder, node *html.Node, state *renderS
 		}
 	}
 	return nil
+}
+
+func hasTrailingCellBreak(previous, next *html.Node) bool {
+	if previous == nil || previous.Type != html.ElementNode {
+		return false
+	}
+	switch strings.ToLower(previous.Data) {
+	case "hr", "br":
+		return true
+	case "div", "section", "article":
+		return isBlockWrapper(next) && !hasRichBlockBoundary(next)
+	default:
+		return false
+	}
 }
 
 func hasRichBlockBoundary(node *html.Node) bool {
@@ -259,6 +278,9 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 	switch node.Type {
 	case html.TextNode:
 		output.WriteString(stdhtml.EscapeString(node.Data))
+		if inCell && strings.TrimSpace(node.Data) != "" {
+			state.cellHasContent = true
+		}
 		return nil
 	case html.CommentNode, html.DoctypeNode:
 		return nil
@@ -287,7 +309,11 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 	}
 	if tag == "hr" {
 		if inCell {
-			output.WriteString("<br>────<br>")
+			if state.cellHasContent && !hasTrailingCellBreak(node.PrevSibling, node) {
+				output.WriteString("<br>")
+			}
+			output.WriteString("────<br>")
+			state.cellHasContent = true
 		} else {
 			output.WriteString("<hr>")
 		}
@@ -302,11 +328,16 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 		return renderRichChildren(output, node, state, depth, true)
 	}
 	if inCell && tag == "li" {
-		output.WriteString("<br>" + listItemMarker(node))
+		if state.cellHasContent && !hasTrailingCellBreak(node.PrevSibling, node) {
+			output.WriteString("<br>")
+		}
+		output.WriteString(listItemMarker(node))
 		return renderRichChildren(output, node, state, depth+1, true)
 	}
 	if inCell && (tag == "p" || tag == "pre" || strings.HasPrefix(tag, "h")) {
-		output.WriteString("<br>")
+		if state.cellHasContent && !hasTrailingCellBreak(node.PrevSibling, node) {
+			output.WriteString("<br>")
+		}
 		return renderRichChildren(output, node, state, depth, true)
 	}
 	if tag == "a" {
@@ -345,9 +376,13 @@ func renderRichTableRows(output *strings.Builder, node *html.Node, state *render
 			}
 			state.blocks++
 			output.WriteString("<" + cell.Data + ">")
+			previousCellHasContent := state.cellHasContent
+			state.cellHasContent = false
 			if err := renderRichChildren(output, cell, state, depth+1, true); err != nil {
+				state.cellHasContent = previousCellHasContent
 				return err
 			}
+			state.cellHasContent = previousCellHasContent
 			output.WriteString("</" + cell.Data + ">")
 		}
 		output.WriteString("</tr>")
@@ -529,7 +564,7 @@ func isPlainBlock(node *html.Node) bool {
 		return false
 	}
 	tag := strings.ToLower(node.Data)
-	return isBlockWrapper(node) || tag == "p" || strings.HasPrefix(tag, "h") || tag == "pre" || tag == "li" || tag == "hr"
+	return isBlockWrapper(node) || tag == "p" || strings.HasPrefix(tag, "h") || tag == "pre" || tag == "li" || tag == "hr" || tag == "table" || tag == "ul" || tag == "ol"
 }
 
 func listItemMarker(node *html.Node) string {

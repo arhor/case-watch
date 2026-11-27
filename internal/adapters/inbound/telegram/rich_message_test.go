@@ -104,7 +104,31 @@ func TestPrepareRichMessage(test *testing.T) {
 
 		// Then
 		assert.NoError(test, err)
-		assert.Equal(test, `<table><tr><td><br>1. First<br>2. Second</td></tr></table>`, prepared.HTML)
+		assert.Equal(test, `<table><tr><td>1. First<br>2. Second</td></tr></table>`, prepared.HTML)
+	})
+
+	test.Run("should not add an empty leading line before a paragraph in a cell when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<table><tr><td><p>First</p></td><td>prefix<p>Second</p></td></tr></table>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, `<table><tr><td>First</td><td>prefix<br>Second</td></tr></table>`, prepared.HTML)
+	})
+
+	test.Run("should not add an empty leading line before a list in a cell when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<table><tr><td><ul><li>First</li><li>Second</li></ul></td><td>prefix<ul><li>Next</li></ul></td></tr></table>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, `<table><tr><td>• First<br>• Second</td><td>prefix<br>• Next</td></tr></table>`, prepared.HTML)
 	})
 
 	test.Run("should retain supported ordered numbering in plain fallback when adapting generic HTML", func(test *testing.T) {
@@ -130,6 +154,31 @@ func TestPrepareRichMessage(test *testing.T) {
 		assert.NoError(test, err)
 		assert.Equal(test, "3. Third\n2. Second\n1. First", prepared.PlainText)
 	})
+
+	test.Run("should separate inline text from a list in plain fallback when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `Intro<ol start="5"><li>First</li></ol>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "Intro\n5. First", prepared.PlainText)
+	})
+
+	test.Run("should separate inline text from a table in plain fallback when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `Intro<table><tr><td>one</td><td>two</td></tr><tr><td>three</td></tr></table>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "Intro\none | two\nthree", prepared.PlainText)
+	})
+
 }
 
 func TestPrepareRichMessageLimits(test *testing.T) {
