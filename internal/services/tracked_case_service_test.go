@@ -807,6 +807,10 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 		// Given
 		environment := setup(test, nil)
 		id := environment.trackCase(test, 101)
+		previousHTML := "<p>previous committed observation</p>"
+		assert.NoError(test, environment.store.TrackedCases().UpdateObservation(context.Background(), 101, id, domain.PortalSnapshot{
+			Stage: "A", HTML: previousHTML, CheckedAt: epoch,
+		}))
 		db, err := sql.Open("sqlite", environment.path)
 		assert.NoError(test, err)
 		defer db.Close()
@@ -823,7 +827,9 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 		}
 
 		// When
-		_, observeErr := environment.trackedCaseService.saveObservation(context.Background(), 101, id, domain.PortalSnapshot{Stage: "B", CheckedAt: epoch.Add(time.Minute)})
+		_, observeErr := environment.trackedCaseService.saveObservation(context.Background(), 101, id, domain.PortalSnapshot{
+			Stage: "B", HTML: "<p>attempted replacement</p>", CheckedAt: epoch.Add(time.Minute),
+		})
 		trackedCase, readErr := environment.store.TrackedCases().FindByOwner(context.Background(), 101)
 		history, historyErr := environment.store.TrackedCasesHistory().FindByTrackedCase(context.Background(), 101, id)
 
@@ -832,6 +838,7 @@ func TestTrackedCaseServiceSaveObservation(test *testing.T) {
 		assert.NoError(test, readErr, "observation rollback")
 		assert.NoError(test, historyErr, "observation rollback")
 		assert.Equal(test, "A", trackedCase.Stage, "observation rollback")
+		assert.Equal(test, previousHTML, trackedCase.HTML, "observation rollback")
 		assert.True(test, trackedCase.CheckedAt.Equal(epoch), "observation rollback")
 		assert.Equal(test, 0, len(history), "observation rollback")
 	})

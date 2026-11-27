@@ -30,7 +30,7 @@ func TestNewStore(test *testing.T) {
 	})
 }
 
-func TestStoreRunInTx(test *testing.T) {
+func TestTrackedCaseRepository(test *testing.T) {
 	test.Run("should replace the complete observation and clear absent HTML", func(test *testing.T) {
 		// Given
 		ctx := context.Background()
@@ -73,7 +73,9 @@ func TestStoreRunInTx(test *testing.T) {
 		assert.True(test, cleared.CheckedAt.Equal(updated.CheckedAt))
 		assert.True(test, !deletedHTML.Valid, "soft deletion must clear stored HTML")
 	})
+}
 
+func TestStoreRunInTx(test *testing.T) {
 	test.Run("should commit when callback succeeds", func(test *testing.T) {
 		// Given
 		ctx := context.Background()
