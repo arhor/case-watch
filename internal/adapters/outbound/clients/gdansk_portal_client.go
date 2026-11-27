@@ -123,7 +123,16 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 	if err := ctx.Err(); err != nil {
 		return domain.PortalSnapshot{}, err
 	}
-	return domain.PortalSnapshot{Stage: stage, CheckedAt: this.clock.Now()}, nil
+	html := ""
+	if roots, selectionErr := selectGdanskCaseContent(session.state.tree, stage); selectionErr == nil && len(roots) > 0 {
+		if rendered, renderErr := vaadin.RenderHTML(session.state.tree, roots...); renderErr == nil && strings.TrimSpace(rendered) != "" {
+			html = rendered
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.PortalSnapshot{}, err
+	}
+	return domain.PortalSnapshot{Stage: stage, HTML: html, CheckedAt: this.clock.Now()}, nil
 }
 
 // Close releases idle connections of the transport created by the client. An injected
