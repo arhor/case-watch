@@ -171,6 +171,18 @@ func TestPrepareRichMessage(test *testing.T) {
 		assert.Equal(test, "3. Third\n2. Second\n1. First", prepared.PlainText)
 	})
 
+	test.Run("should preserve whitespace inside preformatted content in plain fallback when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := "<ol start=\"5\"><li>Item</li></ol><pre>  code\n  </pre>"
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "5. Item\n  code\n  ", prepared.PlainText)
+	})
+
 	test.Run("should separate inline text from a list in plain fallback when adapting generic HTML", func(test *testing.T) {
 		// Given
 		fragment := `Intro<ol start="5"><li>First</li></ol>`

@@ -97,7 +97,7 @@ func prepareRichMessage(fragment string) (preparedRichMessage, error) {
 	if err := renderRichChildren(&rich, root, state, 0, false); err != nil {
 		rich.Reset()
 	}
-	plain := strings.TrimSpace(renderPlain(root))
+	plain := renderPlain(root)
 	if plain == "" {
 		return preparedRichMessage{}, errors.New("HTML fragment has no safe readable content")
 	}
@@ -500,6 +500,11 @@ func safeHref(node *html.Node) string {
 
 func renderPlain(node *html.Node) string {
 	var output strings.Builder
+	preformattedContents := make([]string, 0)
+	markerPrefix := "\uE000case-watch-preformatted-"
+	for strings.Contains(plainNodeText(node), markerPrefix) {
+		markerPrefix += "\uE000"
+	}
 	var walk func(*html.Node, bool)
 	walk = func(current *html.Node, inCell bool) {
 		if current.Type == html.TextNode {
@@ -537,6 +542,13 @@ func renderPlain(node *html.Node) string {
 			output.WriteString("\n")
 			return
 		}
+		if tag == "pre" {
+			marker := markerPrefix + strconv.Itoa(len(preformattedContents)) + "\uE001"
+			preformattedContents = append(preformattedContents, plainNodeText(current))
+			output.WriteString(marker)
+			output.WriteString("\n")
+			return
+		}
 		block := tag == "p" || strings.HasPrefix(tag, "h") || tag == "div" || tag == "section" || tag == "article" || tag == "li" || tag == "pre" || tag == "hr" || tag == "br" || tag == "caption"
 		if tag == "li" {
 			output.WriteString(listItemMarker(current))
@@ -562,7 +574,12 @@ func renderPlain(node *html.Node) string {
 		}
 	}
 	walk(node, false)
-	return strings.TrimSpace(output.String())
+	plain := strings.TrimSpace(output.String())
+	for index, content := range preformattedContents {
+		marker := markerPrefix + strconv.Itoa(index) + "\uE001"
+		plain = strings.Replace(plain, marker, content, 1)
+	}
+	return plain
 }
 
 func isPlainBlock(node *html.Node) bool {
