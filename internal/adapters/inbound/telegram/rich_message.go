@@ -183,8 +183,35 @@ func renderRichChildren(output *strings.Builder, node *html.Node, state *renderS
 		if err := renderRichNode(output, child, state, depth, inCell); err != nil {
 			return err
 		}
+		if child.NextSibling != nil && isBlockWrapper(child) && !hasRichBlockBoundary(child.NextSibling) {
+			output.WriteString("<br>")
+		}
 	}
 	return nil
+}
+
+func hasRichBlockBoundary(node *html.Node) bool {
+	if node.Type != html.ElementNode {
+		return false
+	}
+	switch strings.ToLower(node.Data) {
+	case "p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "ul", "ol", "li", "table", "tr", "hr", "br":
+		return true
+	default:
+		return false
+	}
+}
+
+func isBlockWrapper(node *html.Node) bool {
+	if node.Type != html.ElementNode {
+		return false
+	}
+	switch strings.ToLower(node.Data) {
+	case "div", "section", "article":
+		return true
+	default:
+		return false
+	}
 }
 
 func renderRichNode(output *strings.Builder, node *html.Node, state *renderState, depth int, inCell bool) error {
@@ -237,7 +264,7 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 		return renderRichChildren(output, node, state, depth, true)
 	}
 	if inCell && tag == "li" {
-		output.WriteString("<br>• ")
+		output.WriteString("<br>" + listItemMarker(node))
 		return renderRichChildren(output, node, state, depth+1, true)
 	}
 	if inCell && (tag == "p" || tag == "pre" || strings.HasPrefix(tag, "h")) {
@@ -464,15 +491,86 @@ func listItemMarker(node *html.Node) string {
 		if parent.Data == "ul" {
 			return "• "
 		}
-		number := 1
-		for sibling := parent.FirstChild; sibling != nil && sibling != node; sibling = sibling.NextSibling {
-			if sibling.Type == html.ElementNode && sibling.Data == "li" {
-				number++
-			}
-		}
-		return strconv.Itoa(number) + ". "
+		return orderedListItemMarker(parent, node)
 	}
 	return "• "
+}
+
+func orderedListItemMarker(list, item *html.Node) string {
+	if hasAttribute(list, "type") || hasAttribute(item, "type") {
+		return "• "
+	}
+	if hasAttribute(list, "start") {
+		if _, ok := integerAttribute(list, "start"); !ok {
+			return "• "
+		}
+	}
+	for sibling := list.FirstChild; sibling != nil; sibling = sibling.NextSibling {
+		if sibling.Type == html.ElementNode && sibling.Data == "li" && hasAttribute(sibling, "value") {
+			if _, ok := integerAttribute(sibling, "value"); !ok {
+				return "• "
+			}
+		}
+	}
+	reversed := hasAttribute(list, "reversed")
+	step, number := 1, 1
+	if reversed {
+		step = -1
+		number = directListItemCount(list)
+	}
+	if start, ok := integerAttribute(list, "start"); ok {
+		number = start
+	}
+	for sibling := list.FirstChild; sibling != nil; sibling = sibling.NextSibling {
+		if sibling.Type != html.ElementNode || sibling.Data != "li" {
+			continue
+		}
+		if explicit, ok := integerAttribute(sibling, "value"); ok {
+			number = explicit
+		}
+		if sibling == item {
+			return strconv.Itoa(number) + ". "
+		}
+		number += step
+	}
+	return "• "
+}
+
+func directListItemCount(list *html.Node) int {
+	count := 0
+	for child := list.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.ElementNode && child.Data == "li" {
+			count++
+		}
+	}
+	return count
+}
+
+func listAttribute(node *html.Node, name string) string {
+	for _, attribute := range node.Attr {
+		if attribute.Key == name {
+			return attribute.Val
+		}
+	}
+	return ""
+}
+
+func hasAttribute(node *html.Node, name string) bool {
+	for _, attribute := range node.Attr {
+		if attribute.Key == name {
+			return true
+		}
+	}
+	return false
+}
+
+func integerAttribute(node *html.Node, name string) (int, bool) {
+	value := listAttribute(node, name)
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	return parsed, err == nil
 }
 
 func plainNodeText(node *html.Node) string {

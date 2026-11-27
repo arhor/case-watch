@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -40,6 +41,129 @@ func TestPrepareRichMessage(test *testing.T) {
 		assert.NoError(test, err)
 		assert.Equal(test, "", prepared.HTML)
 		assert.Equal(test, "one | two\nthree", prepared.PlainText)
+	})
+
+	test.Run("should preserve boundaries between block containers when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<div>First</div><div>Second</div><section>Third</section><article>Fourth</article>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "First<br>Second<br>Third<br>Fourth", prepared.HTML)
+		assert.Equal(test, "First\nSecond\nThird\nFourth", prepared.PlainText)
+	})
+
+	test.Run("should retain ordered list markers when flattening a table cell when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<table><tr><td><ol><li>First</li><li>Second</li></ol></td></tr></table>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, `<table><tr><td><br>1. First<br>2. Second</td></tr></table>`, prepared.HTML)
+	})
+
+	test.Run("should retain supported ordered numbering in plain fallback when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<div><ol start="5"><li>Fifth</li><li value="9">Ninth</li><li>Next</li></ol></div>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "5. Fifth\n9. Ninth\n10. Next", prepared.PlainText)
+	})
+
+	test.Run("should retain reversed ordered numbering in plain fallback when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<ol reversed><li>Third</li><li>Second</li><li>First</li></ol>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "3. Third\n2. Second\n1. First", prepared.PlainText)
+	})
+}
+
+func TestPrepareRichMessageLimits(test *testing.T) {
+	test.Run("should keep rich text at the documented limit and fall back above it when preparing HTML", func(test *testing.T) {
+		// Given
+		withinLimit := strings.Repeat("x", richTextLimit)
+		aboveLimit := strings.Repeat("x", richTextLimit+1)
+
+		// When
+		within, withinErr := prepareRichMessage(withinLimit)
+		above, aboveErr := prepareRichMessage(aboveLimit)
+
+		// Then
+		assert.NoError(test, withinErr)
+		assert.NoError(test, aboveErr)
+		assert.True(test, within.HTML != "", "text at the limit should retain rich delivery")
+		assert.Equal(test, "", above.HTML)
+		assert.Equal(test, aboveLimit, above.PlainText)
+	})
+
+	test.Run("should keep rich blocks at the documented limit and fall back above it when preparing HTML", func(test *testing.T) {
+		// Given
+		withinLimit := strings.Repeat("<p>x</p>", richBlockLimit)
+		aboveLimit := strings.Repeat("<p>x</p>", richBlockLimit+1)
+
+		// When
+		within, withinErr := prepareRichMessage(withinLimit)
+		above, aboveErr := prepareRichMessage(aboveLimit)
+
+		// Then
+		assert.NoError(test, withinErr)
+		assert.NoError(test, aboveErr)
+		assert.True(test, within.HTML != "", "blocks at the limit should retain rich delivery")
+		assert.Equal(test, "", above.HTML)
+		assert.Equal(test, richBlockLimit+1, strings.Count(above.PlainText, "x"))
+	})
+
+	test.Run("should keep formatting depth at the documented limit and fall back above it when preparing HTML", func(test *testing.T) {
+		// Given
+		withinLimit := strings.Repeat("<strong>", richDepthLimit) + "x" + strings.Repeat("</strong>", richDepthLimit)
+		aboveLimit := strings.Repeat("<strong>", richDepthLimit+1) + "x" + strings.Repeat("</strong>", richDepthLimit+1)
+
+		// When
+		within, withinErr := prepareRichMessage(withinLimit)
+		above, aboveErr := prepareRichMessage(aboveLimit)
+
+		// Then
+		assert.NoError(test, withinErr)
+		assert.NoError(test, aboveErr)
+		assert.True(test, within.HTML != "", "formatting at the limit should retain rich delivery")
+		assert.Equal(test, "", above.HTML)
+		assert.Equal(test, "x", above.PlainText)
+	})
+
+	test.Run("should keep table columns at the documented limit and fall back above it when preparing HTML", func(test *testing.T) {
+		// Given
+		makeTable := func(columns int) string {
+			cells := strings.Repeat("<td>x</td>", columns)
+			return "<table><tr>" + cells + "</tr></table>"
+		}
+		withinLimit := makeTable(richColumnLimit)
+		aboveLimit := makeTable(richColumnLimit + 1)
+
+		// When
+		within, withinErr := prepareRichMessage(withinLimit)
+		above, aboveErr := prepareRichMessage(aboveLimit)
+
+		// Then
+		assert.NoError(test, withinErr)
+		assert.NoError(test, aboveErr)
+		assert.True(test, within.HTML != "", "table at the column limit should retain rich delivery")
+		assert.Equal(test, "", above.HTML)
+		assert.Equal(test, 21, strings.Count(above.PlainText, "x"))
 	})
 }
 
@@ -120,5 +244,36 @@ func TestBotSendRich(test *testing.T) {
 		assert.ErrorIs(test, firstErr, ErrInvalidToken)
 		assert.ErrorIs(test, secondErr, ErrInvalidToken)
 		assert.Equal(test, 1, environment.richCalls, "latched invalid token should stop future rich requests")
+	})
+
+	test.Run("should stop chunked fallback when context is canceled after the first chunk", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		ctx, cancel := context.WithCancel(test.Context())
+		environment.plainCancel = cancel
+		fragment := `<table><tr><td>` + strings.Repeat("x", 5000) + `</td><td>y</td></tr><tr><td>z</td></tr></table>`
+
+		// When
+		err := environment.bot.sendRich(ctx, 101, fragment)
+
+		// Then
+		assert.ErrorIs(test, err, context.Canceled)
+		assert.Equal(test, 1, environment.plainCalls, "cancellation should stop before sending another chunk")
+		assert.Equal(test, 1, len(environment.replies), "the first successful chunk should be delivered once")
+	})
+
+	test.Run("should stop chunked fallback after the first failed chunk without retrying earlier chunks", func(test *testing.T) {
+		// Given
+		environment := setup(test)
+		environment.plainFailOnCall = 2
+		fragment := `<table><tr><td>` + strings.Repeat("x", 5000) + `</td><td>y</td></tr><tr><td>z</td></tr></table>`
+
+		// When
+		err := environment.bot.sendRich(test.Context(), 101, fragment)
+
+		// Then
+		assert.True(test, err != nil, "failed chunk should stop the delivery")
+		assert.Equal(test, 2, environment.plainCalls, "delivery should stop at the first failed chunk")
+		assert.Equal(test, 1, len(environment.replies), "the earlier successful chunk should not be resent")
 	})
 }
