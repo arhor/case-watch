@@ -349,7 +349,9 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 	if tag == "a" {
 		href := safeHref(node)
 		if href != "" {
-			output.WriteString(`<a href="` + stdhtml.EscapeString(href) + `">`)
+			output.WriteString(`<a href="`)
+			output.WriteString(stdhtml.EscapeString(href))
+			output.WriteString(`">`)
 		}
 		if err := renderRichChildren(output, node, state, depth+1, inCell); err != nil {
 			return err
@@ -364,11 +366,15 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 		return renderRichChildren(output, node, state, depth, inCell)
 	}
 	state.blocks++
-	output.WriteString("<" + tag + ">")
+	output.WriteString("<")
+	output.WriteString(tag)
+	output.WriteString(">")
 	if err := renderRichChildren(output, node, state, depth+1, inCell); err != nil {
 		return err
 	}
-	output.WriteString("</" + tag + ">")
+	output.WriteString("</")
+	output.WriteString(tag)
+	output.WriteString(">")
 	return nil
 }
 
@@ -381,7 +387,9 @@ func renderRichTableRows(output *strings.Builder, node *html.Node, state *render
 				continue
 			}
 			state.blocks++
-			output.WriteString("<" + cell.Data + ">")
+			output.WriteString("<")
+			output.WriteString(cell.Data)
+			output.WriteString(">")
 			previousCellHasContent := state.cellHasContent
 			state.cellHasContent = false
 			if err := renderRichChildren(output, cell, state, depth+1, true); err != nil {
@@ -389,7 +397,9 @@ func renderRichTableRows(output *strings.Builder, node *html.Node, state *render
 				return err
 			}
 			state.cellHasContent = previousCellHasContent
-			output.WriteString("</" + cell.Data + ">")
+			output.WriteString("</")
+			output.WriteString(cell.Data)
+			output.WriteString(">")
 		}
 		output.WriteString("</tr>")
 		return nil
