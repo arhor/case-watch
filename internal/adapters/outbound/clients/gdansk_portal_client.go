@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -124,8 +125,16 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 		return domain.PortalSnapshot{}, err
 	}
 	html := ""
-	if roots, selectionErr := selectGdanskCaseContent(session.state.tree, stage); selectionErr == nil && len(roots) > 0 {
-		if rendered, renderErr := vaadin.RenderHTML(session.state.tree, roots...); renderErr == nil && strings.TrimSpace(rendered) != "" {
+	roots, selectionErr := selectGdanskCaseContent(session.state.tree, stage)
+	if selectionErr != nil {
+		log.Print("portal HTML extraction unavailable: selection")
+	} else if len(roots) > 0 {
+		rendered, renderErr := vaadin.RenderHTML(session.state.tree, roots...)
+		if renderErr != nil {
+			log.Print("portal HTML extraction unavailable: rendering")
+		} else if strings.TrimSpace(rendered) == "" {
+			log.Print("portal HTML extraction unavailable: empty output")
+		} else {
 			html = rendered
 		}
 	}
