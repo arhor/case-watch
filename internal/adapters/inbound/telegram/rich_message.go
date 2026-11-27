@@ -362,7 +362,29 @@ func renderRichNode(output *strings.Builder, node *html.Node, state *renderState
 		}
 		return nil
 	}
-	allowed := map[string]bool{"p": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "pre": true, "code": true, "ul": true, "ol": true, "li": true, "strong": true, "b": true, "em": true, "i": true, "u": true, "ins": true, "s": true, "del": true, "strike": true}
+	allowed := map[string]bool{
+		"p":      true,
+		"h1":     true,
+		"h2":     true,
+		"h3":     true,
+		"h4":     true,
+		"h5":     true,
+		"h6":     true,
+		"pre":    true,
+		"code":   true,
+		"ul":     true,
+		"ol":     true,
+		"li":     true,
+		"strong": true,
+		"b":      true,
+		"em":     true,
+		"i":      true,
+		"u":      true,
+		"ins":    true,
+		"s":      true,
+		"del":    true,
+		"strike": true,
+	}
 	if !allowed[tag] {
 		return renderRichChildren(output, node, state, depth, inCell)
 	}
@@ -573,7 +595,9 @@ func renderPlain(node *html.Node) string {
 			if href != "" {
 				label := strings.TrimSpace(plainNodeText(current))
 				if href != label {
-					output.WriteString(" (" + href + ")")
+					output.WriteString(" (")
+					output.WriteString(href)
+					output.WriteString(")")
 				}
 			}
 		}
