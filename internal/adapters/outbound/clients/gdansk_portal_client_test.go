@@ -591,6 +591,7 @@ func TestGdanskPortalClientCheck(test *testing.T) {
 			expectedHTML, readError := os.ReadFile("testdata/vaadin/expected-content.html")
 			assert.NoError(test, readError)
 			assert.Equal(test, strings.TrimSpace(string(expectedHTML)), snapshot.HTML)
+			assert.True(test, snapshot.HTMLAvailable, "successful mapping should mark HTML as available")
 			assert.Equal(test, expectedRequests, calls)
 		})
 	}
