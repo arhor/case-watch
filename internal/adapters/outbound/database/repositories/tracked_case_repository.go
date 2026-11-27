@@ -126,12 +126,12 @@ func (this *TrackedCaseRepository) UpdateObservation(
 		this.executor.ExecContext(ctx, `
 			UPDATE tracked_cases
 			   SET curr_state = ?
-			     , curr_html = ?
+			     , curr_html = CASE WHEN ? THEN ? ELSE curr_html END
 			     , checked_at = ?
 			 WHERE owner_id = ?
 			   AND id = ?
 			   AND deleted_at IS NULL
-			`, snapshot.Stage, nullableHTML(snapshot.HTML), stamp(snapshot.CheckedAt), owner, id,
+			`, snapshot.Stage, snapshot.HTMLAvailable, nullableHTML(snapshot.HTML), stamp(snapshot.CheckedAt), owner, id,
 		),
 	)
 }
