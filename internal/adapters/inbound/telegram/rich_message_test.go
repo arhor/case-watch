@@ -56,6 +56,45 @@ func TestPrepareRichMessage(test *testing.T) {
 		assert.Equal(test, "First\nSecond\nThird\nFourth", prepared.PlainText)
 	})
 
+	test.Run("should insert a boundary before a block wrapper after inline text when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `prefix<div>block</div>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "prefix<br>block", prepared.HTML)
+		assert.Equal(test, "prefix\nblock", prepared.PlainText)
+	})
+
+	test.Run("should insert a boundary before a block wrapper after inline span content when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<span>prefix</span><div>block</div>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, "prefix<br>block", prepared.HTML)
+		assert.Equal(test, "prefix\nblock", prepared.PlainText)
+	})
+
+	test.Run("should insert a boundary before a block wrapper inside a table cell when adapting generic HTML", func(test *testing.T) {
+		// Given
+		fragment := `<table><tr><td>prefix<div>block</div></td></tr></table>`
+
+		// When
+		prepared, err := prepareRichMessage(fragment)
+
+		// Then
+		assert.NoError(test, err)
+		assert.Equal(test, `<table><tr><td>prefix<br>block</td></tr></table>`, prepared.HTML)
+		assert.Equal(test, "prefix\nblock", prepared.PlainText)
+	})
+
 	test.Run("should retain ordered list markers when flattening a table cell when adapting generic HTML", func(test *testing.T) {
 		// Given
 		fragment := `<table><tr><td><ol><li>First</li><li>Second</li></ol></td></tr></table>`

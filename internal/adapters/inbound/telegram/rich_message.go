@@ -180,6 +180,9 @@ func hiddenNode(node *html.Node) bool {
 
 func renderRichChildren(output *strings.Builder, node *html.Node, state *renderState, depth int, inCell bool) error {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if isBlockWrapper(child) && hasPrecedingInlineContent(child) {
+			output.WriteString("<br>")
+		}
 		if err := renderRichNode(output, child, state, depth, inCell); err != nil {
 			return err
 		}
@@ -212,6 +215,41 @@ func isBlockWrapper(node *html.Node) bool {
 	default:
 		return false
 	}
+}
+
+func hasPrecedingInlineContent(node *html.Node) bool {
+	for current := node; current != nil; {
+		for previous := current.PrevSibling; previous != nil; previous = previous.PrevSibling {
+			if previous.Type == html.CommentNode || previous.Type == html.DoctypeNode {
+				continue
+			}
+			if previous.Type == html.TextNode && strings.TrimSpace(previous.Data) == "" {
+				continue
+			}
+			if hasRichBlockBoundary(previous) || isBlockWrapper(previous) {
+				return false
+			}
+			return hasVisibleText(previous)
+		}
+		parent := current.Parent
+		if parent == nil || parent.Type != html.ElementNode || parent.Data != "span" && parent.Data != "label" {
+			return false
+		}
+		current = parent
+	}
+	return false
+}
+
+func hasVisibleText(node *html.Node) bool {
+	if node.Type == html.TextNode {
+		return strings.TrimSpace(node.Data) != ""
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if hasVisibleText(child) {
+			return true
+		}
+	}
+	return false
 }
 
 func renderRichNode(output *strings.Builder, node *html.Node, state *renderState, depth int, inCell bool) error {
@@ -434,6 +472,9 @@ func renderPlain(node *html.Node) string {
 			return
 		}
 		tag := strings.ToLower(current.Data)
+		if isPlainBlock(current) && tag != "br" && hasPrecedingInlineContent(current) {
+			output.WriteString("\n")
+		}
 		if tag == "table" {
 			for child := current.FirstChild; child != nil; child = child.NextSibling {
 				walk(child, inCell)
@@ -481,6 +522,14 @@ func renderPlain(node *html.Node) string {
 	}
 	walk(node, false)
 	return strings.TrimSpace(output.String())
+}
+
+func isPlainBlock(node *html.Node) bool {
+	if node.Type != html.ElementNode {
+		return false
+	}
+	tag := strings.ToLower(node.Data)
+	return isBlockWrapper(node) || tag == "p" || strings.HasPrefix(tag, "h") || tag == "pre" || tag == "li" || tag == "hr"
 }
 
 func listItemMarker(node *html.Node) string {
