@@ -44,6 +44,39 @@ func TestSelectGdanskCaseContent(test *testing.T) {
 		assert.True(test, selectionError != nil, "mixed branch should make the selected fragment unavailable")
 		assert.Equal(test, 0, len(selected))
 	})
+
+	test.Run("should stop selector traversal at the renderer depth limit", func(test *testing.T) {
+		// Given
+		tree := authenticatedGdanskTree(test)
+		roots, err := selectGdanskCaseContent(tree, "Example stage")
+		assert.NoError(test, err)
+		parent := roots[0]
+		parentID := parent.ID()
+		changes := make([]vaadin.Change, 0, (gdanskSelectionMaxDepth+2)*3)
+		for index := 0; index <= gdanskSelectionMaxDepth; index++ {
+			nodeID := vaadin.NodeID(91000 + index)
+			childIndex := 0
+			if index == 0 {
+				childIndex = len(parent.ChildIDs())
+			}
+			changes = append(changes,
+				vaadin.Change{"node": float64(nodeID), "type": vaadin.Attach},
+				vaadin.Change{"node": float64(nodeID), "type": vaadin.Put, "feat": float64(vaadin.ElementFeature), "key": "tag", "value": "div"},
+				vaadin.Change{"node": float64(parentID), "type": vaadin.Splice, "feat": float64(vaadin.ChildrenFeature), "index": float64(childIndex), "addNodes": []any{float64(nodeID)}},
+			)
+			parentID = nodeID
+		}
+		assert.NoError(test, tree.Apply(changes))
+
+		// When
+		selected, selectionError := selectGdanskCaseContent(tree, "Example stage")
+		_, classificationError := classifyGdanskBranch(tree, roots[0])
+
+		// Then
+		assert.True(test, selectionError != nil, "over-depth trees should be rejected before rendering")
+		assert.True(test, classificationError != nil, "branch classification should use the same depth bound")
+		assert.Equal(test, 0, len(selected))
+	})
 }
 
 // -- Internals ----------------------------------------------------------------

@@ -125,7 +125,6 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 		return domain.PortalSnapshot{}, err
 	}
 	html := ""
-	htmlAvailable := false
 	roots, selectionErr := selectGdanskCaseContent(session.state.tree, stage)
 	if selectionErr != nil {
 		log.Print("portal HTML extraction unavailable: selection")
@@ -134,7 +133,6 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 		if renderErr != nil {
 			log.Print("portal HTML extraction unavailable: rendering")
 		} else {
-			htmlAvailable = true
 			if strings.TrimSpace(rendered) == "" {
 				log.Print("portal HTML extraction returned empty output")
 			} else {
@@ -145,7 +143,7 @@ func (this *GdanskPortalClient) Check(ctx context.Context, ownerID int64, number
 	if err := ctx.Err(); err != nil {
 		return domain.PortalSnapshot{}, err
 	}
-	return domain.PortalSnapshot{Stage: stage, HTML: html, HTMLAvailable: htmlAvailable, CheckedAt: this.clock.Now()}, nil
+	return domain.PortalSnapshot{Stage: stage, HTML: html, CheckedAt: this.clock.Now()}, nil
 }
 
 // Close releases idle connections of the transport created by the client. An injected

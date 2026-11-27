@@ -40,20 +40,17 @@ func TestTrackedCaseRepository(test *testing.T) {
 		store := repositories.NewStore(db)
 		id := "0123456789abcdef0123456789abcdef"
 		checkedAt := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
-		initial := domain.PortalSnapshot{Stage: "A", HTML: " <p>opaque & exact</p>\n", HTMLAvailable: true, CheckedAt: checkedAt}
+		initial := domain.PortalSnapshot{Stage: "A", HTML: " <p>opaque & exact</p>\n", CheckedAt: checkedAt}
 		assert.NoError(test, store.TrackedCases().Create(ctx, 101, id, "synthetic-number", "synthetic-password", initial))
 
 		// When
 		byOwner, ownerErr := store.TrackedCases().FindByOwner(ctx, 101)
 		byIdentity, identityErr := store.TrackedCases().FindByIdentity(ctx, 101, id)
 		all, allErr := store.TrackedCases().FindAll(ctx)
-		unavailable := domain.PortalSnapshot{Stage: "B", CheckedAt: checkedAt.Add(time.Minute)}
-		updateErr := store.TrackedCases().UpdateObservation(ctx, 101, id, unavailable)
-		retained, retainedErr := store.TrackedCases().FindByOwner(ctx, 101)
-		updated := domain.PortalSnapshot{Stage: "A", HTMLAvailable: true, CheckedAt: unavailable.CheckedAt.Add(time.Minute)}
-		clearErr := store.TrackedCases().UpdateObservation(ctx, 101, id, updated)
+		updated := domain.PortalSnapshot{Stage: "B", CheckedAt: checkedAt.Add(time.Minute)}
+		updateErr := store.TrackedCases().UpdateObservation(ctx, 101, id, updated)
 		cleared, clearedErr := store.TrackedCases().FindByOwner(ctx, 101)
-		withHTML := domain.PortalSnapshot{Stage: "A", HTML: "<p>delete me</p>", HTMLAvailable: true, CheckedAt: updated.CheckedAt.Add(time.Minute)}
+		withHTML := domain.PortalSnapshot{Stage: "A", HTML: "<p>delete me</p>", CheckedAt: updated.CheckedAt.Add(time.Minute)}
 		replaceErr := store.TrackedCases().UpdateObservation(ctx, 101, id, withHTML)
 		deleteErr := store.TrackedCases().SoftDelete(ctx, 101, id, withHTML.CheckedAt.Add(time.Minute))
 		var deletedHTML sql.NullString
@@ -64,8 +61,6 @@ func TestTrackedCaseRepository(test *testing.T) {
 		assert.NoError(test, identityErr)
 		assert.NoError(test, allErr)
 		assert.NoError(test, updateErr)
-		assert.NoError(test, retainedErr)
-		assert.NoError(test, clearErr)
 		assert.NoError(test, clearedErr)
 		assert.NoError(test, replaceErr)
 		assert.NoError(test, deleteErr)
@@ -73,8 +68,6 @@ func TestTrackedCaseRepository(test *testing.T) {
 		assert.Equal(test, initial.HTML, byOwner.HTML)
 		assert.Equal(test, initial.HTML, byIdentity.HTML)
 		assert.Equal(test, initial.HTML, all[0].HTML)
-		assert.Equal(test, initial.HTML, retained.HTML)
-		assert.Equal(test, unavailable.Stage, retained.Stage)
 		assert.Equal(test, "", cleared.HTML)
 		assert.Equal(test, updated.Stage, cleared.Stage)
 		assert.True(test, cleared.CheckedAt.Equal(updated.CheckedAt))
