@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -397,6 +398,66 @@ func TestFormatStatus(test *testing.T) {
 	}
 }
 
+func TestFormatRichStatus(test *testing.T) {
+	portalHTML := `<table><tbody><tr><td><strong>Stage</strong></td><td>Etap &lt;A&gt;</td></tr><tr><td>Extra</td><td>arbitrary &amp; safe</td></tr></tbody></table>`
+	for _, scenario := range []struct {
+		name            string
+		status          domain.Status
+		err             error
+		expectedParts   []string
+		unexpectedParts []string
+	}{
+		{
+			name:            "should append fresh portal structure and success metadata",
+			status:          domain.Status{HTML: portalHTML, CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			expectedParts:   []string{portalHTML + "\n<p>Последняя проверка: 01.11.2026, 13:00</p>\n<p>Данные успешно обновлены.</p>"},
+			unexpectedParts: []string{"Статус дела:", "Etap &lt;A&gt;</p>", "Next", "<p><table"},
+		},
+		{
+			name:            "should show cached content and failure context even when fresh is set",
+			status:          domain.Status{HTML: portalHTML, CheckedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), Fresh: true},
+			err:             services.ErrCheck,
+			expectedParts:   []string{"<p>Не удалось обновить статус дела.</p>\n<p>Показываю данные последней успешной проверки:</p>\n" + portalHTML + "\n<p>Проверено: 01.06.2026, 14:00</p>"},
+			unexpectedParts: []string{"Данные успешно обновлены.", "portal check failed", "Статус дела:", "Next"},
+		},
+		{
+			name:          "should include progress after cached metadata",
+			status:        domain.Status{HTML: portalHTML, CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC), InProgress: true},
+			expectedParts: []string{"<p>Последняя успешная проверка: 01.11.2026, 13:00</p>\n<p>Проверка статуса ещё выполняется.</p>"},
+		},
+	} {
+		test.Run(scenario.name, func(test *testing.T) {
+			// Given
+			status := scenario.status
+			status.HTML = portalHTML
+
+			// When
+			actual := formatRichStatus(status, scenario.err)
+
+			// Then
+			for _, expected := range scenario.expectedParts {
+				assert.True(test, strings.Contains(actual, expected), "rich status should retain the required structure and ordering")
+			}
+			for _, unexpected := range scenario.unexpectedParts {
+				assert.True(test, !strings.Contains(actual, unexpected), "rich status should omit unrelated or duplicated content")
+			}
+			assert.Equal(test, 1, strings.Count(actual, portalHTML), "portal fragment should appear exactly once")
+		})
+	}
+
+	test.Run("should escape application-generated dynamic metadata", func(test *testing.T) {
+		// Given
+		status := domain.Status{HTML: portalHTML, CheckedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
+
+		// When
+		actual := formatRichStatus(status, nil)
+
+		// Then
+		assert.True(test, strings.Contains(actual, "Последняя успешная проверка: 01.11.2026, 13:00"))
+		assert.True(test, !strings.Contains(actual, "<p><table"), "portal block should be a sibling of metadata paragraphs")
+	})
+}
+
 func TestBotRun(test *testing.T) {
 	test.Run("should report token rejection when unauthorized", func(test *testing.T) {
 		// Given
@@ -707,6 +768,7 @@ func (this portal) Check(ctx context.Context, owner int64, number, password stri
 
 type fixture struct {
 	bot                 *Bot
+	db                  *sql.DB
 	store               *repositories.Store
 	clock               *clock.FixedClock
 	mu                  sync.Mutex
@@ -774,6 +836,7 @@ func setup(test *testing.T) *fixture {
 	db, err := database.Open(context.Background(), environment.path)
 	assert.NoError(test, err)
 	environment.store = repositories.NewStore(db)
+	environment.db = db
 	test.Cleanup(func() { db.Close() })
 	trackedCaseService := services.NewTrackedCaseService(services.TrackedCaseServiceConfig{
 		Store: environment.store,

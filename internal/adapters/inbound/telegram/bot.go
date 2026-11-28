@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"log"
 	"net/http"
 	"slices"
@@ -340,7 +341,12 @@ func (this *Bot) onStatus(ctx context.Context, id int64, s *state, now time.Time
 			"Чтобы добавить дело, отправьте /start.")
 		return
 	}
-	this.reply(ctx, id, formatStatus(status, err))
+	if status.CheckedAt.IsZero() || strings.TrimSpace(status.HTML) == "" {
+		this.reply(ctx, id, formatStatus(status, err))
+		return
+	}
+	this.replyRich(ctx, id, formatRichStatus(status, err))
+	return
 }
 
 func (this *Bot) onRemove(ctx context.Context, id int64, s *state, now time.Time) {
@@ -564,6 +570,32 @@ func formatStatus(s domain.Status, err error) string {
 		parts = append(parts, "Проверка статуса ещё выполняется.")
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+func formatRichStatus(status domain.Status, err error) string {
+	parts := make([]string, 0, 5)
+	if err != nil {
+		parts = append(parts,
+			"<p>Не удалось обновить статус дела.</p>",
+			"<p>Показываю данные последней успешной проверки:</p>",
+		)
+	}
+	parts = append(parts, status.HTML)
+	checkedAt := stdhtml.EscapeString(formatWarsawTime(status.CheckedAt))
+	label := "Последняя успешная проверка:"
+	if err != nil {
+		label = "Проверено:"
+	} else if status.Fresh {
+		label = "Последняя проверка:"
+	}
+	parts = append(parts, "<p>"+label+" "+checkedAt+"</p>")
+	if err == nil && status.Fresh {
+		parts = append(parts, "<p>Данные успешно обновлены.</p>")
+	}
+	if status.InProgress {
+		parts = append(parts, "<p>Проверка статуса ещё выполняется.</p>")
+	}
+	return strings.Join(parts, "\n")
 }
 
 func formatWarsawTime(t time.Time) string {
